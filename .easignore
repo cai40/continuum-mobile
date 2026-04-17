@@ -1,0 +1,9 @@
+node_modules
+node_modules/
+**/node_modules
+.expo
+.expo/
+dist
+dist/
+continuum-core
+continuum-core/
