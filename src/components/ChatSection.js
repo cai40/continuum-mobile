@@ -1,12 +1,16 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Image, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Image, Alert, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
+import {
+  ExpoSpeechRecognitionModule,
+  useSpeechRecognitionEvent
+} from 'expo-speech-recognition';
 import { useAppContext } from '../context/AppContext';
 import { chatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
@@ -16,19 +20,23 @@ import LatencyHeatmap from './shared/LatencyHeatmap';
 const ChatSection = () => {
   const {
     messages, setMessages,
-    provider, groqKey, geminiKey, openaiKey, openrouterKey,
+    provider, setProvider, groqKey, geminiKey, openaiKey, openrouterKey,
     selectedVoice, persona,
     activeTab,
-    session
+    session,
+    syncRemoteHistory,
+    isFeatureAvailable,
   } = useAppContext();
 
   const [input, setInput] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [attachment, setAttachment] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [recording, setRecording] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [localTranscript, setLocalTranscript] = useState('');
 
   const chatListRef = useRef();
   const abortControllerRef = useRef(null);
@@ -39,11 +47,49 @@ const ChatSection = () => {
   const longSilenceTimerRef = useRef(null);
   const stopRecordingRef = useRef(null);
 
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await syncRemoteHistory();
+    setIsRefreshing(false);
+  };
+
+  // --- NEURAL TRANSCRIPTION LISTENERS ---
+  useSpeechRecognitionEvent('start', () => {
+    setRecording(true);
+    setLocalTranscript('');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results[0]?.transcript || '';
+    setLocalTranscript(transcript);
+  });
+
+  useSpeechRecognitionEvent('error', (error) => {
+    console.warn("Speech Error:", error);
+    setRecording(false);
+    // Silent fail or alert based on severity
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setRecording(false);
+    // If we have a transcript and were in voice mode, auto-send
+    if (localTranscript.trim()) {
+      handleVoiceFinished();
+    }
+  });
+
+  const handleVoiceFinished = () => {
+    // Trigger send with the local results
+    sendMessage(null, true);
+  };
+
   // Audio Cleanup
   useEffect(() => {
     return () => {
       if (soundRef.current) soundRef.current.unloadAsync();
-      if (recording) recording.stopAndUnloadAsync();
+      // Ensure STT is stopped on unmount
+      if (stopRecordingRef.current) stopRecordingRef.current();
     };
   }, []);
 
@@ -58,6 +104,50 @@ const ChatSection = () => {
     soundQueueRef.current = [];
     isPlayingQueueRef.current = false;
     setIsSpeaking(false);
+  };
+
+  // --- MULTIMODAL PICKERS ---
+  const pickImage = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    });
+
+    if (!result.canceled) {
+      const asset = result.assets[0];
+      setAttachment({
+        uri: asset.uri,
+        name: asset.fileName || 'image.jpg',
+        type: asset.mimeType || 'image/jpeg'
+      });
+    }
+  };
+
+  const pickDocument = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
+        copyToCacheDirectory: true
+      });
+
+      if (!result.canceled) {
+        const asset = result.assets[0];
+        setAttachment({
+          uri: asset.uri,
+          name: asset.name,
+          type: asset.mimeType || 'application/octet-stream'
+        });
+      }
+    } catch (err) {
+      console.warn("Document Picker Error:", err);
+    }
+  };
+
+  const clearAttachment = () => {
+    setAttachment(null);
   };
 
   const playNextStreamChunk = async () => {
@@ -93,63 +183,63 @@ const ChatSection = () => {
   };
 
   const startRecording = async () => {
-    try {
-      await Audio.requestPermissionsAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-      
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        (status) => {
-            if (status.isRecording && status.metering !== undefined) {
-               if (status.metering < SILENCE_THRESHOLD) {
-                  if (!silenceTimerRef.current) {
-                      silenceTimerRef.current = setTimeout(() => stopRecordingRef.current?.(), SHORT_SILENCE_TIMEOUT);
-                  }
-                  if (isVoiceMode && !longSilenceTimerRef.current) {
-                      longSilenceTimerRef.current = setTimeout(() => {
-                          setIsVoiceMode(false);
-                          stopRecordingRef.current?.();
-                      }, LONG_SILENCE_TIMEOUT);
-                  }
-               } else {
-                  if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
-                  if (longSilenceTimerRef.current) { clearTimeout(longSilenceTimerRef.current); longSilenceTimerRef.current = null; }
-               }
-            }
-        },
-        200
+    if (!isFeatureAvailable('pro')) {
+      Alert.alert(
+        "Pro Feature", 
+        "Hands-free voice mode is reserved for Pro and Elite members. Start your 30-day free trial now!",
+        [
+          { text: "Later", style: "cancel" },
+          { text: "View Plans", onPress: () => useAppContext().setActiveTab('subscription') }
+        ]
       );
-      setRecording(recording);
-    } catch (err) { console.error(err); }
+      return;
+    }
+    
+    try {
+      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!result.granted) {
+        Alert.alert("Permission Denied", "Continuum needs microphone and speech recognition access for hands-free mode.");
+        return;
+      }
+
+      await ExpoSpeechRecognitionModule.start({
+        lang: 'en-US',
+        interimResults: true,
+      });
+    } catch (err) {
+      console.error("STT Start Error:", err);
+    }
   };
 
   const stopRecording = async () => {
-    if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null; }
-    if (longSilenceTimerRef.current) { clearTimeout(longSilenceTimerRef.current); longSilenceTimerRef.current = null; }
-    if (!recording) return;
-    setRecording(null);
-    await recording.stopAndUnloadAsync();
-    const uri = recording.getURI();
-    sendMessage({ uri, name: 'voice_memo.m4a', type: 'audio/m4a' });
+    try {
+      await ExpoSpeechRecognitionModule.stop();
+    } catch (e) {
+      console.warn("STT Stop Error:", e);
+    }
   };
   stopRecordingRef.current = stopRecording;
 
-  const sendMessage = async (overrideAttachment = null) => {
+  const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
     if (isTyping) return;
     const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
-    if (!input.trim() && !activeAttachment) return; 
 
-    const currentInput = input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Transcribing..." : "User attached a file.");
-    const userMsg = { id: Date.now().toString(), role: 'user', content: currentInput, attachment: activeAttachment };
-    const isVoiceTurn = activeAttachment?.type?.startsWith('audio');
+    // Check if we have local transcript AND no text input
+    const finalInput = isFromVoice ? localTranscript : input;
+    if (!finalInput.trim() && !activeAttachment) return;
+
+    // Visual placeholder for voice
+    const displayInput = isFromVoice ? finalInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
+    const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachment: activeAttachment };
 
     setMessages(prev => [...prev, userMsg]);
-    
+
     setInput('');
+    setLocalTranscript('');
     setAttachment(null);
     setIsTyping(true);
 
-    // Ensure audio mode is set for playback (especially if we didn't just record)
+    // Audio Playback Setup
     if (isVoiceMode) {
       try {
         await Audio.setAudioModeAsync({
@@ -162,39 +252,39 @@ const ChatSection = () => {
     }
 
     const formData = new FormData();
-    formData.append('message', currentInput);
+    formData.append('message', finalInput);
     formData.append('provider', provider);
     formData.append('persona', persona);
     formData.append('history', JSON.stringify(messages.slice(-20)));
-    
+
     const activeKey = provider === 'groq' ? groqKey : (provider === 'gemini' ? geminiKey : (provider === 'openrouter' ? openrouterKey : openaiKey));
     if (activeKey) formData.append('api_key', activeKey.trim());
+
     if (isVoiceMode) {
       formData.append('synthesize_voice', 'True');
       formData.append('voice_model', selectedVoice);
     }
 
-    if (activeAttachment) {
-      if (isVoiceTurn) {
-        const base64Audio = await FileSystem.readAsStringAsync(activeAttachment.uri, { encoding: 'base64' });
-        formData.append('file_b64', base64Audio);
-      } else {
-        formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
-      }
+    if (activeAttachment && !isFromVoice) {
+      formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
     }
 
     let isHandled = false;
-    chatStream(formData, 
+    chatStream(formData,
       (event, json) => {
         if (event === 'text' && json.token) {
           setStreamingContent(prev => prev + json.token);
         } else if (event === 'audio' && json.audio) {
           soundQueueRef.current.push(json.audio);
           if (!isPlayingQueueRef.current) playNextStreamChunk();
-        } else if (event === 'transcript' && json.text) {
-          setMessages(prev => prev.map(m => 
-            m.id === userMsg.id ? { ...m, content: json.text } : m
-          ));
+        } else if (event === 'transcript') {
+          // REPAIR: Relaxed validation to ensure placeholder replacement even if data is structured differently
+          const transcript = json.text || (typeof json === 'string' ? json : null);
+          if (transcript) {
+            setMessages(prev => prev.map(m =>
+              m.id === userMsg.id ? { ...m, content: transcript } : m
+            ));
+          }
         } else if (event === 'error') {
           Alert.alert("Continuum Fault", json.detail || "An unexpected error occurred.");
           setIsTyping(false);
@@ -209,10 +299,14 @@ const ChatSection = () => {
 
         setMessages(prev => {
           const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: finalText };
-          // If it was a voice turn, we rely on the 'transcript' event to have updated the user bubble,
-          // but we do a final safety check here.
-          if (isVoiceTurn) {
-            return prev.map(m => m.id === userMsg.id ? { ...m, content: voiceTranscript || m.content } : m).concat(aiMsg);
+          // REPAIR: Absolute safeguard to ensure 'Transcribing...' is ALWAYS replaced by the time the AI finishes
+          if (isFromVoice) {
+            return prev.map(m => {
+              if (m.id === userMsg.id && m.content.includes("Transcribing...")) {
+                return { ...m, content: voiceTranscript || "[Voice Message]" };
+              }
+              return m;
+            }).concat(aiMsg);
           }
           return [...prev, aiMsg];
         });
@@ -226,17 +320,32 @@ const ChatSection = () => {
   };
 
   const renderChatItem = ({ item }) => (
-    <TouchableOpacity 
+    <TouchableOpacity
       activeOpacity={0.9}
-      onLongPress={async () => { 
+      onLongPress={async () => {
         await Clipboard.setStringAsync(item.content);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         Alert.alert("Copied", "Message saved to clipboard.");
-      }} 
+      }}
       style={item.role === 'user' ? styles.userBubble : styles.aiBubble}
     >
-      {item.attachment?.type.startsWith('image/') && (
-          <Image source={{uri: item.attachment.uri}} style={{width: 240, height: 240, borderRadius: 16, marginBottom: 10}} />
+      {item.attachment && (
+        <View style={{ marginBottom: 8 }}>
+          {item.attachment.type.startsWith('image/') ? (
+            <Image 
+              source={{ uri: item.attachment.uri }} 
+              style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: theme.colors.light }} 
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.light, padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: theme.colors.primary }}>
+              <Ionicons name="document-attach" size={20} color={theme.colors.primary} />
+              <Text style={{ marginLeft: 8, fontSize: 13, color: theme.colors.black, fontWeight: '600' }} numberOfLines={1}>
+                {item.attachment.name}
+              </Text>
+            </View>
+          )}
+        </View>
       )}
       <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>{item.content}</Text>
       <LatencyHeatmap data={item.latencyData} />
@@ -244,20 +353,57 @@ const ChatSection = () => {
   );
 
   return (
-    <View style={styles.chatArea}>
+    <KeyboardAvoidingView 
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      style={styles.chatArea}
+    >
       <View style={styles.providerBar}>
-          <TouchableOpacity 
-            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsVoiceMode(!isVoiceMode); }} 
-            style={{
-              backgroundColor: isVoiceMode ? theme.colors.success : theme.colors.light, 
-              flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20
-            }}
-          >
-            <Ionicons name={isVoiceMode ? "mic" : "mic-off"} size={16} color={isVoiceMode ? "white" : theme.colors.gray} style={{marginRight: 6}} />
-            <Text style={{color: isVoiceMode ? "white" : theme.colors.gray, fontWeight: '800', fontSize: 11}}>
-              HANDS-FREE: {isVoiceMode ? 'ON' : 'OFF'}
-            </Text>
-          </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 6, flex: 1 }}>
+          {['gemini', 'openrouter', 'openai'].map((p) => (
+            <TouchableOpacity
+              key={p}
+              onPress={() => {
+                setProvider(p);
+              }}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 12,
+                backgroundColor: provider === p ? theme.colors.primary : theme.colors.white,
+                borderWidth: 1,
+                borderColor: provider === p ? theme.colors.primary : theme.colors.border
+              }}
+            >
+              <Text style={{ 
+                fontSize: 9, 
+                fontWeight: '800', 
+                color: provider === p ? 'white' : theme.colors.gray 
+              }}>
+                {p === 'openrouter' ? 'CLAUDE' : p.toUpperCase()}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsVoiceMode(!isVoiceMode); }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: isVoiceMode ? theme.colors.success + '15' : theme.colors.light,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: isVoiceMode ? theme.colors.success : 'transparent'
+          }}
+        >
+          <Ionicons name={isVoiceMode ? "mic" : "mic-off"} size={12} color={isVoiceMode ? theme.colors.success : theme.colors.gray} style={{ marginRight: 4 }} />
+          <Text style={{ color: isVoiceMode ? theme.colors.success : theme.colors.gray, fontWeight: '800', fontSize: 9 }}>
+            VOICE: {isVoiceMode ? 'ON' : 'OFF'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -265,41 +411,80 @@ const ChatSection = () => {
         data={streamingContent.trim() ? [...messages, { id: 'stream', role: 'assistant', content: streamingContent }] : messages}
         keyExtractor={item => item.id}
         renderItem={renderChatItem}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, flexGrow: 1 }}
         onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.colors.primary}
+          />
+        }
       />
-      
+
       {(recording || isTyping || isSpeaking) && (
-          <View style={{flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8}}>
-              <Text style={[styles.typingIndicator, {flex: 1}]}>
-                {recording ? "Listening..." : (isSpeaking ? "Speaking..." : "Analyzing...")}
-              </Text>
-              {(isTyping || isSpeaking) && (
-                <TouchableOpacity style={[styles.stopButton, {backgroundColor: theme.colors.danger}]} onPress={handleStop}>
-                    <Text style={{color: 'white', fontWeight: 'bold'}}>Stop</Text>
-                </TouchableOpacity>
-              )}
-          </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 }}>
+          <Text style={[styles.typingIndicator, { flex: 1 }]}>
+            {recording ? "Listening..." : (isSpeaking ? "Speaking..." : "Analyzing...")}
+          </Text>
+          {(isTyping || isSpeaking) && (
+            <TouchableOpacity style={[styles.stopButton, { backgroundColor: theme.colors.danger }]} onPress={handleStop}>
+              <Text style={{ color: 'white', fontWeight: 'bold' }}>Stop</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
-      <View style={styles.inputWrapper}>
-        <View style={styles.capsuleInput}>
-          <TextInput 
+      {attachment && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, backgroundColor: theme.colors.light, marginHorizontal: 16, padding: 8, borderRadius: 12 }}>
+          <Ionicons name={attachment.type.startsWith('image/') ? "image" : "document-text"} size={20} color={theme.colors.primary} />
+          <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: theme.colors.black }} numberOfLines={1}>
+            {attachment.name}
+          </Text>
+          <TouchableOpacity onPress={clearAttachment}>
+            <Ionicons name="close-circle" size={20} color={theme.colors.danger} />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <View style={[styles.inputWrapper, { flexDirection: 'row', alignItems: 'flex-end' }]}>
+        <TouchableOpacity 
+          onPress={() => {
+            Alert.alert(
+              "Attach Context",
+              "How would you like to provide intelligence?",
+              [
+                { text: "Cancel", style: "cancel" },
+                { text: "Photo Library", onPress: pickImage },
+                { text: "Browse Documents", onPress: pickDocument },
+              ]
+            );
+          }}
+          style={{ marginRight: 8, marginBottom: 4, padding: 10, backgroundColor: theme.colors.light, borderRadius: 25 }}
+        >
+          <Ionicons name="attach" size={22} color={theme.colors.primary} />
+        </TouchableOpacity>
+
+        <View style={[styles.capsuleInput, { flex: 1 }]}>
+          <TextInput
             style={styles.textInput}
-            placeholder="Message..."
+            placeholder={attachment ? "Describe this file..." : "Message..."}
             value={input}
             onChangeText={setInput}
             multiline
+            autoCorrect={true}
+            spellCheck={true}
+            autoCapitalize="sentences"
           />
-          <TouchableOpacity 
-            onPress={() => recording ? stopRecording() : (input.trim() ? sendMessage() : startRecording())} 
+          <TouchableOpacity
+            onPress={() => recording ? stopRecording() : (input.trim() || attachment ? sendMessage() : startRecording())}
             style={styles.sendPill}
           >
-            <Ionicons name={recording ? "stop" : (input.trim() ? "arrow-up" : "mic-outline")} size={20} color="white" />
+            <Ionicons name={recording ? "stop" : (input.trim() || attachment ? "arrow-up" : "mic-outline")} size={20} color="white" />
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 

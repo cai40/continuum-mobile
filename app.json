@@ -4,28 +4,33 @@
     "slug": "continuum-2-0",
     "scheme": "continuum",
     "version": "1.0.3",
+    "description": "Your autonomous AI memory advisor. Continuum builds a multi-layered semantic profile of your life to provide high-context advice and 24/7 memory retrieval.",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#081b4b"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.continuum.advisor.cloud",
+      "buildNumber": "17",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Continuum needs access to your microphone to enable hands-free AI voice interactions.",
-        "NSSpeechRecognitionUsageDescription": "Continuum uses speech recognition to transcribe your voice for intelligent advice.",
+        "NSSpeechRecognitionUsageDescription": "Continuum uses on-device neural processing to transcribe your voice instantly and privately.",
+        "NSPhotoLibraryUsageDescription": "Continuum needs access to your photos to allow the AI to analyze your documents and images.",
+        "NSCameraUsageDescription": "Continuum needs access to your camera to capture images for real-time visual AI analysis.",
+        "NSFaceIDUsageDescription": "Continuum uses FaceID to securely unlock your stored credentials and memory vault.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#051431"
       },
       "edgeToEdgeEnabled": true
     },
@@ -37,8 +42,16 @@
         "projectId": "72c2f736-f17d-4c5d-8037-44bd9ff2e341"
       }
     },
-    "runtimeVersion": {
-      "policy": "appVersion"
-    }
+    "owner": "yongyaocai",
+    "runtimeVersion": "exposdk:54.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/72c2f736-f17d-4c5d-8037-44bd9ff2e341",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 3000
+    },
+    "plugins": [
+      "expo-speech-recognition",
+      "expo-local-authentication"
+    ]
   }
 }

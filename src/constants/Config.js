@@ -1,4 +1,4 @@
-export const API_URL = 'https://continuum-backend-0q9j.onrender.com';
+export const API_URL = 'https://continuum-2-backend.onrender.com';
 export const SUPABASE_URL = 'https://yybojfgjhtrwqhtavorg.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_o9AuvayIw6vnMtnqhdTpNg__V7pA5i5';
 export const SENTRY_DSN = 'https://f2d74237bcb38ceb544825358e7972f4@o4511229827088384.ingest.us.sentry.io/4511229855006720'; 

@@ -5,6 +5,7 @@ const { width } = Dimensions.get('window');
 export const theme = {
   colors: {
     primary: '#007AFF',
+    secondary: '#5856D6',
     success: '#34C759',
     danger: '#FF3B30',
     warning: '#FFCC00',
@@ -15,6 +16,8 @@ export const theme = {
     black: '#000000',
     background: '#F9FAFB',
     border: '#E5E5E5',
+    textPrimary: '#1F2937',
+    textSecondary: '#6B7280',
   }
 };
 
