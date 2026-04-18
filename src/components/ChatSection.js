@@ -360,7 +360,7 @@ const ChatSection = () => {
     >
       <View style={styles.providerBar}>
         <View style={{ flexDirection: 'row', gap: 6, flex: 1 }}>
-          {['gemini', 'openrouter', 'openai'].map((p) => (
+          {['gemini', 'openrouter', 'or_free'].map((p) => (
             <TouchableOpacity
               key={p}
               onPress={() => {
@@ -380,7 +380,7 @@ const ChatSection = () => {
                 fontWeight: '800', 
                 color: provider === p ? 'white' : theme.colors.gray 
               }}>
-                {p === 'openrouter' ? 'CLAUDE' : p.toUpperCase()}
+                {p === 'openrouter' ? 'Claude' : (p === 'or_free' ? 'OR FREE' : p.toUpperCase())}
               </Text>
             </TouchableOpacity>
           ))}
