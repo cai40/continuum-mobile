@@ -619,7 +619,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <View style={styles.groupedCard}>
         {[
           { id: 'en-US', label: '🇺🇸 English (US)', desc: 'Optimized for North American speech' },
-          { id: 'zh-CN', label: '🇨🇳 Chinese (Mainland)', desc: 'Optimized for Mandarin speech' }
+          { id: 'zh-CN', label: '🇨🇳 Chinese (Mainland)', desc: 'Optimized for Mandarin speech' },
+          { id: 'es-ES', label: '🇪🇸 Spanish (Spain)', desc: 'Optimized for Castilian speech' }
         ].map((lang, idx) => (
           <React.Fragment key={lang.id}>
             <TouchableOpacity

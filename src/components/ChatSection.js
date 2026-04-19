@@ -375,7 +375,7 @@ const ChatSection = () => {
                 setProvider(p);
               }}
               style={{
-                paddingHorizontal: 10,
+                paddingHorizontal: 8,
                 paddingVertical: 5,
                 borderRadius: 12,
                 backgroundColor: provider === p ? theme.colors.primary : theme.colors.white,
@@ -384,11 +384,40 @@ const ChatSection = () => {
               }}
             >
               <Text style={{ 
-                fontSize: 9, 
+                fontSize: 8, 
                 fontWeight: '800', 
                 color: provider === p ? 'white' : theme.colors.gray 
               }}>
                 {p === 'openrouter' ? 'Claude' : (p === 'or_free' ? 'OR FREE' : (p === 'gpt4o_mini' ? '4o MINI' : p.toUpperCase()))}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* QUICK LANGUAGE TOGGLE */}
+        <View style={{ flexDirection: 'row', gap: 4, marginLeft: 10 }}>
+          {['en-US', 'zh-CN', 'es-ES'].map((lang) => (
+            <TouchableOpacity
+              key={lang}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSttLang(lang);
+              }}
+              style={{
+                paddingHorizontal: 6,
+                paddingVertical: 4,
+                borderRadius: 8,
+                backgroundColor: sttLang === lang ? theme.colors.secondary : theme.colors.light,
+                borderWidth: 1,
+                borderColor: sttLang === lang ? theme.colors.secondary : 'transparent'
+              }}
+            >
+              <Text style={{ 
+                fontSize: 8, 
+                fontWeight: '900', 
+                color: sttLang === lang ? 'white' : theme.colors.gray 
+              }}>
+                {lang.split('-')[0].toUpperCase()}
               </Text>
             </TouchableOpacity>
           ))}
