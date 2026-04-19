@@ -96,24 +96,30 @@ const AppShell = () => {
         borderColor: theme.colors.border,
         marginTop: Platform.OS === 'ios' ? 0 : 30 // Extra Android safe area if needed
       }}>
-        <View style={{flexDirection: 'row', alignItems: 'center'}}>
-          <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
-            {activeTab === 'chat' ? 'Continuum' : 'Setup'}
-          </Text>
-          <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>v2.3.2</Text>
-          <View style={{marginLeft: 8, backgroundColor: theme.colors.success + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.success + '30'}}>
-            <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD SYNC</Text>
-          </View>
-          {activeTab === 'chat' && (
-            <View style={{marginLeft: 8, backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-              <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: 'bold'}}>
-                {provider === 'openrouter' ? 'CLAUDE' : 
-                 (provider === 'or_free' ? 'OR FREE' : 
-                 (provider === 'deepseek' ? 'DEEPSEEK' :
-                 (provider === 'qwen' ? 'QWEN' : provider.toUpperCase())))}
-              </Text>
+        <View style={{flexDirection: 'column', alignItems: 'flex-start'}}>
+          <View style={{flexDirection: 'row', alignItems: 'center'}}>
+            <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
+              {activeTab === 'chat' ? 'Continuum' : 'Setup'}
+            </Text>
+            <View style={{marginLeft: 8, backgroundColor: theme.colors.success + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.success + '30'}}>
+              <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD SYNC</Text>
             </View>
-          )}
+          </View>
+          
+          <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 2}}>
+            <Text style={{color: theme.colors.gray, fontSize: 9, fontWeight: '700'}}>v2.4.0 (Stellar)</Text>
+            {activeTab === 'chat' && (
+              <View style={{marginLeft: 8, backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+                <Text style={{color: theme.colors.gray, fontSize: 8, fontWeight: '900'}}>
+                  {provider === 'openrouter' ? 'CLAUDE' : 
+                   (provider === 'or_free' ? 'OR FREE' : 
+                   (provider === 'deepseek' ? 'DEEPSEEK' :
+                   (provider === 'qwen' ? 'QWEN' : 
+                   (provider === 'gpt4o_mini' ? '4o MINI' : provider.toUpperCase()))))}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
         <View style={{flexDirection: 'row', alignItems: 'center'}}>
           <StatusIndicator status={serverStatus} />
