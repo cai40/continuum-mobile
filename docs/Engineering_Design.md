@@ -1,6 +1,6 @@
 # Continuum 2.0: Engineering Design Document (EDD)
 
-**Date**: April 18, 2026
+**Date**: April 19, 2026
 **Subject**: Technical Implementation of Autonomous Memory Systems & Subscription Gating
 
 ---
@@ -33,8 +33,9 @@ Designed for zero-persistence "Safe Boot" with high-convenience AutoFill.
 export const supabase = createClient(URL, KEY, {
   auth: {
     storage: AsyncStorage,
-    persistSession: false, // Force manual login on fresh start
-    autoRefreshToken: false, 
+    persistSession: true, // Persists session for PC-off autonomy
+    autoRefreshToken: true, // Ensures tokens are updated in background
+    detectSessionInUrl: false,
   },
 });
 ```
@@ -54,9 +55,10 @@ A multimodal bridge between on-device neural processing and cloud-native inferen
 ## 4. Resiliency & Diagnostics
 
 ### 4.1 Global Pulse Engine (`pulseFetch`)
-To handle Render.com's "free-tier sleep" mode:
+To handle Render.com's "free-tier sleep" and network instability:
 1.  **Cold-Start Detection**: If the server returns `503` or times out, the engine sets `cloudWakingUp: true`.
-2.  **Exponential Wait**: Retries every 6 seconds for up to 3 attempts before surfacing an error to the user.
+2.  **Network Resilience**: Added catch-all retry for generic network failures (switching from Wi-Fi to LTE).
+3.  **Exponential Wait**: Retries every 6 seconds for up to 3 attempts before surfacing an error to the user.
 
 ### 4.2 Error Boundary (The Red Screen)
 *   **Mechanism**: Wraps `AppShell`. When a JS exception occurs, it prevents the app process from exiting and renders a recovery view.
@@ -123,15 +125,13 @@ The memory and feature availability are gated based on the user's subscription t
 
 ---
 
-## 9. Future Roadmap: Phase 4
+## 9. Future Roadmap: Phase 5
 - [x] **Subscription Gating**: ✅ Complete in Binary 16.
-- [ ] **L5 Knowledge Base**: Deploy Render.com vector indexing for external document processing.
-- [ ] **Multimodal Ingestion (Vision & Documents)**:
-    - **Objective**: Enable image-based chat (Vision) and PDF-based memory indexing (L5).
-    - **Chat Integration**: Add `expo-image-picker` to the chat input for real-time visual context.
-    - **Settings Integration**: Add `expo-document-picker` to Layer 5 for bulk knowledge sync.
-    - **Permissions Required**: `NSPhotoLibraryUsageDescription`, `NSCameraUsageDescription`.
-- [ ] **Collapsible Memory Architecture**: ✅ Complete.
+- [x] **L5 Knowledge Base**: ✅ Complete. Render.com vector indexing for PDF/Text is live.
+- [x] **Multimodal Ingestion (Vision & Documents)**: ✅ Complete.
+- [x] **Collapsible Memory Architecture**: ✅ Complete.
+- [x] **Cloud Stability**: ✅ Complete. Switched to Supavisor (Port 6543) and fixed SQL `text` import.
+- [ ] **Extended Formats**: Add support for `.docx` and Excel ingestion.
 
 ---
 

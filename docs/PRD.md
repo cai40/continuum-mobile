@@ -1,7 +1,7 @@
 # Continuum 2.0: Product Requirements Document (PRD)
 
-**Version**: 2.3.1 (Stabilized)
-**Date**: April 18, 2026
+**Version**: 3.1.0 (Fortress)
+**Date**: April 19, 2026
 **Platform**: iOS (Primary) / Android (Compatible)
 
 ---
@@ -42,9 +42,9 @@ Continuum uses a tiered hierarchy to manage cognitive load and retrieval accurac
 *   **Streaming Reassembly**: Real-time rendering of fragmented AI tokens for a "living" conversation feel.
 
 ### 2.4 Multimodal Ingestion (Vision & Intelligence)
-*   **Visual Context**: Users can attach images to chat messages for the AI to analyze (Vision).
-*   **Document Indexing**: Support for PDF and Docx uploads to populate the L5 Global Knowledge base.
-*   **Seamless Integration**: Dedicated "Paperclip" in chat and "Sync Document" in settings vault.
+*   **Visual Context**: ✅ Operational. Users can attach images to chat messages for high-fidelity Vision analysis.
+*   **Document Indexing**: ✅ Operational. Support for PDF and Text (with .docx roadmap) to populate the L5 Global Knowledge base via the Render indexer.
+*   **Seamless Integration**: Dedicated "Paperclip" in chat and "Sync Document" in settings vault for bulk ingestion.
 
 ## 3. Commercialization & Subscription Model
 
@@ -72,7 +72,9 @@ Continuum uses a tiered hierarchy to manage cognitive load and retrieval accurac
 
 ---
 
-## 5. Roadmap: Phase 4 & Beyond
-*   **L5 RAG Deployment**: Finalize the Render.com document processing worker.
-*   **App Store Submission**: Complete the screenshot suite and metadata submission.
+## 5. Roadmap: Completed & Future
+*   **L5 RAG Deployment**: ✅ Complete. Render.com document processing worker is live.
+*   **Multimodal Ingestion**: ✅ Complete. Vision and PDF indexing are operational.
+*   **Cloud-Native Autonomy**: ✅ Complete. Session persistence and auto-refresh enabled for "PC-off" independence.
+*   **App Store Submission**: In progress. Completing the screenshot suite and metadata submission.
 *   **Local AI Engine**: Investigating on-device Whisper/Llama models for local-only Elite tier processing.
