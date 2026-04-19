@@ -176,6 +176,10 @@ export const chatStream = (
   let currentEvent = "";
 
   xhr.open("POST", `${API_URL}/chat/stream`);
+  
+  // Resiliency: Set a long timeout for streaming (60s) to prevent permanent hangs
+  xhr.timeout = 60000; 
+  
   if (authToken) {
     xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
   }

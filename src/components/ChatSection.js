@@ -274,7 +274,8 @@ const ChatSection = () => {
     }
 
     let isHandled = false;
-    chatStream(formData,
+    // Capture XHR for abort functionality
+    const xhr = chatStream(formData,
       (event, json) => {
         if (event === 'text' && json.token) {
           setStreamingContent(prev => prev + json.token);
@@ -321,6 +322,9 @@ const ChatSection = () => {
       },
       session?.access_token
     );
+
+    // Store reference to abort later if needed
+    abortControllerRef.current = { abort: () => xhr.abort() };
   };
 
   const renderChatItem = ({ item }) => (
