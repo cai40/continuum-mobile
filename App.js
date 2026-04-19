@@ -96,20 +96,18 @@ const AppShell = () => {
         borderColor: theme.colors.border,
         marginTop: Platform.OS === 'ios' ? 0 : 30 // Extra Android safe area if needed
       }}>
-        <View style={{flexDirection: 'column', alignItems: 'flex-start'}}>
+        <View style={{flexDirection: 'column', alignItems: 'flex-start', flex: 1}}>
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
             <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
               {activeTab === 'chat' ? 'Continuum' : 'Setup'}
             </Text>
-            <View style={{marginLeft: 8, backgroundColor: theme.colors.success + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.success + '30'}}>
-              <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD SYNC</Text>
-            </View>
           </View>
           
-          <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 2}}>
-            <Text style={{color: theme.colors.gray, fontSize: 9, fontWeight: '700'}}>v2.4.0 (Stellar)</Text>
+          <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap', gap: 6}}>
+            <Text style={{color: theme.colors.gray, fontSize: 9, fontWeight: '700'}}>v2.4.0</Text>
+            
             {activeTab === 'chat' && (
-              <View style={{marginLeft: 8, backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
+              <View style={{backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
                 <Text style={{color: theme.colors.gray, fontSize: 8, fontWeight: '900'}}>
                   {provider === 'openrouter' ? 'CLAUDE' : 
                    (provider === 'or_free' ? 'OR FREE' : 
@@ -119,10 +117,13 @@ const AppShell = () => {
                 </Text>
               </View>
             )}
+
+            <View style={{backgroundColor: theme.colors.success + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.success + '30'}}>
+              <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD SYNC</Text>
+            </View>
+
+            <StatusIndicator status={serverStatus} />
           </View>
-        </View>
-        <View style={{flexDirection: 'row', alignItems: 'center'}}>
-          <StatusIndicator status={serverStatus} />
         </View>
       </View>
 

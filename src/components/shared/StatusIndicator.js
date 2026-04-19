@@ -48,23 +48,19 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    marginLeft: 4, // Subtle gap from previous badge
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 4,
   },
   text: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: theme.colors.textSecondary,
+    fontSize: 8,
+    fontWeight: '900',
+    color: theme.colors.gray,
     textTransform: 'uppercase',
-    letterSpacing: 1,
   },
 });
 
