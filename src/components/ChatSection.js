@@ -261,7 +261,7 @@ const ChatSection = () => {
     const activeKey = 
       provider === 'groq' ? groqKey : 
       (provider === 'gemini' ? geminiKey : 
-      ((provider === 'openrouter' || provider === 'or_free') ? openrouterKey : openaiKey));
+      ((provider === 'openrouter' || provider === 'or_free' || provider === 'deepseek' || provider === 'qwen') ? openrouterKey : openaiKey));
     if (activeKey) formData.append('api_key', activeKey.trim());
 
     if (isVoiceMode) {

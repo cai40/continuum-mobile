@@ -433,38 +433,76 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       {renderHeader("Intelligence Keys")}
 
       <Text style={categoryTitleStyle}>ACTIVE BRAIN PROVIDER</Text>
-      <View style={{ flexDirection: "row", gap: 10, marginBottom: 24 }}>
-        {["gemini", "groq", "openai", "openrouter"].map((p) => (
-          <TouchableOpacity
-            key={p}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setProvider(p);
-            }}
-            style={{
-              flex: 1,
-              backgroundColor:
-                provider === p ? theme.colors.primary : theme.colors.white,
-              paddingVertical: 10,
-              borderRadius: 12,
-              alignItems: "center",
-              borderWidth: 1,
-              borderColor:
-                provider === p ? theme.colors.primary : theme.colors.border,
-            }}
-          >
-            <Text
+      <View style={{ gap: 10, marginBottom: 24 }}>
+        {/* Row 1: Global Standards */}
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {["gemini", "groq", "openai", "openrouter"].map((p) => (
+            <TouchableOpacity
+              key={p}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setProvider(p);
+              }}
               style={{
-                color: provider === p ? "white" : theme.colors.gray,
-                fontSize: 10,
-                fontWeight: "800",
-                textTransform: "uppercase",
+                flex: 1,
+                backgroundColor:
+                  provider === p ? theme.colors.primary : theme.colors.white,
+                paddingVertical: 10,
+                borderRadius: 12,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor:
+                  provider === p ? theme.colors.primary : theme.colors.border,
               }}
             >
-              {p.replace("openrouter", "OR")}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={{
+                  color: provider === p ? "white" : theme.colors.gray,
+                  fontSize: 10,
+                  fontWeight: "800",
+                  textTransform: "uppercase",
+                }}
+              >
+                {p.replace("openrouter", "CLAUDE")}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Row 2: Specialized / Chinese Giants */}
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {["or_free", "deepseek", "qwen"].map((p) => (
+            <TouchableOpacity
+              key={p}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setProvider(p);
+              }}
+              style={{
+                flex: 1,
+                backgroundColor:
+                  provider === p ? theme.colors.secondary : theme.colors.white,
+                paddingVertical: 10,
+                borderRadius: 12,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor:
+                  provider === p ? theme.colors.secondary : theme.colors.border,
+              }}
+            >
+              <Text
+                style={{
+                  color: provider === p ? "white" : theme.colors.gray,
+                  fontSize: 10,
+                  fontWeight: "800",
+                  textTransform: "uppercase",
+                }}
+              >
+                {p === "or_free" ? "OR FREE" : p}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <Text style={categoryTitleStyle}>API CREDENTIALS (VAULT)</Text>

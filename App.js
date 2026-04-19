@@ -104,7 +104,10 @@ const AppShell = () => {
           {activeTab === 'chat' && (
             <View style={{marginLeft: 8, backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
               <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: 'bold'}}>
-                {provider === 'openrouter' ? 'CLAUDE' : (provider === 'or_free' ? 'OR FREE' : provider.toUpperCase())}
+                {provider === 'openrouter' ? 'CLAUDE' : 
+                 (provider === 'or_free' ? 'OR FREE' : 
+                 (provider === 'deepseek' ? 'DEEPSEEK' :
+                 (provider === 'qwen' ? 'QWEN' : provider.toUpperCase())))}
               </Text>
             </View>
           )}
