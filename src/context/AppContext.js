@@ -12,6 +12,7 @@ import { supabase } from "../services/supabase";
 import { 
   fetchBrainAnalytics as apiFetchAnalytics,
   fetchChatHistory as apiFetchHistory,
+  fetchMemories,
   pulseFetch
 } from "../services/apiService";
 import { API_URL } from "../constants/Config";
@@ -204,6 +205,16 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     if (session) {
       syncRemoteHistory();
+      onRefreshMemories(); // Auto-load memory tab data on login/startup
+    } else {
+      // Clear all state on logout
+      setMessages([]);
+      setSemanticProfile([]);
+      setTemporalEvents([]);
+      setEpisodicSegments([]);
+      setPinnedMemories([]);
+      setKnowledgeBase([]);
+      setTrueCounts({ l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 });
     }
   }, [session]);
 
@@ -249,7 +260,30 @@ export const AppProvider = ({ children }) => {
         session?.access_token,
       );
       if (data) setBrainStats(data);
-    } catch (err) {}
+    } catch (err) {
+      console.warn("Analytics fetch failed:", err);
+    }
+  };
+
+  const onRefreshMemories = async () => {
+    if (!session?.access_token) return;
+    try {
+      const { layeredData, pinData, analytics } = await fetchMemories(
+        setCloudWakingUp,
+        session?.access_token,
+      );
+      if (layeredData) {
+        setSemanticProfile(layeredData.semanticProfile || []);
+        setTemporalEvents(layeredData.temporalEvents || []);
+        setEpisodicSegments(layeredData.episodicSegments || []);
+        setKnowledgeBase(layeredData.knowledgeBase || []);
+        setTrueCounts(layeredData.trueCounts || { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 });
+      }
+      if (pinData) setPinnedMemories(pinData);
+      if (analytics) setBrainStats(analytics);
+    } catch (e) {
+      console.error("Memory refresh failed:", e);
+    }
   };
 
   const fetchSubscriptionData = async (currentUser) => {
@@ -380,6 +414,7 @@ export const AppProvider = ({ children }) => {
         saveKeys,
         fetchAnalytics,
         syncRemoteHistory,
+        onRefreshMemories,
         logout,
         clearLocalHistory,
         deleteAccount,

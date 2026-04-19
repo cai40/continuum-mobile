@@ -16,7 +16,7 @@ import * as Haptics from "expo-haptics";
 import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import { useAppContext } from "../context/AppContext";
-import { fetchMemories, pulseFetch, ingestDocument } from "../services/apiService";
+import { pulseFetch, ingestDocument } from "../services/apiService";
 import { API_URL } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
@@ -62,6 +62,7 @@ const SettingsSection = (props) => {
     setSttLang,
     subscriptionTier,
     isSuperUser,
+    onRefreshMemories,
   } = useAppContext();
 
   const onUpgrade = props.onUpgrade;
@@ -230,26 +231,6 @@ The "Continuum" branding, figure-8 logo, "Zen Daylight" UI, and multi-layered me
 5. SERVICE TERMINATION
 We reserve the right to suspend accounts violating safety protocols. You may terminate this agreement at any time by using the Account Deletion tool.`;
 
-  const onRefreshMemories = async () => {
-    setIsSyncing(true);
-    try {
-      const { layeredData, pinData, analytics } = await fetchMemories(
-        setCloudWakingUp,
-        session?.access_token,
-      );
-      setSemanticProfile(layeredData.semanticProfile);
-      setTemporalEvents(layeredData.temporalEvents);
-      setEpisodicSegments(layeredData.episodicSegments || []);
-      setKnowledgeBase(layeredData.knowledgeBase || []);
-      setTrueCounts(layeredData.trueCounts || { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 });
-      setPinnedMemories(pinData || []);
-      setBrainStats(analytics || {});
-    } catch (e) {
-      console.error("Memory refresh failed:", e);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
   const handleOpenLegal = (type) => {
     if (type === 'privacy') {
@@ -665,7 +646,11 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       refreshControl={
         <RefreshControl
           refreshing={isSyncing}
-          onRefresh={onRefreshMemories}
+          onRefresh={async () => {
+          setIsSyncing(true);
+          await onRefreshMemories();
+          setIsSyncing(false);
+        }}
           tintColor={theme.colors.primary}
         />
       }
