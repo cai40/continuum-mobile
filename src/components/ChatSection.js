@@ -393,25 +393,6 @@ const ChatSection = () => {
             </TouchableOpacity>
           ))}
         </View>
-
-        <TouchableOpacity
-          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsVoiceMode(!isVoiceMode); }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: isVoiceMode ? theme.colors.success + '15' : theme.colors.light,
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: isVoiceMode ? theme.colors.success : 'transparent'
-          }}
-        >
-          <Ionicons name={isVoiceMode ? "mic" : "mic-off"} size={12} color={isVoiceMode ? theme.colors.success : theme.colors.gray} style={{ marginRight: 4 }} />
-          <Text style={{ color: isVoiceMode ? theme.colors.success : theme.colors.gray, fontWeight: '800', fontSize: 9 }}>
-            VOICE: {isVoiceMode ? 'ON' : 'OFF'}
-          </Text>
-        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -455,7 +436,22 @@ const ChatSection = () => {
         </View>
       )}
 
-      <View style={[styles.inputWrapper, { flexDirection: 'row', alignItems: 'flex-end' }]}>
+      <View style={[styles.inputWrapper, { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 10, paddingBottom: 10 }]}>
+        <TouchableOpacity
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsVoiceMode(!isVoiceMode); }}
+          style={{
+            marginRight: 8,
+            marginBottom: 4,
+            padding: 10,
+            backgroundColor: isVoiceMode ? theme.colors.success + '20' : theme.colors.light,
+            borderRadius: 25,
+            borderWidth: 1,
+            borderColor: isVoiceMode ? theme.colors.success : 'transparent'
+          }}
+        >
+          <Ionicons name={isVoiceMode ? "mic" : "mic-off"} size={20} color={isVoiceMode ? theme.colors.success : theme.colors.gray} />
+        </TouchableOpacity>
+
         <TouchableOpacity 
           onPress={() => {
             Alert.alert(
