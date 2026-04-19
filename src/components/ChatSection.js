@@ -405,37 +405,37 @@ const ChatSection = () => {
           ))}
         </View>
 
-        {/* QUICK LANGUAGE TOGGLE */}
-        <View style={{ flexDirection: 'row', gap: 4, marginLeft: 8 }}>
-          {['en-US', 'zh-CN', 'es-ES'].map((l) => (
-            <TouchableOpacity
-              key={l}
-              onPress={() => {
-                try {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  setSttLang(l);
-                } catch (e) {}
-              }}
-              style={{
-                paddingHorizontal: 8,
-                paddingVertical: 5,
-                borderRadius: 10,
-                backgroundColor: sttLang === l ? theme.colors.secondary : theme.colors.light,
-                borderWidth: 1,
-                borderColor: sttLang === l ? theme.colors.secondary : 'transparent',
-                minWidth: 32,
-                alignItems: 'center'
-              }}
-            >
-              <Text style={{ 
-                fontSize: 8, 
-                fontWeight: '900', 
-                color: sttLang === l ? 'white' : theme.colors.gray 
-              }}>
-                {(l || 'EN').split('-')[0].toUpperCase()}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        {/* CYCLING LANGUAGE TOGGLE */}
+        <View style={{ marginLeft: 8 }}>
+          <TouchableOpacity
+            onPress={() => {
+              try {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                const cycle = ['en-US', 'zh-CN', 'es-ES'];
+                const currentIndex = cycle.indexOf(sttLang);
+                const nextIndex = (currentIndex + 1) % cycle.length;
+                setSttLang(cycle[nextIndex]);
+              } catch (e) {}
+            }}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 5,
+              borderRadius: 10,
+              backgroundColor: theme.colors.secondary,
+              borderWidth: 1,
+              borderColor: theme.colors.secondary,
+              alignItems: 'center',
+              minWidth: 45
+            }}
+          >
+            <Text style={{ 
+              fontSize: 9, 
+              fontWeight: '900', 
+              color: 'white' 
+            }}>
+              {sttLang ? sttLang.split('-')[0].toUpperCase() : 'EN'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
