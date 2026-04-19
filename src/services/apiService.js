@@ -244,3 +244,42 @@ export const chatStream = (
 
   return xhr; // Return for cancellation (abort)
 };
+
+/**
+ * LAYER 5 INGESTION:
+ * Uploads a document (PDF/Text) to be vectorized into the cloud knowledge base.
+ */
+export const ingestDocument = async (
+  fileUri,
+  fileName,
+  mimeType,
+  onStatusUpdate = null,
+  authToken = null,
+) => {
+  const formData = new FormData();
+  formData.append("file", {
+    uri: fileUri,
+    name: fileName,
+    type: mimeType,
+  });
+
+  try {
+    const data = await pulseFetch(
+      `${API_URL}/memories/ingest`,
+      {
+        method: "POST",
+        body: formData,
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      },
+      3,
+      onStatusUpdate,
+      authToken,
+    );
+    return data;
+  } catch (err) {
+    console.error("Ingestion Service Error:", err);
+    throw err;
+  }
+};

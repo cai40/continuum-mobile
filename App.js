@@ -101,6 +101,9 @@ const AppShell = () => {
             {activeTab === 'chat' ? 'Continuum' : 'Setup'}
           </Text>
           <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>v2.3.2</Text>
+          <View style={{marginLeft: 8, backgroundColor: theme.colors.success + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.success + '30'}}>
+            <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD SYNC</Text>
+          </View>
           {activeTab === 'chat' && (
             <View style={{marginLeft: 8, backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
               <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: 'bold'}}>

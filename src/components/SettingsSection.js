@@ -16,7 +16,7 @@ import * as Haptics from "expo-haptics";
 import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import { useAppContext } from "../context/AppContext";
-import { fetchMemories, pulseFetch } from "../services/apiService";
+import { fetchMemories, pulseFetch, ingestDocument } from "../services/apiService";
 import { API_URL } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
@@ -115,11 +115,23 @@ const SettingsSection = (props) => {
               text: "Begin Sync", 
               onPress: async () => {
                 setIsSyncing(true);
-                // Placeholder for real upload logic once backend is live
-                setTimeout(() => {
+                try {
+                  await ingestDocument(
+                    asset.uri,
+                    asset.name,
+                    asset.mimeType || 'application/pdf',
+                    setCloudWakingUp,
+                    session?.access_token
+                  );
+                  Alert.alert(
+                    "Sync Successful", 
+                    "Document sent to the Render Indexer. It will appear in Layer 5 once processing is complete."
+                  );
+                } catch (e) {
+                  Alert.alert("Sync Fault", "The cloud brain was unable to receive the document. Ensure your subscription is active.");
+                } finally {
                   setIsSyncing(false);
-                  Alert.alert("Sync Started", "Document sent to the Render Indexer. It will appear in Layer 5 once processing is complete.");
-                }, 2000);
+                }
               } 
             }
           ]

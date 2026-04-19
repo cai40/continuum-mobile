@@ -132,3 +132,15 @@ The memory and feature availability are gated based on the user's subscription t
     - **Settings Integration**: Add `expo-document-picker` to Layer 5 for bulk knowledge sync.
     - **Permissions Required**: `NSPhotoLibraryUsageDescription`, `NSCameraUsageDescription`.
 - [ ] **Collapsible Memory Architecture**: ✅ Complete.
+
+---
+
+## 10. Workspace & Environment Setup
+To ensure consistency across development sessions, the workspace is standardized as follows:
+
+- **Initialization Command**: `open workspace continuum2.0`
+- **Root Directory**: `continuum2.0/`
+- **Component Layout**:
+    - **`continuum-core/`**: Contains the Python FastAPI backend, memory engine logic, and database migration scripts.
+    - **`continuum-mobile/`**: Contains the React Native (Expo) frontend application, assets, and mobile-specific documentation.
+
