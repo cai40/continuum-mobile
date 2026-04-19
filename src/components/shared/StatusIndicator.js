@@ -37,9 +37,15 @@ const StatusIndicator = ({ status }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[
+      styles.container, 
+      { 
+        borderColor: getStatusColor() + '40', 
+        backgroundColor: getStatusColor() + '15' 
+      }
+    ]}>
       <Animated.View style={[styles.dot, { backgroundColor: getStatusColor(), opacity }]} />
-      <Text style={styles.text}>{getStatusText()}</Text>
+      <Text style={[styles.text, { color: getStatusColor() }]}>{getStatusText()}</Text>
     </View>
   );
 };
@@ -48,18 +54,21 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 4, // Subtle gap from previous badge
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginLeft: 4,
   },
   dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     marginRight: 4,
   },
   text: {
     fontSize: 8,
     fontWeight: '900',
-    color: theme.colors.gray,
     textTransform: 'uppercase',
   },
 });
