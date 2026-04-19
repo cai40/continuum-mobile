@@ -199,16 +199,27 @@ const ChatSection = () => {
     try {
       const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
       if (!result.granted) {
-        Alert.alert("Permission Denied", "Continuum needs microphone and speech recognition access for hands-free mode.");
+        Alert.alert("Permission Denied", "Continuum needs microphone and speech recognition access.");
         return;
       }
 
-      await ExpoSpeechRecognitionModule.start({
-        lang: sttLang,
-        interimResults: true,
-      });
+      // Safe Start: Prevent engine-level crashes on unsupported locales
+      try {
+        await ExpoSpeechRecognitionModule.start({
+          lang: sttLang,
+          interimResults: true,
+        });
+      } catch (innerErr) {
+        console.warn("Engine Locale Error:", innerErr);
+        // Fallback to English if the specific locale fails
+        await ExpoSpeechRecognitionModule.start({
+          lang: 'en-US',
+          interimResults: true,
+        });
+      }
     } catch (err) {
-      console.error("STT Start Error:", err);
+      console.error("STT Critical Failure:", err);
+      Alert.alert("Voice Error", "The speech engine could not start. Please check your system settings.");
     }
   };
 
@@ -395,29 +406,33 @@ const ChatSection = () => {
         </View>
 
         {/* QUICK LANGUAGE TOGGLE */}
-        <View style={{ flexDirection: 'row', gap: 4, marginLeft: 10 }}>
-          {['en-US', 'zh-CN', 'es-ES'].map((lang) => (
+        <View style={{ flexDirection: 'row', gap: 4, marginLeft: 8 }}>
+          {['en-US', 'zh-CN', 'es-ES'].map((l) => (
             <TouchableOpacity
-              key={lang}
+              key={l}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setSttLang(lang);
+                try {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setSttLang(l);
+                } catch (e) {}
               }}
               style={{
-                paddingHorizontal: 6,
-                paddingVertical: 4,
-                borderRadius: 8,
-                backgroundColor: sttLang === lang ? theme.colors.secondary : theme.colors.light,
+                paddingHorizontal: 8,
+                paddingVertical: 5,
+                borderRadius: 10,
+                backgroundColor: sttLang === l ? theme.colors.secondary : theme.colors.light,
                 borderWidth: 1,
-                borderColor: sttLang === lang ? theme.colors.secondary : 'transparent'
+                borderColor: sttLang === l ? theme.colors.secondary : 'transparent',
+                minWidth: 32,
+                alignItems: 'center'
               }}
             >
               <Text style={{ 
                 fontSize: 8, 
                 fontWeight: '900', 
-                color: sttLang === lang ? 'white' : theme.colors.gray 
+                color: sttLang === l ? 'white' : theme.colors.gray 
               }}>
-                {lang.split('-')[0].toUpperCase()}
+                {(l || 'EN').split('-')[0].toUpperCase()}
               </Text>
             </TouchableOpacity>
           ))}
