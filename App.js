@@ -100,10 +100,12 @@ const AppShell = () => {
           <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
             {activeTab === 'chat' ? 'Continuum' : 'Setup'}
           </Text>
-          <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>v2.3.1</Text>
+          <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>v2.3.2</Text>
           {activeTab === 'chat' && (
             <View style={{marginLeft: 8, backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-              <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: 'bold'}}>{provider.toUpperCase()}</Text>
+              <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: 'bold'}}>
+                {provider === 'openrouter' ? 'CLAUDE' : (provider === 'or_free' ? 'OR FREE' : provider.toUpperCase())}
+              </Text>
             </View>
           )}
         </View>

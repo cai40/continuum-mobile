@@ -33,6 +33,7 @@ export const AppProvider = ({ children }) => {
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
+  const [sttLang, setSttLang] = useState("en-US");
 
   const [messages, setMessages] = useState([]);
   const [semanticProfile, setSemanticProfile] = useState([]);
@@ -124,6 +125,7 @@ export const AppProvider = ({ children }) => {
           "@selected_voice",
           "@chat_history",
           "@persona",
+          "@stt_lang",
         ]);
 
         keys.forEach(([key, value]) => {
@@ -135,6 +137,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@provider") setProvider(value);
           if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@persona") setPersona(value);
+          if (key === "@stt_lang") setSttLang(value);
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
@@ -202,6 +205,7 @@ export const AppProvider = ({ children }) => {
         ["@selected_voice", selectedVoice],
         ["@provider", provider],
         ["@persona", persona],
+        ["@stt_lang", sttLang],
       ];
       await AsyncStorage.multiSet(keyData);
       Alert.alert(
@@ -325,6 +329,8 @@ export const AppProvider = ({ children }) => {
         setSelectedVoice,
         persona,
         setPersona,
+        sttLang,
+        setSttLang,
         messages,
         setMessages,
         semanticProfile,

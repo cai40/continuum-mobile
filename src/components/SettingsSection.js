@@ -58,6 +58,8 @@ const SettingsSection = (props) => {
     setCloudWakingUp,
     persona,
     setPersona,
+    sttLang,
+    setSttLang,
     subscriptionTier,
     isSuperUser,
   } = useAppContext();
@@ -559,6 +561,46 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               )}
             </TouchableOpacity>
             {idx < voices.length - 1 && <Divider />}
+          </React.Fragment>
+        ))}
+      </View>
+
+      <Text style={[categoryTitleStyle, {marginTop: 24}]}>LISTENING LANGUAGE (STT)</Text>
+      <View style={styles.groupedCard}>
+        {[
+          { id: 'en-US', label: '🇺🇸 English (US)', desc: 'Optimized for North American speech' },
+          { id: 'zh-CN', label: '🇨🇳 Chinese (Mainland)', desc: 'Optimized for Mandarin speech' }
+        ].map((lang, idx) => (
+          <React.Fragment key={lang.id}>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setSttLang(lang.id);
+              }}
+              style={{
+                padding: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View>
+                <Text style={{ fontSize: 15, fontWeight: "600", color: theme.colors.black }}>
+                  {lang.label}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.colors.gray }}>
+                  {lang.desc}
+                </Text>
+              </View>
+              {sttLang === lang.id && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color={theme.colors.success}
+                />
+              )}
+            </TouchableOpacity>
+            {idx < 1 && <Divider />}
           </React.Fragment>
         ))}
       </View>

@@ -22,6 +22,7 @@ const ChatSection = () => {
     messages, setMessages,
     provider, setProvider, groqKey, geminiKey, openaiKey, openrouterKey,
     selectedVoice, persona,
+    sttLang,
     activeTab,
     session,
     syncRemoteHistory,
@@ -203,7 +204,7 @@ const ChatSection = () => {
       }
 
       await ExpoSpeechRecognitionModule.start({
-        lang: 'en-US',
+        lang: sttLang,
         interimResults: true,
       });
     } catch (err) {
@@ -257,7 +258,10 @@ const ChatSection = () => {
     formData.append('persona', persona);
     formData.append('history', JSON.stringify(messages.slice(-20)));
 
-    const activeKey = provider === 'groq' ? groqKey : (provider === 'gemini' ? geminiKey : (provider === 'openrouter' ? openrouterKey : openaiKey));
+    const activeKey = 
+      provider === 'groq' ? groqKey : 
+      (provider === 'gemini' ? geminiKey : 
+      ((provider === 'openrouter' || provider === 'or_free') ? openrouterKey : openaiKey));
     if (activeKey) formData.append('api_key', activeKey.trim());
 
     if (isVoiceMode) {
