@@ -261,7 +261,7 @@ const ChatSection = () => {
     const activeKey = 
       provider === 'groq' ? groqKey : 
       (provider === 'gemini' ? geminiKey : 
-      ((provider === 'openrouter' || provider === 'or_free' || provider === 'deepseek' || provider === 'qwen') ? openrouterKey : openaiKey));
+      ((provider === 'openrouter' || provider === 'or_free' || provider === 'deepseek' || provider === 'qwen' || provider === 'gpt4o_mini') ? openrouterKey : openaiKey));
     if (activeKey) formData.append('api_key', activeKey.trim());
 
     if (isVoiceMode) {
@@ -368,7 +368,7 @@ const ChatSection = () => {
     >
       <View style={styles.providerBar}>
         <View style={{ flexDirection: 'row', gap: 6, flex: 1 }}>
-          {['gemini', 'openrouter', 'or_free'].map((p) => (
+          {['gemini', 'openrouter', 'gpt4o_mini', 'or_free'].map((p) => (
             <TouchableOpacity
               key={p}
               onPress={() => {
@@ -388,7 +388,7 @@ const ChatSection = () => {
                 fontWeight: '800', 
                 color: provider === p ? 'white' : theme.colors.gray 
               }}>
-                {p === 'openrouter' ? 'Claude' : (p === 'or_free' ? 'OR FREE' : p.toUpperCase())}
+                {p === 'openrouter' ? 'Claude' : (p === 'or_free' ? 'OR FREE' : (p === 'gpt4o_mini' ? '4o MINI' : p.toUpperCase()))}
               </Text>
             </TouchableOpacity>
           ))}

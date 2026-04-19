@@ -483,7 +483,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {/* Row 2: Specialized / Chinese Giants */}
         <View style={{ flexDirection: "row", gap: 10 }}>
-          {["or_free", "deepseek", "qwen"].map((p) => (
+          {["gpt4o_mini", "or_free", "deepseek", "qwen"].map((p) => (
             <TouchableOpacity
               key={p}
               onPress={() => {
@@ -510,7 +510,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                   textTransform: "uppercase",
                 }}
               >
-                {p === "or_free" ? "OR FREE" : p}
+                {p === "or_free" ? "OR FREE" : (p === "gpt4o_mini" ? "4O MINI" : p)}
               </Text>
             </TouchableOpacity>
           ))}
