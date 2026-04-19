@@ -66,11 +66,24 @@ export const AppProvider = ({ children }) => {
 
   // Persistence: Auth Handshake
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsInitializing(false);
-    });
+    // Persistence: Auth Handshake (Hardened for OTA Reloads)
+    const initializeAuth = async () => {
+      try {
+        // Give Supabase a 500ms grace period to hydrate from storage
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setSession(session);
+          setUser(session.user);
+          fetchAnalytics();
+        }
+      } catch (e) {
+        console.warn("Auth Handshake failed:", e);
+      } finally {
+        setIsInitializing(false);
+      }
+    };
+
+    initializeAuth();
 
     const {
       data: { subscription },
