@@ -101,11 +101,10 @@ const AppShell = () => {
             <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
               {activeTab === 'chat' ? 'Continuum' : 'Setup'}
             </Text>
+            <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>v2.4.0</Text>
           </View>
           
           <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap', gap: 6}}>
-            <Text style={{color: theme.colors.gray, fontSize: 9, fontWeight: '700'}}>v2.4.0</Text>
-            
             {activeTab === 'chat' && (
               <View style={{backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
                 <Text style={{color: theme.colors.gray, fontSize: 8, fontWeight: '900'}}>
