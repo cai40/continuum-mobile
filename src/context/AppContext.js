@@ -194,6 +194,17 @@ export const AppProvider = ({ children }) => {
     }
   }, [session]);
 
+  // Intelligence Sync: Map brainStats to trueCounts for UI (Corrected for Layer Order)
+  useEffect(() => {
+    setTrueCounts({
+      l1: brainStats.pinned_total || 0,
+      l2: brainStats.episodic_total || 0,
+      l3: brainStats.semantic_total || 0,
+      l4: brainStats.temporal_total || 0,
+      l5: brainStats.knowledge_chunks || 0,
+    });
+  }, [brainStats]);
+
   const saveKeys = async () => {
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
