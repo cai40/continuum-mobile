@@ -22,7 +22,7 @@ const ChatSection = () => {
     messages, setMessages,
     provider, setProvider, groqKey, geminiKey, openaiKey, openrouterKey,
     selectedVoice, persona,
-    sttLang,
+    sttLang, setSttLang,
     activeTab,
     session,
     syncRemoteHistory,
