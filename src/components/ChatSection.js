@@ -443,13 +443,20 @@ const ChatSection = () => {
             marginRight: 8,
             marginBottom: 4,
             padding: 10,
-            backgroundColor: isVoiceMode ? theme.colors.success + '20' : theme.colors.light,
+            backgroundColor: isVoiceMode ? '#6C5CE720' : theme.colors.light,
             borderRadius: 25,
             borderWidth: 1,
-            borderColor: isVoiceMode ? theme.colors.success : 'transparent'
+            borderColor: isVoiceMode ? '#6C5CE7' : 'transparent',
+            flexDirection: 'row',
+            alignItems: 'center'
           }}
         >
-          <Ionicons name={isVoiceMode ? "mic" : "mic-off"} size={20} color={isVoiceMode ? theme.colors.success : theme.colors.gray} />
+          <Ionicons name="pulse" size={20} color={isVoiceMode ? '#6C5CE7' : theme.colors.gray} />
+          {isVoiceMode && (
+            <Text style={{ color: '#6C5CE7', fontSize: 9, fontWeight: '900', marginLeft: 6 }}>
+              HANDS-FREE
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity 
