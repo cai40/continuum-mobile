@@ -110,9 +110,12 @@ const ChatSection = () => {
   // --- SCROLL STABILIZATION ENGINE ---
   useEffect(() => {
     if (activeTab === 'chat' && chatListRef.current) {
-      // Use a tiny delay to ensure the list has finished its internal render pass
+      // 1. Immediate Snap (Zero Delay)
+      chatListRef.current.scrollToEnd({ animated: false });
+
+      // 2. Settlement Scroll (100ms Delay to handle keyboard/layout shifts)
       const timer = setTimeout(() => {
-        chatListRef.current.scrollToEnd({ animated: messages.length > 0 });
+        chatListRef.current.scrollToEnd({ animated: true });
       }, 100);
       return () => clearTimeout(timer);
     }
