@@ -284,6 +284,13 @@ const ChatSection = () => {
       formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
     }
 
+    const currentToken = session?.access_token;
+    if (!currentToken) {
+      Alert.alert("Security Error", "Session expired. Please log in again.");
+      setIsTyping(false);
+      return;
+    }
+
     let isHandled = false;
     // Capture XHR for abort functionality
     const xhr = chatStream(formData,
@@ -331,7 +338,7 @@ const ChatSection = () => {
         setIsTyping(false);
         Alert.alert("Error", err);
       },
-      session?.access_token
+      currentToken
     );
 
     // Store reference to abort later if needed
