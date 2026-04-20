@@ -470,7 +470,10 @@ const ChatSection = () => {
         initialNumToRender={15}
         maxToRenderPerBatch={10}
         windowSize={5}
-        onLayout={() => {
+        maintainVisibleContentPosition={{
+          minIndexForVisible: 0,
+        }}
+        onContentSizeChange={() => {
           if (activeTab === 'chat') {
             chatListRef.current?.scrollToEnd({ animated: false });
           }
