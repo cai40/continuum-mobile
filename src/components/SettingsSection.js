@@ -331,7 +331,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         BACKEND: {session?.access_token ? "AUTHENTICATED" : "LOCAL_ONLY"}
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
-        RENDER_BUNDLE: v2.4.0 (Stellar) 04/19/2026 -8116
+        RENDER_BUNDLE: v2.4.0 (Stellar) 04192026 -8116
       </Text>
 
       <Text
@@ -1509,7 +1509,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               letterSpacing: 2,
             }}
           >
-            CONTINUUM OS v2.4.0 (Stellar) 04/19/2026 -8116
+            CONTINUUM OS v2.4.0 (Stellar) 04192026 -8116
           </Text>
           <Text style={{ color: theme.colors.gray, fontSize: 9, marginTop: 4 }}>
             AUTHENTICATED SECURE NODE

@@ -9,7 +9,7 @@ import { supabase } from '../services/supabase';
 import { theme } from '../styles/theme';
 
 // Build stamp — forces unique bundle hash on each OTA push
-const BUILD_ID = 'v2.4.0 (Stellar) 04/19/2026 -8116';
+const BUILD_ID = 'v2.4.0 (Stellar) 04192026 -8116';
 
 const LoginHeader = React.memo(() => (
   <View style={loginStyles.header}>
@@ -17,6 +17,9 @@ const LoginHeader = React.memo(() => (
        <Ionicons name="pulse" size={40} color={theme.colors.primary} />
     </View>
     <Text style={loginStyles.title}>Continuum</Text>
+    <Text style={{ color: theme.colors.gray, fontSize: 8, fontWeight: '800', marginTop: -5, marginBottom: 5 }}>
+      v2.4.0 (Stellar) 04192026 -8116
+    </Text>
     <Text style={loginStyles.subtitle}>Your Autonomous Memory AI</Text>
   </View>
 ));
