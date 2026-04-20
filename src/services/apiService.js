@@ -182,6 +182,8 @@ export const chatStream = (
   
   if (authToken) {
     xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
+  } else {
+    console.warn("API_SERVICE: chatStream called WITHOUT authToken!");
   }
 
   xhr.onreadystatechange = () => {
