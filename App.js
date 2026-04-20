@@ -101,7 +101,9 @@ const AppShell = () => {
             <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
               {activeTab === 'chat' ? 'Continuum' : 'Setup'}
             </Text>
-            <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>v2.4.0</Text>
+            <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>
+              {activeTab === 'setup' ? 'v2.4.0 (Stellar) 04/19/2026 -8116' : 'v2.4.0'}
+            </Text>
           </View>
           
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
