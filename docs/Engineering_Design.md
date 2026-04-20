@@ -118,15 +118,34 @@ The memory and feature availability are gated based on the user's subscription t
 
 ## 6. Development Workflow: Fast Iteration
 
-### 6.1 OTA Update Protocol (The "Nuclear" Protocol)
-*   **Target Branch**: **`default`** (Binary 16 and subsequent builds listen to the default branch for updates).
-*   **Command**: `npx eas update --branch default --message '...'`
-*   **Forced Sync**: Every update MUST include a `BUILD_ID` bump (Hardcoded to `v2.4.0 (Stellar) 04192026 -8116` for the current release) to ensure cache-busting and UI consistency.
-*   **Vertical Watermarking**: Standardized a 6pt normal-weight vertical stack beneath primary titles in `App.js` and `LoginSection.js` for "Technical Watermarking."
+### 6.1 OTA Update Protocol: The "Two-Lane" System
+To prevent version drift and ensure stability, the development workflow is split into two isolated lanes:
 
-### 6.2 Internal Syncing Tool
-*   **Implementation**: A "Cloud Sync Intelligence" button is added to the main Settings menu.
-*   **Logic**: It first checks for updates; if none are found, it offers a "Force Reload" to clear any potentially stuck JS cache.
+| Lane | Purpose | Channel | Branch | Shortcut Command |
+| :--- | :--- | :--- | :--- | :--- |
+| **Stable** | Daily use / Production | `production` | `production` | `npm run deploy` |
+| **Preview** | Feature testing | `preview` | `preview` | `eas update --branch preview` |
+
+*   **Target Branch**: **`production`** is the primary source of truth for the stable app.
+*   **Target Channel**: All production binaries must be pointed to the `production` channel.
+*   **Versioning Source of Truth**: `src/constants/Config.js` -> `BUILD_ID`. Every update MUST include a `BUILD_ID` bump to ensure cache-busting and UI consistency.
+
+### 6.2 Deployment Shortcuts
+*   **Production Push**: `npm run deploy` — Executes `eas update --branch production`. This is the preferred way to ship verified code.
+*   **Technical Watermarking**: Standardized a 6pt normal-weight vertical stack beneath primary titles in `App.js` and `LoginSection.js` for instant version verification.
+
+### 6.3 Platform Infrastructure Summary
+| Component | Provider | Configuration / URL |
+| :--- | :--- | :--- |
+| **Mobile App** | Expo (EAS) | Channel: `production`, Branch: `production` |
+| **Backend API** | Render.com | `https://continuum-backend-0q9j.onrender.com` |
+| **Primary Database** | Supabase | PostgreSQL + pgvector (Port 6543) |
+| **Object Storage** | Supabase | Storage Buckets for document/image processing |
+| **Observability** | Sentry | Phase 3 Production Monitoring Enabled |
+
+### 6.4 Internal Syncing Tool
+*   **Implementation**: A "Cloud Sync Intelligence" button in **Settings -> Data**.
+*   **Logic**: Checks for new EAS updates; if none found, offers a "Force Reload" to clear the local JS engine cache.
 *   **Status**: ✅ Implemented in `SettingsSection.js`
 
 ---
