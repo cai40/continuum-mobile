@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, Platform, KeyboardAvoidingView, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, Platform, KeyboardAvoidingView, Alert, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Updates from 'expo-updates';
@@ -120,15 +120,32 @@ const AppShell = () => {
       {/* CLOUD HEARTBEAT INDICATOR */}
 
       {/* MAIN CONTENT AREA */}
-      <View style={styles.mainArea}>
-        <View style={{ flex: 1, display: activeTab === 'chat' ? 'flex' : 'none' }}>
+      <View style={{ flex: 1, position: 'relative' }}>
+        {/* CHAT LAYER */}
+        <View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { opacity: activeTab === 'chat' ? 1 : 0, zIndex: activeTab === 'chat' ? 10 : 0 }
+          ]}
+          pointerEvents={activeTab === 'chat' ? 'auto' : 'none'}
+        >
           <ChatSection />
         </View>
-        <View style={{ flex: 1, display: activeTab === 'settings' ? 'flex' : 'none' }}>
+
+        {/* SETUP LAYER */}
+        <View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { opacity: activeTab === 'settings' ? 1 : 0, zIndex: activeTab === 'settings' ? 10 : 0 }
+          ]}
+          pointerEvents={activeTab === 'settings' ? 'auto' : 'none'}
+        >
           <SettingsSection onUpgrade={() => setActiveTab('subscription')} />
         </View>
+
+        {/* SUBSCRIPTION LAYER (KEEP CONDITIONAL AS IT IS MODAL-LIKE) */}
         {activeTab === 'subscription' && (
-          <View style={{ flex: 1 }}>
+          <View style={[StyleSheet.absoluteFill, { zIndex: 20 }]}>
             <SubscriptionSection onBack={() => setActiveTab('settings')} />
           </View>
         )}
