@@ -183,18 +183,26 @@ export const AppProvider = ({ children }) => {
     }
   }, [messages]);
 
-  const syncRemoteHistory = async () => {
-    // We allow sync even if session is pending, as the backend is in Mock Mode for 2.0
+  const syncRemoteHistory = async (explicitToken) => {
+    const token = explicitToken || session?.access_token;
+    if (!token) return;
+
     try {
-      const history = await apiFetchHistory(setCloudWakingUp, session?.access_token);
-      if (history && history.length > 0) {
+      const history = await apiFetchHistory(setCloudWakingUp, token);
+      if (history && Array.isArray(history)) {
         setMessages(prev => {
-          // Merge strategy: Unique by ID, prioritized by remote
-          const localIds = new Set(prev.map(m => m.id));
-          const newMessages = history.filter(m => !localIds.has(m.id));
-          return [...prev, ...newMessages].sort((a, b) => 
-            new Date(a.timestamp) - new Date(b.timestamp)
-          );
+          // Robust Merge: Filter out duplicates and ensure valid timestamps
+          const existingIds = new Set(prev.map(m => m.id));
+          const incoming = history.filter(m => m && m.id && !existingIds.has(m.id));
+          
+          if (incoming.length === 0 && prev.length > 0) return prev;
+          
+          const combined = [...prev, ...incoming].sort((a, b) => {
+            const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0);
+            const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0);
+            return dateA - dateB;
+          });
+          return combined;
         });
       }
     } catch (err) {
@@ -204,8 +212,9 @@ export const AppProvider = ({ children }) => {
 
   useEffect(() => {
     if (session) {
-      syncRemoteHistory();
-      onRefreshMemories(); // Auto-load memory tab data on login/startup
+      const token = session.access_token;
+      syncRemoteHistory(token);
+      onRefreshMemories(token); 
     } else {
       // Clear all state on logout
       setMessages([]);
@@ -265,12 +274,13 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const onRefreshMemories = async () => {
-    if (!session?.access_token) return;
+  const onRefreshMemories = async (explicitToken) => {
+    const token = explicitToken || session?.access_token;
+    if (!token) return;
     try {
       const { layeredData, pinData, analytics } = await fetchMemories(
         setCloudWakingUp,
-        session?.access_token,
+        token,
       );
       if (layeredData) {
         setSemanticProfile(layeredData.semanticProfile || []);
