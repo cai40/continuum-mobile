@@ -17,7 +17,7 @@ const LoginHeader = React.memo(() => (
        <Ionicons name="pulse" size={40} color={theme.colors.primary} />
     </View>
     <Text style={loginStyles.title}>Continuum</Text>
-    <Text style={{ color: theme.colors.gray, fontSize: 8, fontWeight: '800', marginTop: -5, marginBottom: 5 }}>
+    <Text style={{ color: theme.colors.gray, fontSize: 6, marginTop: -5, marginBottom: 5 }}>
       v2.4.0 (Stellar) 04192026 -8116
     </Text>
     <Text style={loginStyles.subtitle}>Your Autonomous Memory AI</Text>

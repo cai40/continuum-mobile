@@ -97,11 +97,11 @@ const AppShell = () => {
         marginTop: Platform.OS === 'ios' ? 0 : 30 // Extra Android safe area if needed
       }}>
         <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1}}>
-          <View style={{flexDirection: 'column', alignItems: 'flex-start'}}>
+          <View style={{flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center'}}>
             <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
               {activeTab === 'chat' ? 'Continuum' : 'Setup'}
             </Text>
-            <Text style={{color: theme.colors.gray, fontSize: 8, fontWeight: '800', marginTop: -2}}>
+            <Text style={{color: theme.colors.gray, fontSize: 6, marginTop: -2}}>
               {activeTab === 'setup' ? 'v2.4.0 (Stellar) 04192026 -8116' : 'v2.4.0'}
             </Text>
           </View>
