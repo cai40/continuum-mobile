@@ -105,7 +105,7 @@ const AppShell = () => {
             </View>
             <View>
               <Text style={{color: theme.colors.gray, fontSize: 6, fontWeight: '400', marginTop: -2}}>
-                v2.4.0 (Stellar) 04192026 -8116
+                {activeTab === 'settings' ? 'v2.4.0 (Stellar) 04192026 -8116' : 'v2.4.0'}
               </Text>
             </View>
           </View>
