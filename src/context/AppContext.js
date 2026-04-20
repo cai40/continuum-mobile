@@ -57,6 +57,7 @@ export const AppProvider = ({ children }) => {
     task: "Idle",
     progress: 100,
   });
+  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
 
   // 3-TIER SUBSCRIPTION ENGINE
   const [subscriptionTier, setSubscriptionTier] = useState("free"); // 'free', 'pro', 'elite'
@@ -171,15 +172,19 @@ export const AppProvider = ({ children }) => {
   // Persistence: Auto-Save History
   useEffect(() => {
     if (isHistoryLoaded.current) {
-      const hardwareLimit = 2000;
+      const hardwareLimit = 500; // Stricter memory cap for mobile stability
       const optimizedHistory =
         messages.length > hardwareLimit
           ? messages.slice(-hardwareLimit)
           : messages;
+      
+      // Filter out any potential non-serializable or null entries
+      const safeHistory = optimizedHistory.filter(m => m && m.content && m.role);
+
       AsyncStorage.setItem(
         "@chat_history",
-        JSON.stringify(optimizedHistory),
-      ).catch((e) => console.error(e));
+        JSON.stringify(safeHistory),
+      ).catch((e) => console.error("Auto-save failed:", e));
     }
   }, [messages]);
 
@@ -188,6 +193,7 @@ export const AppProvider = ({ children }) => {
     if (!token) return;
 
     try {
+      setIsSyncingHistory(true);
       console.log(`[Hydration] Syncing history (Attempt ${retryCount + 1})...`);
       const history = await apiFetchHistory(setCloudWakingUp, token);
       
@@ -200,15 +206,19 @@ export const AppProvider = ({ children }) => {
 
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
-          const incoming = history.filter(m => m && m.id && !existingIds.has(m.id));
+          // Strict filtering to prevent crashes from malformed remote data
+          const incoming = history.filter(m => m && m.id && m.content && !existingIds.has(m.id));
           
-          if (incoming.length === 0 && prev.length > 0) return prev;
+          if (incoming.length === 0) return prev;
           
-          return [...prev, ...incoming].sort((a, b) => {
+          const combined = [...prev, ...incoming].sort((a, b) => {
             const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0);
             const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0);
             return dateA - dateB;
           });
+
+          // Final Memory Safety Cap
+          return combined.slice(-500);
         });
         console.log(`[Hydration] Success: Hydrated ${history.length} messages.`);
       }
@@ -217,6 +227,9 @@ export const AppProvider = ({ children }) => {
       if (retryCount < 2) {
         setTimeout(() => syncRemoteHistory(token, retryCount + 1), 3000);
       }
+    } finally {
+      // Small buffer to allow the UI to settle before clearing sync flag
+      setTimeout(() => setIsSyncingHistory(false), 800);
     }
   };
 
@@ -438,6 +451,7 @@ export const AppProvider = ({ children }) => {
         clearLocalHistory,
         deleteAccount,
         isInitializing,
+        isSyncingHistory,
         subscriptionTier,
         setSubscriptionTier,
         isSuperUser,

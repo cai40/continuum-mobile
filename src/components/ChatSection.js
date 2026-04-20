@@ -26,6 +26,7 @@ const ChatSection = () => {
     activeTab,
     session,
     syncRemoteHistory,
+    isSyncingHistory,
     isFeatureAvailable,
   } = useAppContext();
 
@@ -38,6 +39,8 @@ const ChatSection = () => {
   const [recording, setRecording] = useState(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [localTranscript, setLocalTranscript] = useState('');
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
 
   const chatListRef = useRef();
   const abortControllerRef = useRef(null);
@@ -109,29 +112,13 @@ const ChatSection = () => {
 
   const isInitialLoad = useRef(true);
 
-  // --- SCROLL STABILIZATION ENGINE ---
+  // --- SCROLL STABILIZATION ENGINE (REDUNDANT IN INVERTED MODE, BUT KEPT FOR STREAMING) ---
   useEffect(() => {
-    if (activeTab === 'chat' && chatListRef.current) {
-      const isFirst = isInitialLoad.current;
-      
-      // 1. Immediate Snap (Zero Delay)
-      chatListRef.current.scrollToEnd({ animated: false });
-
-      // 2. Settlement Scroll (handle layout pops)
-      const timer = setTimeout(() => {
-        // Force animated: false for the entire initial boot period
-        chatListRef.current.scrollToEnd({ animated: !isFirst });
-        
-        // Only allow animations after the first successful settlement
-        if (isFirst) {
-          setTimeout(() => {
-            isInitialLoad.current = false;
-          }, 400); 
-        }
-      }, 150);
-      return () => clearTimeout(timer);
+    if (activeTab === 'chat' && chatListRef.current && streamingContent.trim()) {
+      // In inverted mode, we scroll to the START (which is the bottom)
+      chatListRef.current.scrollToOffset({ offset: 0, animated: true });
     }
-  }, [messages.length, streamingContent, activeTab]);
+  }, [streamingContent, activeTab]);
 
   // --- MULTIMODAL PICKERS ---
   const pickImage = async () => {
@@ -371,38 +358,128 @@ const ChatSection = () => {
     abortControllerRef.current = { abort: () => xhr.abort() };
   };
 
-  const renderChatItem = ({ item }) => (
-    <TouchableOpacity
-      activeOpacity={0.9}
-      onLongPress={async () => {
-        await Clipboard.setStringAsync(item.content);
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        Alert.alert("Copied", "Message saved to clipboard.");
-      }}
-      style={item.role === 'user' ? styles.userBubble : styles.aiBubble}
-    >
-      {item.attachment && (
-        <View style={{ marginBottom: 8 }}>
-          {item.attachment.type.startsWith('image/') ? (
-            <Image 
-              source={{ uri: item.attachment.uri }} 
-              style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: theme.colors.light }} 
-              resizeMode="cover"
+  const deleteSelectedMessages = async () => {
+    if (selectedIds.size === 0) return;
+    
+    Alert.alert(
+      "Confirm Deletion",
+      `Are you sure you want to delete ${selectedIds.size} messages? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Delete", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const idsArray = Array.from(selectedIds);
+              const response = await fetch(`${API_URL}/chat/delete`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${session?.access_token}`
+                },
+                body: JSON.stringify({ message_ids: idsArray })
+              });
+
+              if (response.ok) {
+                setMessages(prev => prev.filter(m => !selectedIds.has(m.id)));
+                setIsSelectionMode(false);
+                setSelectedIds(new Set());
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              } else {
+                Alert.alert("Error", "Failed to delete messages from the cloud.");
+              }
+            } catch (err) {
+              console.error("Delete failed:", err);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const toggleSelection = (id) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const renderChatItem = ({ item }) => {
+    if (!item || !item.content) return null;
+    const isSelected = selectedIds.has(item.id);
+
+    return (
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => isSelectionMode ? toggleSelection(item.id) : null}
+        onLongPress={async () => {
+          if (!isSelectionMode) {
+            setIsSelectionMode(true);
+            toggleSelection(item.id);
+          } else {
+            await Clipboard.setStringAsync(item.content);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            Alert.alert("Copied", "Message saved to clipboard.");
+          }
+        }}
+        style={[
+          item.role === 'user' ? styles.userBubble : styles.aiBubble,
+          isSelected && { borderLeftWidth: 4, borderLeftColor: theme.colors.primary, backgroundColor: theme.colors.light }
+        ]}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <View style={{ flex: 1 }}>
+            {item.attachment && (
+              <View style={{ marginBottom: 8 }}>
+                {item.attachment.type.startsWith('image/') ? (
+                  <Image 
+                    source={{ uri: item.attachment.uri }} 
+                    style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: theme.colors.light }} 
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.light, padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: theme.colors.primary }}>
+                    <Ionicons name="document-attach" size={20} color={theme.colors.primary} />
+                    <Text style={{ marginLeft: 8, fontSize: 13, color: theme.colors.black, fontWeight: '600' }} numberOfLines={1}>
+                      {item.attachment.name}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+            <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>{item.content}</Text>
+          </View>
+          
+          {isSelectionMode && (
+            <Ionicons 
+              name={isSelected ? "checkbox" : "square-outline"} 
+              size={20} 
+              color={theme.colors.primary} 
+              style={{ marginLeft: 10 }}
             />
-          ) : (
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.light, padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: theme.colors.primary }}>
-              <Ionicons name="document-attach" size={20} color={theme.colors.primary} />
-              <Text style={{ marginLeft: 8, fontSize: 13, color: theme.colors.black, fontWeight: '600' }} numberOfLines={1}>
-                {item.attachment.name}
-              </Text>
-            </View>
           )}
         </View>
-      )}
-      <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>{item.content}</Text>
-      <LatencyHeatmap data={item.latencyData} />
-    </TouchableOpacity>
-  );
+        
+        {/* TIME STAMP */}
+        <Text style={{ 
+          fontSize: 8, 
+          color: item.role === 'user' ? 'rgba(255,255,255,0.6)' : theme.colors.gray, 
+          marginTop: 4, 
+          alignSelf: 'flex-end',
+          fontWeight: '600'
+        }}>
+          {item.timestamp ? new Date(item.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+        </Text>
+
+        <LatencyHeatmap data={item.latencyData} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <KeyboardAvoidingView 
@@ -410,32 +487,53 @@ const ChatSection = () => {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       style={styles.chatArea}
     >
-      <View style={styles.providerBar}>
-        <View style={{ flexDirection: 'row', gap: 6, flex: 1 }}>
-          {['gemini', 'openrouter', 'gpt4o_mini', 'or_free'].map((p) => (
-            <TouchableOpacity
-              key={p}
-              onPress={() => {
-                setProvider(p);
-              }}
-              style={{
-                paddingHorizontal: 8,
-                paddingVertical: 5,
-                borderRadius: 12,
-                backgroundColor: provider === p ? theme.colors.primary : theme.colors.white,
-                borderWidth: 1,
-                borderColor: provider === p ? theme.colors.primary : theme.colors.border
-              }}
-            >
-              <Text style={{ 
-                fontSize: 8, 
-                fontWeight: '800', 
-                color: provider === p ? 'white' : theme.colors.gray 
-              }}>
-                {p === 'openrouter' ? 'Claude' : (p === 'or_free' ? 'OR FREE' : (p === 'gpt4o_mini' ? '4o MINI' : p.toUpperCase()))}
+        <View style={{ flexDirection: 'row', gap: 6, flex: 1, alignItems: 'center' }}>
+          {isSelectionMode ? (
+            <>
+              <TouchableOpacity
+                onPress={() => { setIsSelectionMode(false); setSelectedIds(new Set()); }}
+                style={{ padding: 8, backgroundColor: theme.colors.light, borderRadius: 8 }}
+              >
+                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.gray }}>CANCEL</Text>
+              </TouchableOpacity>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary, marginLeft: 10 }}>
+                {selectedIds.size} SELECTED
               </Text>
-            </TouchableOpacity>
-          ))}
+              <TouchableOpacity
+                onPress={deleteSelectedMessages}
+                disabled={selectedIds.size === 0}
+                style={{ marginLeft: 'auto', padding: 8, backgroundColor: theme.colors.danger + '15', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}
+              >
+                <Ionicons name="trash-outline" size={14} color={theme.colors.danger} />
+                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.danger, marginLeft: 5 }}>DELETE</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            ['gemini', 'openrouter', 'gpt4o_mini', 'or_free'].map((p) => (
+              <TouchableOpacity
+                key={p}
+                onPress={() => {
+                  setProvider(p);
+                }}
+                style={{
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  borderRadius: 12,
+                  backgroundColor: provider === p ? theme.colors.primary : theme.colors.white,
+                  borderWidth: 1,
+                  borderColor: provider === p ? theme.colors.primary : theme.colors.border
+                }}
+              >
+                <Text style={{ 
+                  fontSize: 8, 
+                  fontWeight: '800', 
+                  color: provider === p ? 'white' : theme.colors.gray 
+                }}>
+                  {p === 'openrouter' ? 'Claude' : (p === 'or_free' ? 'OR FREE' : (p === 'gpt4o_mini' ? '4o MINI' : p.toUpperCase()))}
+                </Text>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
 
         {/* CYCLING LANGUAGE TOGGLE */}
@@ -474,27 +572,33 @@ const ChatSection = () => {
 
       <FlatList
         ref={chatListRef}
-        data={streamingContent.trim() ? [...messages, { id: 'stream', role: 'assistant', content: streamingContent }] : messages}
-        keyExtractor={item => item.id}
+        inverted={true}
+        data={
+          streamingContent.trim() 
+            ? [{ id: 'stream', role: 'assistant', content: streamingContent }, ...[...messages].reverse()] 
+            : [...messages].reverse()
+        }
+        keyExtractor={item => item?.id || Math.random().toString()}
         renderItem={renderChatItem}
         contentContainerStyle={{ padding: 16, flexGrow: 1 }}
         removeClippedSubviews={Platform.OS === 'android'}
-        initialNumToRender={15}
-        maxToRenderPerBatch={10}
+        initialNumToRender={12}
+        maxToRenderPerBatch={8}
         windowSize={5}
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-        }}
-        onContentSizeChange={() => {
-          if (activeTab === 'chat') {
-            chatListRef.current?.scrollToEnd({ animated: false });
-          }
-        }}
+        ListEmptyComponent={
+          !isSyncingHistory && (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100, opacity: 0.5, transform: [{ scaleY: -1 }] }}>
+              <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.gray} />
+              <Text style={{ color: theme.colors.gray, marginTop: 16, fontWeight: '600' }}>No messages yet. Start the conversation!</Text>
+            </View>
+          )
+        }
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={onRefresh}
             tintColor={theme.colors.primary}
+            progressViewOffset={50} // Adjust for inverted list
           />
         }
       />

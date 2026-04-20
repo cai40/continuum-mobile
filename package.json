@@ -7,7 +7,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "deploy": "eas update --branch production"
+    "deploy": "eas update --branch production --auto"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
