@@ -183,30 +183,40 @@ export const AppProvider = ({ children }) => {
     }
   }, [messages]);
 
-  const syncRemoteHistory = async (explicitToken) => {
+  const syncRemoteHistory = async (explicitToken, retryCount = 0) => {
     const token = explicitToken || session?.access_token;
     if (!token) return;
 
     try {
+      console.log(`[Hydration] Syncing history (Attempt ${retryCount + 1})...`);
       const history = await apiFetchHistory(setCloudWakingUp, token);
+      
       if (history && Array.isArray(history)) {
+        if (history.length === 0 && retryCount < 2) {
+           console.log("[Hydration] Empty history received, retrying in 2s...");
+           setTimeout(() => syncRemoteHistory(token, retryCount + 1), 2000);
+           return;
+        }
+
         setMessages(prev => {
-          // Robust Merge: Filter out duplicates and ensure valid timestamps
           const existingIds = new Set(prev.map(m => m.id));
           const incoming = history.filter(m => m && m.id && !existingIds.has(m.id));
           
           if (incoming.length === 0 && prev.length > 0) return prev;
           
-          const combined = [...prev, ...incoming].sort((a, b) => {
+          return [...prev, ...incoming].sort((a, b) => {
             const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0);
             const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0);
             return dateA - dateB;
           });
-          return combined;
         });
+        console.log(`[Hydration] Success: Hydrated ${history.length} messages.`);
       }
     } catch (err) {
       console.warn("Remote history sync failed:", err);
+      if (retryCount < 2) {
+        setTimeout(() => syncRemoteHistory(token, retryCount + 1), 3000);
+      }
     }
   };
 
