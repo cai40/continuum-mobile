@@ -107,6 +107,17 @@ const ChatSection = () => {
     setIsSpeaking(false);
   };
 
+  // --- SCROLL STABILIZATION ENGINE ---
+  useEffect(() => {
+    if (activeTab === 'chat' && chatListRef.current) {
+      // Use a tiny delay to ensure the list has finished its internal render pass
+      const timer = setTimeout(() => {
+        chatListRef.current.scrollToEnd({ animated: messages.length > 0 });
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [messages.length, streamingContent, activeTab]);
+
   // --- MULTIMODAL PICKERS ---
   const pickImage = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -452,7 +463,15 @@ const ChatSection = () => {
         keyExtractor={item => item.id}
         renderItem={renderChatItem}
         contentContainerStyle={{ padding: 16, flexGrow: 1 }}
-        onContentSizeChange={() => chatListRef.current?.scrollToEnd({ animated: false })}
+        removeClippedSubviews={Platform.OS === 'android'}
+        initialNumToRender={15}
+        maxToRenderPerBatch={10}
+        windowSize={5}
+        onLayout={() => {
+          if (activeTab === 'chat') {
+            chatListRef.current?.scrollToEnd({ animated: false });
+          }
+        }}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
