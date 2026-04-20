@@ -1504,13 +1504,24 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           <Text
             style={{
               color: theme.colors.gray,
-              fontSize: 6,
-              letterSpacing: 1,
+              fontSize: 10,
+              fontWeight: "800",
+              letterSpacing: 2,
             }}
           >
-            CONTINUUM OS v2.4.0 (Stellar) 04192026 -8116
+            CONTINUUM OS
           </Text>
-          <Text style={{ color: theme.colors.gray, fontSize: 5, marginTop: 2 }}>
+          <Text
+            style={{
+              color: theme.colors.gray,
+              fontSize: 6,
+              letterSpacing: 1,
+              marginTop: 2
+            }}
+          >
+            v2.4.0 (Stellar) 04192026 -8116
+          </Text>
+          <Text style={{ color: theme.colors.gray, fontSize: 5, marginTop: 4 }}>
             AUTHENTICATED SECURE NODE
           </Text>
         </View>
