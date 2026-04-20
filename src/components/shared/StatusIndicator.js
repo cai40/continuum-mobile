@@ -29,10 +29,10 @@ const StatusIndicator = ({ status }) => {
 
   const getStatusText = () => {
     switch (status) {
-      case 'healthy': return 'Brain Online';
-      case 'degraded': return 'Waking Up...';
-      case 'offline': return 'Brain Offline';
-      default: return 'Checking Pulse...';
+      case 'healthy': return 'BRAIN';
+      case 'degraded': return 'SYNCING...';
+      case 'offline': return 'OFFLINE';
+      default: return 'CONNECTING';
     }
   };
 

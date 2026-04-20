@@ -96,7 +96,7 @@ const AppShell = () => {
         borderColor: theme.colors.border,
         marginTop: Platform.OS === 'ios' ? 0 : 30 // Extra Android safe area if needed
       }}>
-        <View style={{flexDirection: 'column', alignItems: 'flex-start', flex: 1}}>
+        <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1}}>
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
             <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
               {activeTab === 'chat' ? 'Continuum' : 'Setup'}
@@ -104,7 +104,7 @@ const AppShell = () => {
             <Text style={{color: theme.colors.gray, fontSize: 10, fontWeight: '800', marginLeft: 8}}>v2.4.0</Text>
           </View>
           
-          <View style={{flexDirection: 'row', alignItems: 'center', marginTop: 4, flexWrap: 'wrap', gap: 6}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
             {activeTab === 'chat' && (
               <View style={{backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
                 <Text style={{color: theme.colors.gray, fontSize: 8, fontWeight: '900'}}>
@@ -118,7 +118,7 @@ const AppShell = () => {
             )}
 
             <View style={{backgroundColor: theme.colors.success + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.success + '30'}}>
-              <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD SYNC</Text>
+              <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD</Text>
             </View>
 
             <StatusIndicator status={serverStatus} />
