@@ -820,7 +820,6 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </View>
         </View>
       </View>
-      </View>
 
       <View style={{ marginBottom: 20, marginTop: 24 }}>
         {renderSectionTitle("DEVICE CONTROLS")}

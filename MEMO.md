@@ -1,33 +1,31 @@
 # Continuum 2.0: Agent Handover & State of the Union
 **Last Updated**: 2026-04-20
+**Current Version**: 2.4.0 (Stellar)
 **Current Build ID**: 8140 (Electric Pulse)
 
 ## 📡 Technical Vitals
 - **Backend (Render)**: `https://continuum-backend-0q9j.onrender.com`
-  - **Status**: ACTIVE (Streaming Engine Restored via EventSourceResponse)
-  - **Auth**: Supabase Cloud
+  - **Status**: ACTIVE (Identity Analytics & Semantic Vault endpoints deployed)
 - **Frontend (Expo/EAS)**:
-  - **Branch**: `production`
-  - **Runtime**: `exposdk:54.0.0`
-  - **Build Profile**: `preview` (Standalone iOS)
-- **Observability**: Sentry Shield Active (Project: `apple-ios`)
+  - **Status**: OTA Updated (Build 2.4.0 UI live)
+  - **Branch**: `preview` (Linked to `preview` channel)
+- **Infrastructure**: Supabase pgvector (Port 6543)
 
-## 🎨 Branding & Assets
-- **Icon**: `assets/icon.png` (Electric Blue Gradient, Glowing Infinity Logo)
-- **Splash**: `assets/splash-icon.png` (Cinematic Cosmic Theme, Filled background)
-- **Gap Status**: Icon has a significant safe-zone margin; voids are filled.
+## 🎭 Identity & Archetype Status
+- **Unique Markers**: 858+ discovered.
+- **Top Archetypes**: "Strategic Guardian," "Relationship Integrity," "Personal Sovereignty."
+- **Vault Visibility**: Enabled in Settings/Data (Top 10 display + 20-item drilling).
 
-## 🛠️ Recent Changes (Build 8140+)
-- **The Great Purge**: Scrubbed 500+ redundant memory items across all layers (L2, L3, L4).
-- **Normalized Deduplication**: Implemented case-insensitive & whitespace-neutral "Birth Control" for all memory writes.
-- **Enhanced Sleep Mode**: Upgraded background cleanup to deduplicate Episodes and Events.
-- **Streaming Fix**: Resolved "silent deadlock" by switching back to token-based streaming.
-- **UI Reorg**: Moved Diagnostic Box from "Memory" tab to "Diagnostics" tab.
+## 🛠️ Recent Changes (Build 2.4.0+)
+- **Semantic Identity Vault**: Integrated interactive dashboard for persona discovery.
+- **Autonomous Semantic Purge**: Background vector-similarity deduplication (0.90 threshold) active.
+- **Channel Re-alignment**: Synchronized `preview` channel to `preview` branch for OTA stability.
+- **Identity Analytics**: Added `/brain/archetypes` backend support.
 
 ## 🚀 Next Steps (Priority)
-1. **Multimodal Ingestion**: Finalize Layer 5 (Knowledge Base) document indexing.
-2. **Subscription Flow**: Polish the upgrade path in `SubscriptionSection.js`.
-3. **Latency Heatmap**: Fine-tune the visualization in the Diagnostics tab.
+1. **Long-Term Scaling**: Monitor the semantic vault as marker counts approach 1,000+.
+2. **Local AI Engine**: Investigating on-device Whisper for local-only transcription.
+3. **App Store Metadata**: Finalize the "Legal Fortress" and "Identity Vault" promotional copy.
 
 ---
-**Agent Instruction**: Upon startup, read this file FIRST to understand the current build state and active infrastructure nodes.
+**Agent Instruction**: Read this file FIRST. It contains the current build state, active identity archetypes, and infrastructure nodes.
