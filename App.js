@@ -73,14 +73,6 @@ const AppShell = () => {
     return <LoginSection />;
   }
 
-  const renderSection = () => {
-    switch (activeTab) {
-      case 'chat': return <ChatSection />;
-      case 'settings': return <SettingsSection onUpgrade={() => setActiveTab('subscription')} />;
-      case 'subscription': return <SubscriptionSection onBack={() => setActiveTab('settings')} />;
-      default: return <ChatSection />;
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -129,7 +121,17 @@ const AppShell = () => {
 
       {/* MAIN CONTENT AREA */}
       <View style={styles.mainArea}>
-        {renderSection()}
+        <View style={{ flex: 1, display: activeTab === 'chat' ? 'flex' : 'none' }}>
+          <ChatSection />
+        </View>
+        <View style={{ flex: 1, display: activeTab === 'settings' ? 'flex' : 'none' }}>
+          <SettingsSection onUpgrade={() => setActiveTab('subscription')} />
+        </View>
+        {activeTab === 'subscription' && (
+          <View style={{ flex: 1 }}>
+            <SubscriptionSection onBack={() => setActiveTab('settings')} />
+          </View>
+        )}
       </View>
 
       {/* NAVIGATION BAR */}
