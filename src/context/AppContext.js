@@ -226,8 +226,7 @@ export const AppProvider = ({ children }) => {
       syncRemoteHistory(token);
       onRefreshMemories(token); 
     } else {
-      // Clear all state on logout
-      setMessages([]);
+      // Clear secondary states but keep messages for persistence
       setSemanticProfile([]);
       setTemporalEvents([]);
       setEpisodicSegments([]);

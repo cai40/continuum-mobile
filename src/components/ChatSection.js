@@ -107,15 +107,20 @@ const ChatSection = () => {
     setIsSpeaking(false);
   };
 
+  const isInitialLoad = useRef(true);
+
   // --- SCROLL STABILIZATION ENGINE ---
   useEffect(() => {
     if (activeTab === 'chat' && chatListRef.current) {
+      const isFirst = isInitialLoad.current;
+      
       // 1. Immediate Snap (Zero Delay)
       chatListRef.current.scrollToEnd({ animated: false });
 
-      // 2. Settlement Scroll (100ms Delay to handle keyboard/layout shifts)
+      // 2. Settlement Scroll (Delayed to handle layout)
       const timer = setTimeout(() => {
-        chatListRef.current.scrollToEnd({ animated: true });
+        chatListRef.current.scrollToEnd({ animated: !isFirst });
+        if (isFirst) isInitialLoad.current = false;
       }, 100);
       return () => clearTimeout(timer);
     }
