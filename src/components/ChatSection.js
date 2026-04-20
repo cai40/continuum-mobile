@@ -117,11 +117,18 @@ const ChatSection = () => {
       // 1. Immediate Snap (Zero Delay)
       chatListRef.current.scrollToEnd({ animated: false });
 
-      // 2. Settlement Scroll (Delayed to handle layout)
+      // 2. Settlement Scroll (handle layout pops)
       const timer = setTimeout(() => {
+        // Force animated: false for the entire initial boot period
         chatListRef.current.scrollToEnd({ animated: !isFirst });
-        if (isFirst) isInitialLoad.current = false;
-      }, 100);
+        
+        // Only allow animations after the first successful settlement
+        if (isFirst) {
+          setTimeout(() => {
+            isInitialLoad.current = false;
+          }, 400); 
+        }
+      }, 150);
       return () => clearTimeout(timer);
     }
   }, [messages.length, streamingContent, activeTab]);
