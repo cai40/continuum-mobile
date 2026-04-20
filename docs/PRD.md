@@ -20,6 +20,10 @@ Continuum 2.0 is built on a high-resiliency, distributed architecture designed f
 
 ### 2.1 Identity & Security (The "Secure Gate")
 *   **Password Visibility**: Users must be able to toggle password visibility to ensure accuracy during manual entry.
+*   **Contextual Interaction**: Long-press on chat messages triggers a Haptic Context Menu for "Copy Text" or "Select Messages" (Deletion).
+*   **Infrastructure Shield**: Integrated diagnostic panel showing real-time Render, Supabase, and Git status.
+*   **Chronos Timestamps**: Integrated date/time metadata for every chat record.
+*   **Hands-Free Mode**: Integrated STT/TTS toggle for eyes-busy scenarios.
 *   **Self-Service Recovery**: Integrated "Forgot Password" functionality via Supabase email resets.
 *   **Verified Signup**: Mandatory email verification link before account activation.
 *   **iOS KeyChain**: Full support for native AutoFill and credential management.
@@ -81,7 +85,9 @@ Continuum uses a tiered hierarchy to manage cognitive load and retrieval accurac
 *   **Session Persistence**: ✅ Complete. Implemented "Session Handshake Grace Period" to prevent login redirects during OTA reloads.
 *   **Automated Hydration**: ✅ Complete. Chat history and Memory Vault (L1-L5) automatically load from the cloud on login and app startup via the `/chat/history` endpoint with a 3-attempt resilient retry logic.
 *   **Permanent Memory Cache**: ✅ Complete. Implemented Session-Agnostic Persistence where chat history is stored via `AsyncStorage` and preserved even across logouts and app restarts.
-*   **Instant-Snap UI**: ✅ Complete. Optimized the Chat UI to performing an instantaneous 'jump' to the bottom on initial load, eliminating the wait time of traditional scroll animations.
+*   **Instant-Snap UI**: ✅ Complete.
+*   **Instant Load**: "Inverted Engine" eliminates history crawling, anchoring the chat at the bottom immediately.
+*   **Hardware Safety**: Strict 500-message in-memory cap to prevent mobile OOM (Out of Memory) crashes.
 *   **Persistent Navigation Stack**: ✅ Complete. Implemented a Visibility Stack in `App.js` that keeps the Chat and Setup sections mounted in the background to prevent scroll-resetting and ensure instantaneous tab switching.
 *   **Technical Watermarking**: ✅ Complete. Enforced a non-bold, 6pt vertical watermark beneath primary titles in Login and Setup screens for build identification.
 

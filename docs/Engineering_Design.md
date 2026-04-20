@@ -13,7 +13,12 @@ Continuum uses a hierarchical memory system to balance retrieval speed with cont
 | **L1** | **Working / Pinned** | Local + Supabase | High-priority facts manually or automatically "pinned." Loaded immediately on app start. |
 | **L2** | **Semantic Profile** | pgvector (Supabase) | Derived "User Identity." Extracted using LLM summarization of L4 segments. |
 | **L3** | **Temporal Events** | PostgreSQL | Chronological markers (e.g., "Project X started on Oct 12"). Extracted via NLP. |
-| **L4** | **Episodic Memory** | Local + Postgres | Recent raw conversational segments. Synchronized in 20-message chunks for high-speed local retrieval. |
+| **L4** | **Episodic Memory** | Local + Postgres | -   **Inverted Rendering Engine**: High-performance `FlatList` with `inverted={true}` for instant message visibility.
+-   **Contextual Haptic Menus**: Unified long-press interaction for "Copy Text" and "Delete Selection."
+-   **Live Cloud Pulse**: Real-time server telemetry via Render environment variables.
+- Strict Memory Cap: Hard limit of 500 records in `AppContext` to prevent OOM (Out of Memory) crashes on mobile hardware.
+- Chronos Metadata: Every message is tagged with UTC ISO strings, formatted locally to `MMM DD, HH:mm`.
+Synchronized in 20-message chunks for high-speed local retrieval. |
 | **L5** | **Global Knowledge** | pgvector (RAG) | External files, indexed documents, and long-term historical archives. Accessed via vector search. |
 
 ### 1.1 Extraction Engine (L4 -> L2/L3)
@@ -65,6 +70,8 @@ export const supabase = createClient(URL, KEY, {
 To prevent unnecessary redirects to the login screen during OTA reloads, a 500ms grace period is implemented in `AppContext.js`. 
 
 **Session-Agnostic Messaging**: Unlike secondary states, the `messages` array is **not** cleared on logout. This ensures that the user's conversational context remains visible locally across sessions. A full purge only occurs during a manual "Hard Reset" or when a different user successfully authenticates.
+- `POST /chat/delete`: Selective message pruning (Integer ID array).
+- `GET /system/status`: Real-time deployment telemetry (Commit, Region, Service ID).
 
 ---
 
@@ -130,18 +137,27 @@ To prevent version drift and ensure stability, the development workflow is split
 *   **Target Channel**: All production binaries must be pointed to the `production` channel.
 *   **Versioning Source of Truth**: `src/constants/Config.js` -> `BUILD_ID`. Every update MUST include a `BUILD_ID` bump to ensure cache-busting and UI consistency.
 
-### 6.2 Deployment Shortcuts
-*   **Production Push**: `npm run deploy` — Executes `eas update --branch production`. This is the preferred way to ship verified code.
+### 6.2 Deployment & Automation (DevOps)
+*   **Production Push (Mobile)**: `npm run deploy` — Executes `eas update --branch production`.
+*   **Auto-Deploy (Backend)**: Triggered automatically on every Git push to the `main` branch via the GitHub Webhook.
 *   **Technical Watermarking**: Standardized a 6pt normal-weight vertical stack beneath primary titles in `App.js` and `LoginSection.js` for instant version verification.
 
-### 6.3 Platform Infrastructure Summary
+### 6.3 The Webhook Bridge (GitHub -> Render)
+To maintain the "No-Click" deployment flow, a manual webhook is established between GitHub and Render:
+1.  **Repository**: `https://github.com/cai40/continuum-backend`
+2.  **Webhook URL**: [Render Deploy Hook URL] (Found in Render -> Settings -> Deploy Hook).
+3.  **Content Type**: `application/json`
+4.  **Event**: `Just the push event`.
+5.  **Render Root Directory**: Must be set to **[Empty]** if the GitHub repo root matches the backend root.
+
+### 6.4 Infrastructure Map (External Dependencies)
 | Component | Provider | Configuration / URL |
 | :--- | :--- | :--- |
 | **Mobile App** | Expo (EAS) | Channel: `production`, Branch: `production` |
 | **Backend API** | Render.com | `https://continuum-backend-0q9j.onrender.com` |
 | **Primary Database** | Supabase | PostgreSQL + pgvector (Port 6543) |
-| **Object Storage** | Supabase | Storage Buckets for document/image processing |
-| **Observability** | Sentry | Phase 3 Production Monitoring Enabled |
+| **Error Shield** | Sentry | Connected (v7.2.0) |
+| **Neural Logic** | Google/Groq | Gemini-1.5-Pro / Llama-3-70b (via UnifiedLLM) |
 
 ### 6.4 Internal Syncing Tool
 *   **Implementation**: A "Cloud Sync Intelligence" button in **Settings -> Data**.

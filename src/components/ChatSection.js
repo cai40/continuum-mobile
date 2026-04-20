@@ -371,7 +371,14 @@ const ChatSection = () => {
           style: "destructive", 
           onPress: async () => {
             try {
-              const idsArray = Array.from(selectedIds);
+              // ENSURE IDs ARE INTEGERS (Matching database.py schema)
+              const idsArray = Array.from(selectedIds).map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+              
+              if (idsArray.length === 0) {
+                 Alert.alert("Error", "Valid message IDs were not found.");
+                 return;
+              }
+
               const response = await fetch(`${API_URL}/chat/delete`, {
                 method: 'POST',
                 headers: {
@@ -387,10 +394,12 @@ const ChatSection = () => {
                 setSelectedIds(new Set());
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               } else {
-                Alert.alert("Error", "Failed to delete messages from the cloud.");
+                const errorData = await response.json().catch(() => ({ detail: "Unknown Server Error" }));
+                Alert.alert("Cloud Error", `Status ${response.status}: ${errorData.detail || "Server rejected deletion."}`);
               }
             } catch (err) {
               console.error("Delete failed:", err);
+              Alert.alert("Network Error", "The Cloud is unreachable. Check your connection.");
             }
           }
         }
@@ -417,23 +426,37 @@ const ChatSection = () => {
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={() => isSelectionMode ? toggleSelection(item.id) : null}
-        onLongPress={async () => {
-          if (!isSelectionMode) {
-            setIsSelectionMode(true);
-            toggleSelection(item.id);
-          } else {
-            await Clipboard.setStringAsync(item.content);
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            Alert.alert("Copied", "Message saved to clipboard.");
-          }
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Alert.alert(
+            "Message Options",
+            null,
+            [
+              { 
+                text: "Copy Text", 
+                onPress: async () => {
+                  await Clipboard.setStringAsync(item.content);
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+              },
+              { 
+                text: "Select Messages", 
+                onPress: () => {
+                  setIsSelectionMode(true);
+                  toggleSelection(item.id);
+                }
+              },
+              { text: "Cancel", style: "cancel" }
+            ]
+          );
         }}
         style={[
           item.role === 'user' ? styles.userBubble : styles.aiBubble,
           isSelected && { borderLeftWidth: 4, borderLeftColor: theme.colors.primary, backgroundColor: theme.colors.light }
         ]}
       >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <View style={{ flex: 1 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flexShrink: 1 }}>
             {item.attachment && (
               <View style={{ marginBottom: 8 }}>
                 {item.attachment.type.startsWith('image/') ? (
@@ -487,6 +510,7 @@ const ChatSection = () => {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       style={styles.chatArea}
     >
+      <View style={styles.providerBar}>
         <View style={{ flexDirection: 'row', gap: 6, flex: 1, alignItems: 'center' }}>
           {isSelectionMode ? (
             <>

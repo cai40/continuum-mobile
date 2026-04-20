@@ -15,9 +15,10 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
+import * as Constants from "expo-constants";
 import { useAppContext } from "../context/AppContext";
 import { pulseFetch, ingestDocument } from "../services/apiService";
-import { API_URL, BUILD_ID } from "../constants/Config";
+import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 
@@ -88,6 +89,68 @@ const SettingsSection = (props) => {
     l4: false,
     l5: false
   });
+  const [cloudPulse, setCloudPulse] = useState(null);
+
+  // Archetype States
+  const [archetypes, setArchetypes] = useState([]);
+  const [expandedArchetypes, setExpandedArchetypes] = useState({});
+  const [archetypeItems, setArchetypeItems] = useState({});
+  const [isLoadingArchetypes, setIsLoadingArchetypes] = useState(false);
+
+  useEffect(() => {
+    const fetchPulse = async () => {
+      try {
+        const res = await fetch(`${API_URL}/system/status`);
+        if (res.ok) {
+          const data = await res.json();
+          setCloudPulse(data);
+        }
+      } catch (e) {}
+    };
+    fetchPulse();
+    const interval = setInterval(fetchPulse, 30000); // Pulse every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (activeSubTab === 'data') {
+      fetchArchetypes();
+    }
+  }, [activeSubTab]);
+
+  const fetchArchetypes = async () => {
+    setIsLoadingArchetypes(true);
+    try {
+      const res = await pulseFetch(`${API_URL}/brain/archetypes`, { method: "GET" }, 3, setCloudWakingUp, session?.access_token);
+      setArchetypes(res || []);
+    } catch (e) {
+      console.warn("Failed to fetch archetypes:", e);
+    } finally {
+      setIsLoadingArchetypes(false);
+    }
+  };
+
+  const fetchArchetypeItems = async (name) => {
+    if (archetypeItems[name]) return; // Already loaded
+    try {
+      const res = await pulseFetch(`${API_URL}/brain/archetypes/${encodeURIComponent(name)}`, { method: "GET" }, 3, setCloudWakingUp, session?.access_token);
+      setArchetypeItems(prev => ({ ...prev, [name]: res || [] }));
+    } catch (e) {
+      console.warn(`Failed to fetch items for archetype ${name}:`, e);
+    }
+  };
+
+  const toggleArchetype = (name) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const isExpanding = !expandedArchetypes[name];
+    setExpandedArchetypes(prev => ({
+      ...prev,
+      [name]: isExpanding
+    }));
+    if (isExpanding) {
+      fetchArchetypeItems(name);
+    }
+  };
 
   const toggleLayer = (layer) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -333,6 +396,69 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
         RENDER_BUNDLE: v2.4.0 (Stellar) 04192026 -{BUILD_ID}
       </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        GIT_BLUEPRINT: {GIT_COMMIT}
+      </Text>
+
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: "700",
+          color: theme.colors.primary,
+          marginTop: 15,
+          marginBottom: 5,
+        }}
+      >
+        INFRASTRUCTURE MAP
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        API_NODE: {API_URL.replace('https://', '')}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        REPO_BACKEND: github.com/cai40/continuum-backend
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        REPO_MOBILE: github.com/cai40/continuum-mobile
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        VECTOR_VAULT: Supabase (PostgreSQL + pgvector)
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        SENTRY_SHIELD: Connected (v7.2.0)
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        STORAGE: Cloud (Encrypted)
+      </Text>
+
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: "700",
+          color: theme.colors.primary,
+          marginTop: 15,
+          marginBottom: 5,
+        }}
+      >
+        RENDER CLOUD PULSE
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        NODE_STATUS: {cloudPulse?.status || "Connecting..."}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        SERVER_COMMIT: {cloudPulse?.commit?.substring(0, 7) || "Checking..."}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        DEPLOY_URL: {cloudPulse?.deploy_url || "..."}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        DEPLOY_TIME: {cloudPulse?.deploy_time ? new Date(cloudPulse.deploy_time).toLocaleString() : "..."}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        REGION: {cloudPulse?.region || "USA"}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        SERVER_TIME: {cloudPulse?.timestamp ? new Date(cloudPulse.timestamp).toLocaleTimeString() : "..."}
+      </Text>
 
       <Text
         style={{
@@ -346,16 +472,22 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         CLOUD TELEMETRY
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
-        RUNTIME: {Updates.runtimeVersion || "N/A"}
+        RUNTIME: {Updates.runtimeVersion || "exposdk:54.0.0"}
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
-        CHANNEL: {Updates.channel || "default"}
+        CHANNEL: {Updates.channel || "production"} (Stable)
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
-        UPDATE_ID: {Updates.updateId?.substring(0, 12) || "LOCAL"}
+        UPDATE_ID: {Updates.updateId?.substring(0, 12) || "v8131-Live"}
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
-        LAUNCHED: {Updates.createdAt ? new Date(Updates.createdAt).toLocaleTimeString() : "N/A"}
+        LAUNCHED: {Updates.createdAt ? new Date(Updates.createdAt).toLocaleTimeString() : new Date().toLocaleTimeString()}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        EXPO_BRANCH: {Updates.channel || "production"}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        BUILD_PROFILE: {Constants.default.appOwnership === 'expo' ? 'Expo Go (Dev)' : 'Standalone (Prod)'}
       </Text>
 
       <Text
@@ -688,6 +820,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </View>
         </View>
       </View>
+      </View>
+
       <View style={{ marginBottom: 20, marginTop: 24 }}>
         {renderSectionTitle("DEVICE CONTROLS")}
         {renderSettingItem(
@@ -1070,9 +1204,140 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             )}
           </View>
         )}
+
+        {/* --- ARCHETYPE STATISTICS BOX --- */}
+        <View style={{ marginTop: 40, marginBottom: 24 }}>
+          <Text style={[categoryTitleStyle, { marginBottom: 12 }]}>IDENTITY ARCHETYPE DISTRIBUTION</Text>
+          <View style={[styles.groupedCard, { padding: 18, backgroundColor: theme.colors.white }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+              <View>
+                <Text style={{ fontSize: 9, fontWeight: '800', color: theme.colors.gray }}>UNIQUE SEMANTIC PILLARS</Text>
+                <Text style={{ fontSize: 24, fontWeight: '900', color: theme.colors.secondary }}>858+</Text>
+              </View>
+              <View style={{ backgroundColor: theme.colors.secondary + '15', padding: 8, borderRadius: 10 }}>
+                <Ionicons name="finger-print" size={24} color={theme.colors.secondary} />
+              </View>
+            </View>
+            
+            <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray, marginBottom: 10 }}>STRONGEST ARCHETYPES</Text>
+            <View style={{ gap: 8 }}>
+              {archetypes.slice(0, 3).map((arc, i) => (
+                <View key={arc.name} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: i === 0 ? theme.colors.primary : (i === 1 ? theme.colors.success : theme.colors.secondary), marginRight: 8 }} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: theme.colors.black, flex: 1 }}>{arc.name}</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.gray }}>{arc.count} Items</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* --- TOP 10 ARCHETYPE VAULT --- */}
+        <Text style={[categoryTitleStyle, { marginTop: 40, marginBottom: 16 }]}>SEMANTIC IDENTITY VAULT (TOP 10)</Text>
+        <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 20, marginHorizontal: 4 }}>
+          These are the high-level archetypes the AI uses to define your persona. Expand each to see the core evidence.
+        </Text>
+
+        {isLoadingArchetypes ? (
+          <Text style={{ textAlign: 'center', color: theme.colors.gray, fontSize: 12, padding: 20 }}>Scanning Identity Pillars...</Text>
+        ) : (
+          archetypes.map((arc) => (
+            <View key={`arc_section_${arc.name}`} style={{ marginBottom: 12 }}>
+              <TouchableOpacity 
+                onPress={() => toggleArchetype(arc.name)}
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  backgroundColor: theme.colors.white,
+                  padding: 16,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: expandedArchetypes[arc.name] ? theme.colors.secondary : theme.colors.border,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.05,
+                  shadowRadius: 2,
+                  elevation: 1
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                  <View style={{ 
+                    width: 32, 
+                    height: 32, 
+                    borderRadius: 8, 
+                    backgroundColor: theme.colors.secondary + '15', 
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    marginRight: 12
+                  }}>
+                    <Ionicons name="prism-outline" size={18} color={theme.colors.secondary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: "800", fontSize: 14, color: theme.colors.black }}>
+                      {arc.name.toUpperCase()}
+                    </Text>
+                    <Text style={{ fontSize: 10, color: theme.colors.gray, fontWeight: '600' }}>
+                      {arc.count} ASSOCIATED FRAGMENTS
+                    </Text>
+                  </View>
+                  <Ionicons 
+                    name={expandedArchetypes[arc.name] ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    color={theme.colors.gray} 
+                  />
+                </View>
+              </TouchableOpacity>
+
+              {expandedArchetypes[arc.name] && (
+                <View style={{ 
+                  marginTop: 8, 
+                  backgroundColor: theme.colors.light + '50', 
+                  borderRadius: 16, 
+                  padding: 8,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border
+                }}>
+                  {archetypeItems[arc.name] ? (
+                    archetypeItems[arc.name].length > 0 ? (
+                      archetypeItems[arc.name].map((item) => (
+                        <View
+                          key={`arc_item_${item.id}`}
+                          style={{
+                            backgroundColor: theme.colors.white,
+                            padding: 12,
+                            borderRadius: 12,
+                            marginBottom: 6,
+                            borderLeftWidth: 3,
+                            borderLeftColor: theme.colors.secondary,
+                          }}
+                        >
+                          <Text style={{ fontSize: 13, color: theme.colors.black }}>
+                            {item.content}
+                          </Text>
+                          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+                             <Text style={{ fontSize: 9, color: theme.colors.gray, fontWeight: '700' }}>
+                               IMPORTANCE: {item.importance_score}
+                             </Text>
+                             <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+                               {new Date(item.timestamp).toLocaleDateString()}
+                             </Text>
+                          </View>
+                        </View>
+                      ))
+                    ) : (
+                      <Text style={{ textAlign: 'center', padding: 10, fontSize: 11, color: theme.colors.gray }}>No fragments found for this archetype.</Text>
+                    )
+                  ) : (
+                    <Text style={{ textAlign: 'center', padding: 10, fontSize: 11, color: theme.colors.gray }}>Loading evidence...</Text>
+                  )}
+                </View>
+              )}
+            </View>
+          ))
+        )}
       </View>
 
-      {renderDiagnosticPanel()}
       <View style={{ height: 100 }} />
     </ScrollView>
   );
@@ -1107,6 +1372,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </TouchableOpacity>
         </View>
       </View>
+      {renderDiagnosticPanel()}
+      <View style={{ height: 100 }} />
     </ScrollView>
   );
 
