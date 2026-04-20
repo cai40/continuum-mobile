@@ -11,7 +11,7 @@ import SubscriptionSection from './src/components/SubscriptionSection';
 import StatusIndicator from './src/components/shared/StatusIndicator';
 import { styles, theme } from './src/styles/theme';
 import * as Sentry from '@sentry/react-native';
-import { SENTRY_DSN } from './src/constants/Config';
+import { SENTRY_DSN, BUILD_ID } from './src/constants/Config';
 
 // Initialize Sentry for Phase 3 Production Observability
 if (SENTRY_DSN) {
@@ -52,7 +52,7 @@ const AppShell = () => {
           await Updates.fetchUpdateAsync();
           Alert.alert(
             "New Memory Brain Available",
-            "Continuum has been updated to v2.1.0 with the new Intelligence Vault. Restart to apply changes?",
+            `Continuum has been updated to v2.4.0 (Stellar) -${BUILD_ID}. Restart to apply changes?`,
             [
               { text: "Later", style: "cancel" },
               { text: "Restart Now", onPress: () => Updates.reloadAsync() }
@@ -215,7 +215,7 @@ class GlobalErrorBoundary extends React.Component {
             <Text style={{ color: '#7f1d1d', fontWeight: '800' }}>FORCE REBOOT BRAIN</Text>
           </TouchableOpacity>
           <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, textAlign: 'center', marginTop: 16 }}>
-            v2.3.0_DEBUG_MODE
+            v2.4.0 (Stellar) -{BUILD_ID}
           </Text>
         </SafeAreaView>
       );

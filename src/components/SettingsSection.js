@@ -17,7 +17,7 @@ import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import { useAppContext } from "../context/AppContext";
 import { pulseFetch, ingestDocument } from "../services/apiService";
-import { API_URL } from "../constants/Config";
+import { API_URL, BUILD_ID } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 
@@ -331,7 +331,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         BACKEND: {session?.access_token ? "AUTHENTICATED" : "LOCAL_ONLY"}
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
-        RENDER_BUNDLE: v2.4.0 (Stellar) 04192026 -8116
+        RENDER_BUNDLE: v2.4.0 (Stellar) 04192026 -{BUILD_ID}
       </Text>
 
       <Text
@@ -1519,7 +1519,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               marginTop: 2
             }}
           >
-            v2.4.0 (Stellar) 04192026 -8116
+            v2.4.0 (Stellar) 04192026 -{BUILD_ID}
           </Text>
           <Text style={{ color: theme.colors.gray, fontSize: 5, marginTop: 4 }}>
             AUTHENTICATED SECURE NODE

@@ -25,6 +25,27 @@ Memory is not just stored; it is transformed through a background pipeline:
 
 ---
 
+## 11. Autonomous Memory Lifecycle & Pruning
+To prevent "Memory Bloat" and ensure the system remains high-speed over years of use, Continuum implements a tiered lifecycle.
+
+### 11.1 Capacity Guard (The Hard Cap)
+*   **Threshold**: 10,000 semantic fragments per user.
+*   **Logic**: When the threshold is exceeded, the system triggers `autonomous_pruning()`.
+*   **Strategy**: It identifies the 500 oldest records where `importance_score < 8`.
+*   **Immunity**: Records with `importance_score >= 8` (Core Truths) are protected from automatic deletion.
+
+### 11.2 Neural Decay (ACT-R Implementation)
+*   **Algorithm**: `Activation = log(sum(t_i ^ -d))` where `t_i` is the time since the i-th mention and `d` is the decay parameter (0.5).
+*   **Mechanism**: Memories that are not "recalled" (accessed via RAG) for an extended period see their activation score drop.
+*   **Archiving**: Memories with an activation score below -1.5 are automatically tagged as `archived` and removed from the active retrieval context.
+
+### 11.3 Consolidation Cycle (The "Sleep" Phase)
+*   **Trigger**: Every 50 messages.
+*   **Task 1 (Deep Clean)**: Synthesizes related fragments into high-level summaries to reduce redundancy.
+*   **Task 2 (Neural Decay)**: Runs the `deprioritize_stale` check to archive low-activation data.
+
+---
+
 ## 2. Authentication & Identity Flow
 Designed for zero-persistence "Safe Boot" with high-convenience AutoFill.
 
@@ -40,6 +61,11 @@ export const supabase = createClient(URL, KEY, {
 });
 ```
 
+### 2.2 Session Handshake & Persistence Strategy
+To prevent unnecessary redirects to the login screen during OTA reloads, a 500ms grace period is implemented in `AppContext.js`. 
+
+**Session-Agnostic Messaging**: Unlike secondary states, the `messages` array is **not** cleared on logout. This ensures that the user's conversational context remains visible locally across sessions. A full purge only occurs during a manual "Hard Reset" or when a different user successfully authenticates.
+
 ---
 
 ## 3. Hands-Free Voice Engine
@@ -47,8 +73,10 @@ A multimodal bridge between on-device neural processing and cloud-native inferen
 
 ### 3.1 Speech-to-Text (STT) Pipeline
 1.  **On-Device**: `expo-speech-recognition` listens for the `result` event.
-2.  **Streaming Proxy**: Partial transcripts are sent to the UI immediately.
-3.  **Silence Detection**: A 2.5s silence timer (managed via `useRef`) automatically triggers the `sendMessage` sequence.
+2.  **Multilingual Routing**: Supports `en-US`, `zh-CN`, and `es-ES`. Implemented via a cycling toggle that updates the `sttLang` state in the global context.
+3.  **Crash Shield**: Wrapped in a safety net that falls back to `en-US` if a specific locale fails to initialize on the hardware.
+4.  **Streaming Proxy**: Partial transcripts are sent to the UI immediately.
+5.  **Silence Detection**: A 2.5s silence timer (managed via `useRef`) automatically triggers the `sendMessage` sequence.
 
 ---
 
@@ -58,7 +86,10 @@ A multimodal bridge between on-device neural processing and cloud-native inferen
 To handle Render.com's "free-tier sleep" and network instability:
 1.  **Cold-Start Detection**: If the server returns `503` or times out, the engine sets `cloudWakingUp: true`.
 2.  **Network Resilience**: Added catch-all retry for generic network failures (switching from Wi-Fi to LTE).
-3.  **Exponential Wait**: Retries every 6 seconds for up to 3 attempts before surfacing an error to the user.
+3.  **Automated Data Hydration**: Triggered on session change. Automatically calls `syncRemoteHistory()` and `onRefreshMemories()` to populate the local state. Implements a **3-attempt exponential retry** to handle backend cold-starts on Render.com.
+4.  **Persistent Component Stack**: Replaced conditional rendering with a **Visibility Stack** (`display: flex/none`) for the main navigation. This prevents component unmounting, preserves scroll positions, and eliminates "re-loading" animations when switching between Continuum and Setup.
+5.  **Zero-Latency Hydration (Instant Snap)**: Implemented an `isInitialLoad` ref logic in `ChatSection.js`. On the first mount after app start or login, the list performs a zero-delay `scrollToEnd({ animated: false })`. Animated scrolling is only re-enabled for active messages post-hydration to eliminate initial UI lag.
+6.  **Exponential Wait**: Retries every 6 seconds for up to 3 attempts before surfacing an error to the user.
 
 ### 4.2 Error Boundary (The Red Screen)
 *   **Mechanism**: Wraps `AppShell`. When a JS exception occurs, it prevents the app process from exiting and renders a recovery view.
@@ -90,7 +121,8 @@ The memory and feature availability are gated based on the user's subscription t
 ### 6.1 OTA Update Protocol (The "Nuclear" Protocol)
 *   **Target Branch**: **`default`** (Binary 16 and subsequent builds listen to the default branch for updates).
 *   **Command**: `npx eas update --branch default --message '...'`
-*   **Forced Sync**: Every update MUST include a `BUILD_ID` bump in `LoginSection.js` to ensure cache-busting.
+*   **Forced Sync**: Every update MUST include a `BUILD_ID` bump (Hardcoded to `v2.4.0 (Stellar) 04192026 -8116` for the current release) to ensure cache-busting and UI consistency.
+*   **Vertical Watermarking**: Standardized a 6pt normal-weight vertical stack beneath primary titles in `App.js` and `LoginSection.js` for "Technical Watermarking."
 
 ### 6.2 Internal Syncing Tool
 *   **Implementation**: A "Cloud Sync Intelligence" button is added to the main Settings menu.
@@ -127,10 +159,10 @@ The memory and feature availability are gated based on the user's subscription t
 
 ## 9. Future Roadmap: Phase 5
 - [x] **Subscription Gating**: ✅ Complete in Binary 16.
-- [x] **L5 Knowledge Base**: ✅ Complete. Render.com vector indexing for PDF/Text is live.
 - [x] **Multimodal Ingestion (Vision & Documents)**: ✅ Complete.
 - [x] **Collapsible Memory Architecture**: ✅ Complete.
 - [x] **Cloud Stability**: ✅ Complete. Switched to Supavisor (Port 6543) and fixed SQL `text` import.
+- [x] **Multilingual Voice Core**: ✅ Complete. Supporting EN/ZH/ES cycling.
 - [ ] **Extended Formats**: Add support for `.docx` and Excel ingestion.
 
 ---

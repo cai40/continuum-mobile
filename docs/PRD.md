@@ -1,6 +1,6 @@
 # Continuum 2.0: Product Requirements Document (PRD)
 
-**Version**: 2.4.0-20260419-1800 (Stabilized)
+**Version**: 2.4.0 (Stellar)
 **Date**: April 19, 2026
 **Platform**: iOS (Primary) / Android (Compatible)
 
@@ -23,6 +23,8 @@ Continuum 2.0 is built on a high-resiliency, distributed architecture designed f
 *   **Self-Service Recovery**: Integrated "Forgot Password" functionality via Supabase email resets.
 *   **Verified Signup**: Mandatory email verification link before account activation.
 *   **iOS KeyChain**: Full support for native AutoFill and credential management.
+*   [x] **Permanent History Cache**: ✅ Complete. Persistence enabled across logouts and restarts.
+- [ ] **Extended Formats**: Add support for `.docx` and Excel ingestion.
 
 ### 2.2 Memory Intelligence Vault (The "Brain")
 Continuum uses a tiered hierarchy to manage cognitive load and retrieval accuracy.
@@ -39,12 +41,23 @@ Continuum uses a tiered hierarchy to manage cognitive load and retrieval accurac
 
 ### 2.3 Hands-Free Voice Interface (The "Pulse")
 *   **Neural STT**: Instant, low-latency transcription via `expo-speech-recognition`.
+*   **Multilingual Support**: ✅ Complete. Single-button cycling toggle between **English**, **Chinese**, and **Spanish** voice input.
 *   **Streaming Reassembly**: Real-time rendering of fragmented AI tokens for a "living" conversation feel.
 
 ### 2.4 Multimodal Ingestion (Vision & Intelligence)
 *   **Visual Context**: ✅ Operational. Users can attach images to chat messages for high-fidelity Vision analysis.
 *   **Document Indexing**: ✅ Operational. Support for PDF and Text (with .docx roadmap) to populate the L5 Global Knowledge base via the Render indexer.
 *   **Seamless Integration**: Dedicated "Paperclip" in chat and "Sync Document" in settings vault for bulk ingestion.
+
+### 2.6 Intelligence Routing (The "Oracle")
+*   **GPT-4o mini Support**: Integrated as the high-speed, cost-effective standard model via OpenRouter.
+*   **Provider Switching**: Hot-swapping between Gemini, Claude (OpenRouter), and GPT-4o mini directly from the chat interface.
+
+### 2.5 Autonomous Memory Maintenance (The "Self-Healing Brain")
+*   **Capacity Guard**: Automatic pruning of the oldest, least-relevant fragments once the 10,000-item threshold is reached.
+*   **Core Truth Protection**: Facts marked with Importance 8-10 are exempt from automatic pruning, ensuring user identity remains stable.
+*   **Sleep Cycle (Neural Decay)**: Background tasks that consolidate redundant memories and "archive" stale information every 50 messages to maintain high-speed retrieval.
+*   **Conversational Forgetting**: Users can command the AI to "forget" or "correct" specific memories directly through natural language.
 
 ## 3. Commercialization & Subscription Model
 
@@ -65,7 +78,12 @@ Continuum uses a tiered hierarchy to manage cognitive load and retrieval accurac
 ### 4.1 Zero-Downtime Updates (OTA)
 *   **Automatic Check**: App checks for JS updates on every launch (`ON_LOAD`).
 *   **Manual Sync**: A dedicated "Cloud Sync Intelligence" button in Settings allows users to pull updates without logging out.
-*   **Force Reload**: Fail-safe option to restart the JS engine if the cache becomes stale.
+*   **Session Persistence**: ✅ Complete. Implemented "Session Handshake Grace Period" to prevent login redirects during OTA reloads.
+*   **Automated Hydration**: ✅ Complete. Chat history and Memory Vault (L1-L5) automatically load from the cloud on login and app startup via the `/chat/history` endpoint with a 3-attempt resilient retry logic.
+*   **Permanent Memory Cache**: ✅ Complete. Implemented Session-Agnostic Persistence where chat history is stored via `AsyncStorage` and preserved even across logouts and app restarts.
+*   **Instant-Snap UI**: ✅ Complete. Optimized the Chat UI to performing an instantaneous 'jump' to the bottom on initial load, eliminating the wait time of traditional scroll animations.
+*   **Persistent Navigation Stack**: ✅ Complete. Implemented a Visibility Stack in `App.js` that keeps the Chat and Setup sections mounted in the background to prevent scroll-resetting and ensure instantaneous tab switching.
+*   **Technical Watermarking**: ✅ Complete. Enforced a non-bold, 6pt vertical watermark beneath primary titles in Login and Setup screens for build identification.
 
 ### 4.2 Error Handling
 *   **Red Screen Recovery**: Global error boundary prevents app crashes and offers a "Hard Reboot" button to clear corrupt state.
@@ -77,4 +95,5 @@ Continuum uses a tiered hierarchy to manage cognitive load and retrieval accurac
 *   **Multimodal Ingestion**: ✅ Complete. Vision and PDF indexing are operational.
 *   **Cloud-Native Autonomy**: ✅ Complete. Session persistence and auto-refresh enabled for "PC-off" independence.
 *   **App Store Submission**: In progress. Completing the screenshot suite and metadata submission.
+*   **Multilingual Voice**: ✅ Complete. Supporting EN, ZH, and ES with instant switching.
 *   **Local AI Engine**: Investigating on-device Whisper/Llama models for local-only Elite tier processing.
