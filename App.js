@@ -100,12 +100,12 @@ const AppShell = () => {
           <View style={{flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', minHeight: 30}}>
             <View>
               <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800', lineHeight: 22}}>
-                {activeTab === 'Continuum' ? 'Continuum' : 'Setup'}
+                {activeTab === 'chat' ? 'Continuum' : 'Setup'}
               </Text>
             </View>
             <View>
               <Text style={{color: theme.colors.gray, fontSize: 6, fontWeight: '400', marginTop: -2}}>
-                {activeTab === 'Setup' ? 'v2.4.0 (Stellar) 04192026 -8116' : 'v2.4.0'}
+                {activeTab === 'settings' ? 'v2.4.0 (Stellar) 04192026 -8116' : 'v2.4.0'}
               </Text>
             </View>
           </View>
