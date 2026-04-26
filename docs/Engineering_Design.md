@@ -99,6 +99,46 @@ All vector-capable layers utilize **pgvector 0.8.0** with the following optimize
 *   **Operator**: `halfvec_cosine_ops`.
 *   **Goal**: Sub-10ms retrieval latency across million-row tables.
 
+---
+
+## 5. Neural Capacity & Quota Enforcement [NEW]
+Build 3.4.55 shifts the monetization logic from "Layer Blocking" to "Capacity Policing."
+
+### 5.1 Fact-Count Hard Caps (L1-L5)
+*   **Logic**: Before any memory extraction or sync, the system performs a `count(*)` on the user's combined `semantic_memories` and `semantic_profile` records.
+*   **Enforcement**: 
+    - **Free**: 500
+    - **Pro**: 5,000
+    - **Elite**: 50,000
+*   **Memory Eviction**: When a cap is exceeded, the **Ebbinghaus Decay Engine** (Section 3.4) is force-triggered with a higher decay multiplier to vaporize low-activation fragments until the count falls within the tier limit.
+
+### 5.2 Daily Heartbeat (Message Quota)
+*   **Persistence**: Tracked locally via `AsyncStorage` for high-speed UI gating and verified against the `chat_messages` table in the backend.
+*   **Reset Engine**: A localized timestamp check during app initialization resets the `dailyMessageCount` to 0 at midnight local time.
+
+---
+
+## 6. Legal Compliance & Audit Architecture [NEW]
+Build 3.4.60 implements a mandatory "Legal Fortress" to ensure App Store compliance.
+
+### 6.1 Immutable Audit Ledger
+*   **Table**: `legal_compliance_audit`.
+*   **Persistence Strategy**: This table is excluded from "On Delete Cascade" relationships. It acts as an **Indestructible Ledger**, ensuring that even if a user requests a "Total Purge" of their memory brain, the record of their legal agreement remains for the company's protection.
+*   **Schema**:
+    - `id`: Auto-incrementing Primary Key.
+    - `user_email`: String (Index).
+    - `acceptance_date`: DateTime (UTC).
+    - `terms_version`: String (e.g., "1.0.0").
+    - `ip_address`: String (Client Host IP).
+    - `user_agent`: String (Device/Browser Identity).
+
+### 6.2 Dual Confirmation Pipeline
+*   **Phase 1: DB Commit**: Immediate record insertion during the onboarding flow.
+*   **Phase 2: SMTP Dispatch**: A FastAPI `BackgroundTasks` job that fires a dual-receipt email:
+    - **Recipient A**: The User (Proof of Agreement).
+    - **Recipient B**: The Administrator (cai40@yahoo.com) (Compliance Audit).
+*   **Resiliency**: If the SMTP server fails, the app still proceeds based on the successful DB commit, with a fail-safe log recorded in the backend.
+
 ### 4.1 Chat Retrieval Protocol (v3.4.22+)
 To prevent "Context Flood" and minimize LLM costs, every chat message triggers a multi-phase retrieval process:
 1.  **Neural Quantization (v3.4.29) ✅**: All vectors converted to 16-bit halfvec, reducing footprint by 50-75%.

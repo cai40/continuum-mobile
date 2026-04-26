@@ -1,7 +1,7 @@
 # Continuum 2.0: Product Requirements Document (PRD)
 
-**Version**: 2.4.1 (Horizon)
-**Date**: April 20, 2026
+**Version**: 3.4.67 (Legal Fortress)
+**Date**: April 26, 2026
 **Platform**: iOS (Primary) / Android (Compatible)
 
 ---
@@ -90,6 +90,34 @@ To achieve **Infinite Memory** without exceeding database limits (500MB), Contin
 *   **Environmental IQ**: Real-time GPS/Weather integration via `wttr.in` and localized client-time synchronization.
 *   **Security RLS (Row Level Security)**: Production-grade security policies that enable cross-platform vault consistency while protecting user privacy.
 
+### 2.8 Data Sovereignty & User Isolation [NEW]
+*   **Logical Fortress**: Every user's "Neural Vault" is mathematically isolated. 
+*   **Zero Cross-Talk**: Privacy-first retrieval ensures User A's AI can never access User B's memories or document chunks.
+*   **GDPR Compliance**: Implementation of the "Absolute Purge" (Kill Switch) allows users to irreversibly wipe their identity from all database layers and vector manifolds.
+
+### 2.9 Neural Capacity & Quota System [NEW]
+Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to all users while maintaining sustainable infrastructure costs.
+*   **Full 5-Layer Access**: All users (Free/Pro/Elite) have immediate access to L1-L5 memory layers.
+*   **Neural Storage (Fact Capacity)**: Hard-cap on total stored memory fragments to manage database density.
+    - **Free**: 500 Facts
+    - **Pro**: 5,000 Facts
+    - **Elite**: 50,000 Facts
+*   **Daily Heartbeat (Message Quota)**: Daily limit on LLM interactions to manage API overhead.
+    - **Free**: 10 Conversations / Day
+    - **Pro**: 100 Conversations / Day
+    - **Elite**: Unlimited (9,999)
+
+### 2.10 Legal Compliance Gate (The "Fortress") [NEW]
+*   **Mandatory Onboarding**: Users are forced to review and accept the Privacy Policy and Terms of Use before accessing any memory layers.
+*   **Immutable Audit Ledger**: Consent is recorded in a dedicated database table (`legal_compliance_audit`) that is protected from deletion, even during account wipes.
+*   **Verified Receipts**: Automatic email dispatch to the user and administrator (cai40@yahoo.com) upon legal acceptance, creating a permanent off-chain record of consent.
+*   **Scroll-to-Accept**: UI requirement ensuring users physically scroll through the legal text before the "Accept" button becomes active.
+
+### 2.7 Smart Biometric Vault & Infrastructure [NEW]
+*   **Secure Autofill Architecture**: Implementation of hardware-level (FaceID/TouchID) biometric verification used to decrypt and populate credentials into the login interface. Prioritizes user agency and manual account switching over hard-gated entry.
+*   **Deep-Link Authentication Bridge**: Custom URI scheme (`continuum://`) and backend redirect handler to ensure 100% success rate for email verification flows, bypassing 404 "Not Found" errors during user registration.
+*   **Unified OTA Sync**: Real-time version synchronization across all app diagnostic panels to ensure users are always aware of their current "Cloud Brain" status.
+
 ### 2.4 Hands-Free Voice Interface (The "Pulse")
 *   **Neural STT**: Instant transcription with multilingual cycling (EN, ZH, ES).
 *   **Neural Voice**: Six high-fidelity neural voices for AI response.
@@ -108,4 +136,7 @@ To achieve **Infinite Memory** without exceeding database limits (500MB), Contin
 *   **Semantic Deduplication**: ✅ Complete. Global Paginated Pruning active.
 *   **Multimodal Ingestion**: ✅ Complete. Vision and PDF indexing are operational.
 *   **Resilient Archiver**: ✅ Complete. v3.4.45 restoration pulse active.
+*   **Biometric Vault**: ✅ Complete. Smart Autofill operational in v3.4.47.
+*   **Auth Infrastructure**: ✅ Complete. Deep-link verification bridge active.
+*   **Data Sovereignty**: ✅ Complete. RLS-hardened Multi-Tenancy active.
 *   **App Store Submission**: In progress. Metadata and screenshots finalized.
