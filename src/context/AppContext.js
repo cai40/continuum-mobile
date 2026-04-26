@@ -13,7 +13,8 @@ import {
   fetchBrainAnalytics as apiFetchAnalytics,
   fetchChatHistory as apiFetchHistory,
   fetchMemories,
-  pulseFetch
+  pulseFetch,
+  fetchSystemVersion
 } from "../services/apiService";
 import { API_URL } from "../constants/Config";
 
@@ -24,6 +25,7 @@ export const AppProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [isBiometricAuthenticated, setIsBiometricAuthenticated] = useState(false);
   const [serverStatus, setServerStatus] = useState("checking"); // 'healthy', 'degraded', 'offline'
   const [provider, setProvider] = useState("gemini");
   const [groqKey, setGroqKey] = useState("");
@@ -54,9 +56,9 @@ export const AppProvider = ({ children }) => {
 
   const [cloudWakingUp, setCloudWakingUp] = useState(false);
   const [backendStatus, setBackendStatus] = useState({
-    task: "Idle",
     progress: 100,
   });
+  const [serverVersion, setServerVersion] = useState("Loading...");
   const [isSyncingHistory, setIsSyncingHistory] = useState(false);
 
   // 3-TIER SUBSCRIPTION ENGINE
@@ -76,8 +78,13 @@ export const AppProvider = ({ children }) => {
         if (session) {
           setSession(session);
           setUser(session.user);
+          // Biometric is required for hydrated sessions on cold start
+          setIsBiometricAuthenticated(false);
           fetchAnalytics();
         }
+        // Always try to fetch version even if no session
+        const ver = await fetchSystemVersion();
+        if (ver) setServerVersion(ver);
       } catch (e) {
         console.warn("Auth Handshake failed:", e);
       } finally {
@@ -249,15 +256,23 @@ export const AppProvider = ({ children }) => {
     }
   }, [session]);
 
-  // Intelligence Sync: Map brainStats to trueCounts for UI (Corrected for Layer Order)
+  // Intelligence Sync: Map brainStats to trueCounts for UI (Corrected for v3.4.15+ format)
   useEffect(() => {
-    setTrueCounts({
-      l1: brainStats.pinned_total || 0,
-      l2: brainStats.episodic_total || 0,
-      l3: brainStats.semantic_total || 0,
-      l4: brainStats.temporal_total || 0,
-      l5: brainStats.knowledge_chunks || 0,
-    });
+    if (!brainStats) return;
+    
+    // If backend sends the new trueCounts object, use it directly
+    if (brainStats.trueCounts) {
+      setTrueCounts(brainStats.trueCounts);
+    } else {
+      // Fallback for older format if necessary
+      setTrueCounts({
+        l1: brainStats.pinned_total || 0,
+        l2: brainStats.episodic_total || 0,
+        l3: brainStats.semantic_total || 0,
+        l4: brainStats.temporal_total || 0,
+        l5: brainStats.knowledge_chunks || 0,
+      });
+    }
   }, [brainStats]);
 
   const saveKeys = async () => {
@@ -290,7 +305,10 @@ export const AppProvider = ({ children }) => {
         setCloudWakingUp,
         session?.access_token,
       );
-      if (data) setBrainStats(data);
+      if (data) {
+        setBrainStats(data);
+        if (data.version) setServerVersion(data.version);
+      }
     } catch (err) {
       console.warn("Analytics fetch failed:", err);
     }
@@ -361,6 +379,7 @@ export const AppProvider = ({ children }) => {
     setTemporalEvents([]);
     setEpisodicSegments([]);
     setPinnedMemories([]);
+    setIsBiometricAuthenticated(false);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
@@ -441,6 +460,7 @@ export const AppProvider = ({ children }) => {
         setCloudWakingUp,
         serverStatus,
         setServerStatus,
+        serverVersion,
         backendStatus,
         setBackendStatus,
         saveKeys,
@@ -457,6 +477,8 @@ export const AppProvider = ({ children }) => {
         isSuperUser,
         isFeatureAvailable,
         trialStart,
+        isBiometricAuthenticated,
+        setIsBiometricAuthenticated,
       }}
     >
       {children}

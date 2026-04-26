@@ -63,6 +63,7 @@ const SettingsSection = (props) => {
     setSttLang,
     subscriptionTier,
     isSuperUser,
+    serverVersion,
     onRefreshMemories,
   } = useAppContext();
 
@@ -393,8 +394,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
         BACKEND: {session?.access_token ? "AUTHENTICATED" : "LOCAL_ONLY"}
       </Text>
-      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
-        RENDER_BUNDLE: v2.4.0 (Stellar) 04192026 -{BUILD_ID}
+      <Text style={{ fontSize: 9, color: theme.colors.gray, fontWeight: '800' }}>
+        RENDER_BUNDLE: {serverVersion}
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
         GIT_BLUEPRINT: {GIT_COMMIT}
@@ -809,13 +810,22 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             <MetricItem label="VAULT (KB)" value={brainStats.total_kb || 0} color={theme.colors.black} />
           </View>
           
+          {/* DATABASE CAPACITY MONITOR (v3.4.24) */}
           <View style={{ marginTop: 16 }}>
              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray }}>SYSTEM UTILIZATION</Text>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary }}>{((trueCounts.l1 + trueCounts.l2 + trueCounts.l3 + trueCounts.l4 + trueCounts.l5) / 100).toFixed(1)}%</Text>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray }}>DATABASE CAPACITY</Text>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary }}>
+                  {brainStats.db_size_mb || 0} / {brainStats.db_limit_mb || 500} MB
+                </Text>
              </View>
-             <View style={{ height: 4, backgroundColor: theme.colors.light, borderRadius: 2, overflow: 'hidden' }}>
-                <View style={{ width: `${((trueCounts.l1 + trueCounts.l2 + trueCounts.l3 + trueCounts.l4 + trueCounts.l5) / 100)}%`, height: '100%', backgroundColor: theme.colors.primary }} />
+             <View style={{ height: 6, backgroundColor: theme.colors.light, borderRadius: 3, overflow: 'hidden' }}>
+                <View 
+                  style={{ 
+                    width: `${Math.min(100, ((brainStats.db_size_mb || 0) / (brainStats.db_limit_mb || 500)) * 100)}%`, 
+                    height: '100%', 
+                    backgroundColor: ((brainStats.db_size_mb || 0) / (brainStats.db_limit_mb || 500)) > 0.8 ? theme.colors.danger : theme.colors.primary 
+                  }} 
+                />
              </View>
           </View>
         </View>
@@ -1785,7 +1795,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               marginTop: 2
             }}
           >
-            v2.4.0 (Stellar) 04192026 -{BUILD_ID}
+            {serverVersion || BUILD_ID}
           </Text>
           <Text style={{ color: theme.colors.gray, fontSize: 5, marginTop: 4 }}>
             AUTHENTICATED SECURE NODE

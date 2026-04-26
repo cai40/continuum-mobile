@@ -246,6 +246,7 @@ export const chatStream = (
   };
 
   xhr.onerror = () => onError("Network error or server unreachable.");
+
   xhr.send(formData);
 
   return xhr; // Return for cancellation (abort)
@@ -287,5 +288,14 @@ export const ingestDocument = async (
   } catch (err) {
     console.error("Ingestion Service Error:", err);
     throw err;
+  }
+};
+export const fetchSystemVersion = async () => {
+  try {
+    const data = await pulseFetch(`${API_URL}/system/version`, { method: "GET" });
+    return data?.version || "Unknown";
+  } catch (err) {
+    console.warn("Failed to fetch system version:", err);
+    return "Offline";
   }
 };

@@ -7,6 +7,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
+import * as Location from 'expo-location';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent
@@ -41,6 +42,7 @@ const ChatSection = () => {
   const [localTranscript, setLocalTranscript] = useState('');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [location, setLocation] = useState(null);
 
   const chatListRef = useRef();
   const abortControllerRef = useRef(null);
@@ -88,8 +90,18 @@ const ChatSection = () => {
     sendMessage(null, true);
   };
 
-  // Audio Cleanup
+  // Audio & Location Setup
   useEffect(() => {
+    (async () => {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+          let loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          setLocation(loc);
+        }
+      } catch (e) { console.warn("Location Setup Error:", e); }
+    })();
+
     return () => {
       if (soundRef.current) soundRef.current.unloadAsync();
       // Ensure STT is stopped on unmount
@@ -297,8 +309,15 @@ const ChatSection = () => {
       formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
     }
 
-    const currentToken = session?.access_token;
-    if (!currentToken) {
+    if (location) {
+      formData.append('lat', location.coords.latitude.toString());
+      formData.append('lon', location.coords.longitude.toString());
+    }
+
+    formData.append('client_time', new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+
+    const activeToken = session?.access_token?.trim();
+    if (!activeToken) {
       Alert.alert("Security Error", "Session expired. Please log in again.");
       setIsTyping(false);
       return;
@@ -349,9 +368,10 @@ const ChatSection = () => {
       },
       (err) => {
         setIsTyping(false);
-        Alert.alert("Error", err);
+        setStreamingContent('');
+        Alert.alert("Chat Error", err);
       },
-      currentToken
+      activeToken
     );
 
     // Store reference to abort later if needed

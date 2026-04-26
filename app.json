@@ -3,7 +3,7 @@
     "name": "Continuum 2.0",
     "slug": "continuum-2-0",
     "scheme": "continuum",
-    "version": "2.3.2",
+    "version": "3.4.46",
     "description": "Your autonomous AI memory advisor. Continuum builds a multi-layered semantic profile of your life to provide high-context advice and 24/7 memory retrieval.",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,13 +17,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.continuum.advisor.cloud",
-      "buildNumber": "17",
+      "buildNumber": "19",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Continuum needs access to your microphone to enable hands-free AI voice interactions.",
         "NSSpeechRecognitionUsageDescription": "Continuum uses on-device neural processing to transcribe your voice instantly and privately.",
         "NSPhotoLibraryUsageDescription": "Continuum needs access to your photos to allow the AI to analyze your documents and images.",
         "NSCameraUsageDescription": "Continuum needs access to your camera to capture images for real-time visual AI analysis.",
         "NSFaceIDUsageDescription": "Continuum uses FaceID to securely unlock your stored credentials and memory vault.",
+        "NSLocationWhenInUseUsageDescription": "Continuum uses your location to provide real-time weather, travel advice, and environmental context for your AI advisor.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -32,6 +33,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#051431"
       },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE"
+      ],
       "edgeToEdgeEnabled": true
     },
     "web": {
@@ -51,7 +57,8 @@
     },
     "plugins": [
       "expo-speech-recognition",
-      "expo-local-authentication"
+      "expo-local-authentication",
+      "expo-location"
     ]
   }
 }

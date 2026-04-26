@@ -10,20 +10,27 @@ import { theme } from '../styles/theme';
 import { BUILD_ID } from '../constants/Config';
 
 
-const LoginHeader = React.memo(() => (
-  <View style={loginStyles.header}>
-    <View style={loginStyles.logoCircle}>
-       <Ionicons name="pulse" size={40} color={theme.colors.primary} />
+import { useAppContext } from '../context/AppContext';
+
+
+const LoginHeader = React.memo(() => {
+  const { serverVersion } = useAppContext();
+  return (
+    <View style={loginStyles.header}>
+      <View style={loginStyles.logoCircle}>
+         <Ionicons name="pulse" size={40} color={theme.colors.primary} />
+      </View>
+      <Text style={loginStyles.title}>Continuum</Text>
+      <Text style={{ color: theme.colors.gray, fontSize: 10, marginTop: 10 }}>
+        {serverVersion || 'Connecting...'}
+      </Text>
+      <Text style={loginStyles.subtitle}>Your Autonomous Memory AI</Text>
     </View>
-    <Text style={loginStyles.title}>Continuum</Text>
-    <Text style={{ color: theme.colors.gray, fontSize: 6, marginTop: -5, marginBottom: 5 }}>
-      v2.4.0 (Stellar) 04192026 -{BUILD_ID}
-    </Text>
-    <Text style={loginStyles.subtitle}>Your Autonomous Memory AI</Text>
-  </View>
-));
+  );
+});
 
 const LoginSection = () => {
+  const { serverVersion, user, setIsBiometricAuthenticated } = useAppContext();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,34 +42,67 @@ const LoginSection = () => {
   useEffect(() => {
     const loadCredentials = async () => {
       try {
-        const savedEmail = await AsyncStorage.getItem('saved_email');
-        const savedPass = await AsyncStorage.getItem('saved_password');
+        // 1. Initial Hardware Check
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
         
-        if (savedEmail && savedPass) {
-          // Check if hardware supports biometrics
-          const hasHardware = await LocalAuthentication.hasHardwareAsync();
-          const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        if (hasHardware && isEnrolled) {
+          const result = await LocalAuthentication.authenticateAsync({
+            promptMessage: user ? 'Unlock Continuum' : 'Login to Continuum',
+            fallbackLabel: 'Use Passcode',
+          });
           
-          if (hasHardware && isEnrolled) {
-            const result = await LocalAuthentication.authenticateAsync({
-              promptMessage: 'Unlock Continuum',
-              fallbackLabel: 'Use Passcode',
-            });
+          if (result.success) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             
-            if (result.success) {
-              setEmail(savedEmail);
-              setPassword(savedPass);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            if (user) {
+              // CASE A: User has a session but is locked (Re-entry)
+              setIsBiometricAuthenticated(true);
+            } else {
+              // CASE B: User is cold-starting without a session
+              const savedEmail = await AsyncStorage.getItem('saved_email');
+              const savedPass = await AsyncStorage.getItem('saved_password');
+              
+              if (savedEmail && savedPass) {
+                setEmail(savedEmail);
+                setPassword(savedPass);
+                // Trigger auto-login with restored credentials
+                await performAuth(savedEmail, savedPass);
+              }
             }
-          } else {
-            // No biometrics, just fill the email for convenience
-            setEmail(savedEmail);
           }
+        } else {
+          // No biometrics available, try to at least fill email for convenience
+          const savedEmail = await AsyncStorage.getItem('saved_email');
+          if (savedEmail) setEmail(savedEmail);
         }
-      } catch (e) { console.warn("Biometric check failed"); }
+      } catch (e) { console.warn("Biometric check failed:", e); }
     };
     loadCredentials();
-  }, []);
+  }, [user]);
+
+  // ─── Shared Auth Logic ────────────────────────────────────────────────────────
+  const performAuth = async (targetEmail, targetPass) => {
+    setLoading(true);
+    try {
+      const { error, data } = await supabase.auth.signInWithPassword({ 
+        email: targetEmail.trim(), 
+        password: targetPass 
+      });
+      if (error) throw error;
+      
+      await AsyncStorage.setItem('saved_email', targetEmail.trim());
+      await AsyncStorage.setItem('saved_password', targetPass);
+      
+      // On successful login, also set biometric as authenticated for this session
+      setIsBiometricAuthenticated(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      Alert.alert('Auth Error', error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ─── Force OTA Update ────────────────────────────────────────────────────────
   const forceUpdateCheck = async () => {
@@ -129,36 +169,81 @@ const LoginSection = () => {
       return;
     }
 
-    setLoading(true);
-    try {
-      if (isSignUp) {
+    if (isSignUp) {
+      setLoading(true);
+      try {
         const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
         if (error) throw error;
-
-        // Check if email confirmation is required
         if (data?.user && !data?.session) {
           Alert.alert(
             'Verify Your Email',
-            `A confirmation link has been sent to ${email.trim()}. Please check your inbox and click the link to activate your account.`,
+            `A confirmation link has been sent to ${email.trim()}. Please check your inbox.`,
             [{ text: 'OK' }]
           );
         }
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) throw error;
-        
-        // --- PERSISTENCE: Save credentials for next time ---
-        await AsyncStorage.setItem('saved_email', email.trim());
-        await AsyncStorage.setItem('saved_password', password);
-        
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch (error) {
+        Alert.alert('Auth Error', error.message);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      Alert.alert('Auth Error', error.message);
-    } finally {
-      setLoading(false);
+    } else {
+      await performAuth(email, password);
     }
   };
+
+  // ─── LOCKED STATE UI ────────────────────────────────────────────────────────
+  if (user) {
+    return (
+      <View style={loginStyles.container}>
+        <View style={loginStyles.content}>
+          <LoginHeader />
+          <View style={{ alignItems: 'center', marginTop: 40 }}>
+            <View style={{ 
+              width: 100, height: 100, borderRadius: 50, 
+              backgroundColor: theme.colors.light, 
+              justifyContent: 'center', alignItems: 'center',
+              marginBottom: 24
+            }}>
+              <Ionicons name="lock-closed" size={48} color={theme.colors.primary} />
+            </View>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: theme.colors.black }}>Vault Locked</Text>
+            <Text style={{ fontSize: 14, color: theme.colors.gray, marginTop: 8, textAlign: 'center' }}>
+              Authentication required to access your memory brain.
+            </Text>
+            
+            <TouchableOpacity
+              style={[loginStyles.primaryButton, { width: '100%', marginTop: 40 }]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                // Trigger the same biometric logic manually
+                const retryBiometric = async () => {
+                  const result = await LocalAuthentication.authenticateAsync({
+                    promptMessage: 'Unlock Continuum',
+                    fallbackLabel: 'Use Passcode',
+                  });
+                  if (result.success) setIsBiometricAuthenticated(true);
+                };
+                retryBiometric();
+              }}
+            >
+              <Text style={loginStyles.buttonText}>Unlock with Biometrics</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{ marginTop: 24 }}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                supabase.auth.signOut();
+                setIsBiometricAuthenticated(false);
+              }}
+            >
+              <Text style={{ color: theme.colors.danger, fontWeight: '600' }}>Switch Account</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={loginStyles.container}>
@@ -268,7 +353,7 @@ const LoginSection = () => {
         {/* Version Watermark */}
         <View style={{ marginTop: 32, alignItems: 'center' }}>
           <Text style={{ color: theme.colors.gray, fontSize: 10, opacity: 0.4 }}>
-            {BUILD_ID}
+            {serverVersion || BUILD_ID}
           </Text>
         </View>
       </View>

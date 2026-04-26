@@ -28,6 +28,7 @@ if (SENTRY_DSN) {
 const AppShell = () => {
   const { 
     user,
+    isBiometricAuthenticated,
     activeTab, setActiveTab, 
     provider, 
     serverStatus,
@@ -52,7 +53,7 @@ const AppShell = () => {
           await Updates.fetchUpdateAsync();
           Alert.alert(
             "New Memory Brain Available",
-            `Continuum has been updated to v2.4.0 (Stellar) -${BUILD_ID}. Restart to apply changes?`,
+            `Continuum has been updated to ${BUILD_ID}. Restart to apply changes?`,
             [
               { text: "Later", style: "cancel" },
               { text: "Restart Now", onPress: () => Updates.reloadAsync() }
@@ -69,7 +70,7 @@ const AppShell = () => {
     onFetchUpdateAsync();
   }, []);
 
-  if (!user) {
+  if (!user || !isBiometricAuthenticated) {
     return <LoginSection />;
   }
 
@@ -214,8 +215,8 @@ class GlobalErrorBoundary extends React.Component {
           >
             <Text style={{ color: '#7f1d1d', fontWeight: '800' }}>FORCE REBOOT BRAIN</Text>
           </TouchableOpacity>
-          <Text style={{ color: 'rgba(255,255,255,0.5)', fontSize: 10, textAlign: 'center', marginTop: 16 }}>
-            v2.4.0 (Stellar) -{BUILD_ID}
+          <Text style={{ fontSize: 8, color: theme.colors.gray, marginBottom: 5 }}>
+            {this.context?.serverVersion || BUILD_ID}
           </Text>
         </SafeAreaView>
       );
