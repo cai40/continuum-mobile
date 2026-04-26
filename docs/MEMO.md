@@ -17,7 +17,13 @@ This release marks the transition of Continuum 2.0 from a feature-gated prototyp
 *   **Capacity Gating**: Introduced "Neural Storage" caps (500 / 5,000 / 50,000 facts) to manage database density and infrastructure costs.
 *   **Daily Heartbeat Quotas**: Implemented daily conversation limits (10 / 100 / Unlimited) to manage LLM API overhead.
 
-### C. UI/UX Evolution
+### C. Store Readiness Audit ✅
+*   **Privacy & Safety**: Verified mandatory "Account Deletion" and legal links are prominently visible in Settings.
+*   **Hardware Permissions**: Audited `app.json` for clear, user-centric permission descriptions (Mic, Camera, FaceID).
+*   **Support Accessibility**: Added a direct "Contact Support" email link to meet App Store requirements.
+*   **Branding Consistency**: Synchronized all UI headers and manifest metadata to the official "Continuum 2.0" identity.
+
+### D. UI/UX Evolution
 *   **Neural Capacity Monitor**: Added a real-time storage and quota visualization dashboard in the Setup menu.
 *   **Dual Subscription Path**: Redesigned the membership interface to offer "Subscribe Now" and "Free Trial" options for Pro/Elite tiers.
 
