@@ -395,7 +395,10 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         BACKEND: {session?.access_token ? "AUTHENTICATED" : "LOCAL_ONLY"}
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray, fontWeight: '800' }}>
-        RENDER_BUNDLE: {serverVersion}
+        APP_VERSION: {BUILD_ID}
+      </Text>
+      <Text style={{ fontSize: 9, color: theme.colors.gray }}>
+        CLOUD_NODE: {serverVersion}
       </Text>
       <Text style={{ fontSize: 9, color: theme.colors.gray }}>
         GIT_BLUEPRINT: {GIT_COMMIT}
@@ -595,9 +598,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           ))}
         </View>
 
-        {/* Row 2: Specialized / Chinese Giants */}
+        {/* Row 2: Specialized / Balanced */}
         <View style={{ flexDirection: "row", gap: 10 }}>
-          {["gpt4o_mini", "or_free", "deepseek", "qwen"].map((p) => (
+          {["gpt4o_mini", "or_free", "deepseek_v3.2", "qwen"].map((p) => (
             <TouchableOpacity
               key={p}
               onPress={() => {
@@ -624,7 +627,77 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                   textTransform: "uppercase",
                 }}
               >
-                {p === "or_free" ? "OR FREE" : (p === "gpt4o_mini" ? "4O MINI" : p)}
+                {p === "or_free" ? "OR FREE" : (p === "gpt4o_mini" ? "4O MINI" : (p === "deepseek_v3.2" ? "DS V3.2" : p))}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Row 3: Advanced Intelligence [NEW] */}
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {["kimi_k2.6", "deepseek_v4_pro"].map((p) => (
+            <TouchableOpacity
+              key={p}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setProvider(p);
+              }}
+              style={{
+                flex: 1,
+                backgroundColor:
+                  provider === p ? '#6C5CE7' : theme.colors.white,
+                paddingVertical: 10,
+                borderRadius: 12,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor:
+                  provider === p ? '#6C5CE7' : theme.colors.border,
+              }}
+            >
+              <Text
+                style={{
+                  color: provider === p ? "white" : theme.colors.gray,
+                  fontSize: 10,
+                  fontWeight: "800",
+                  textTransform: "uppercase",
+                }}
+              >
+                {p === "kimi_k2.6" ? "KIMI K2.6" : "DS V4 PRO"}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Row 4: Speed & Variety [NEW] */}
+        <View style={{ flexDirection: "row", gap: 10 }}>
+          {["deepseek_v4_flash", "minimax"].map((p) => (
+            <TouchableOpacity
+              key={p}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setProvider(p);
+              }}
+              style={{
+                flex: 1,
+                backgroundColor:
+                  provider === p ? '#00B894' : theme.colors.white,
+                paddingVertical: 10,
+                borderRadius: 12,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor:
+                  provider === p ? '#00B894' : theme.colors.border,
+              }}
+            >
+              <Text
+                style={{
+                  color: provider === p ? "white" : theme.colors.gray,
+                  fontSize: 10,
+                  fontWeight: "800",
+                  textTransform: "uppercase",
+                }}
+              >
+                {p === "deepseek_v4_flash" ? "DS V4 FLASH" : "MINIMAX"}
               </Text>
             </TouchableOpacity>
           ))}
@@ -1795,7 +1868,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               marginTop: 2
             }}
           >
-            {serverVersion || BUILD_ID}
+            v{BUILD_ID} | CLOUD: {serverVersion}
           </Text>
           <Text style={{ color: theme.colors.gray, fontSize: 5, marginTop: 4 }}>
             AUTHENTICATED SECURE NODE
