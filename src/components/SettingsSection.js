@@ -1756,7 +1756,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
   const renderActiveSubTab = () => {
     switch (activeSubTab) {
-      case "api": return renderAPISettings();
+      case "api": 
+        if (!isSuperUser) return null;
+        return renderAPISettings();
       case "voice": return renderVoiceSettings();
       case "persona": return renderPersonaSettings();
       case "data": return renderDataSettings();
@@ -1806,12 +1808,16 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <View style={{ padding: 20 }}>
 
         <View style={styles.groupedCard}>
-          <MenuRow
-            icon="hardware-chip-outline"
-            label="Intelligence & API Keys"
-            onPress={() => setActiveSubTab("api")}
-          />
-          <Divider />
+          {isSuperUser && (
+            <>
+              <MenuRow
+                icon="hardware-chip-outline"
+                label="Intelligence & API Keys"
+                onPress={() => setActiveSubTab("api")}
+              />
+              <Divider />
+            </>
+          )}
           <MenuRow
             icon="mic-outline"
             label="Voice & Audio"
