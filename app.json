@@ -29,6 +29,7 @@
       }
     },
     "android": {
+      "package": "com.continuum.advisor.cloud",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#051431"
