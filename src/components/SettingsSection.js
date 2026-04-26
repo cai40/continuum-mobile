@@ -863,47 +863,66 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
     >
       {renderHeader("Data & Memory OS")}
 
-      {/* --- STATISTICS BOX (PROMOTED TO TOP) --- */}
+      {/* --- NEURAL CAPACITY MONITOR (v3.4.50) --- */}
       <View style={{ marginBottom: 24 }}>
-        <Text style={[categoryTitleStyle, { marginBottom: 12 }]}>TOTAL INTELLIGENCE REPOSITORY</Text>
-        <View style={[styles.groupedCard, { padding: 18, backgroundColor: theme.colors.white, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 }]}>
-          <View style={{ marginBottom: 20, borderBottomWidth: 1, borderBottomColor: theme.colors.light, paddingBottom: 12 }}>
-             <Text style={{ fontSize: 9, fontWeight: '800', color: theme.colors.gray }}>TOTAL BRAIN FRAGMENTS</Text>
-             <Text style={{ fontSize: 32, fontWeight: '900', color: theme.colors.black }}>
-               {trueCounts.l1 + trueCounts.l2 + trueCounts.l3 + trueCounts.l4 + trueCounts.l5}
-             </Text>
+        <Text style={[categoryTitleStyle, { marginBottom: 12 }]}>NEURAL STORAGE & QUOTA</Text>
+        <View style={[styles.groupedCard, { padding: 18, backgroundColor: theme.colors.white }]}>
+          
+          {/* Fact Storage Capacity */}
+          <View style={{ marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray }}>FACT STORAGE CAPACITY</Text>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary }}>
+                {trueCounts.l1 + trueCounts.l2 + trueCounts.l3 + trueCounts.l4 + trueCounts.l5} / {useAppContext().getTierLimits().capacity}
+              </Text>
+            </View>
+            <View style={{ height: 8, backgroundColor: theme.colors.light, borderRadius: 4, overflow: 'hidden' }}>
+              <View 
+                style={{ 
+                  width: `${Math.min(100, ((trueCounts.l1 + trueCounts.l2 + trueCounts.l3 + trueCounts.l4 + trueCounts.l5) / useAppContext().getTierLimits().capacity) * 100)}%`, 
+                  height: '100%', 
+                  backgroundColor: theme.colors.primary 
+                }} 
+              />
+            </View>
+          </View>
+
+          {/* Daily Conversation Quota */}
+          <View style={{ marginBottom: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray }}>DAILY CONVERSATION QUOTA</Text>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.secondary }}>
+                {useAppContext().dailyMessageCount} / {useAppContext().getTierLimits().daily}
+              </Text>
+            </View>
+            <View style={{ height: 8, backgroundColor: theme.colors.light, borderRadius: 4, overflow: 'hidden' }}>
+              <View 
+                style={{ 
+                  width: `${Math.min(100, (useAppContext().dailyMessageCount / useAppContext().getTierLimits().daily) * 100)}%`, 
+                  height: '100%', 
+                  backgroundColor: theme.colors.secondary 
+                }} 
+              />
+            </View>
           </View>
           
-          <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-            <MetricItem label="L1: PINNED" value={trueCounts.l1} color={theme.colors.primary} />
-            <MetricItem label="L2: EPISODIC" value={trueCounts.l2} color={theme.colors.gray} />
-            <MetricItem label="L3: SEMANTIC" value={trueCounts.l3} color={theme.colors.success} />
-            <MetricItem label="L4: TEMPORAL" value={trueCounts.l4} color={theme.colors.secondary} />
-            <MetricItem label="L5: KNOWLEDGE" value={trueCounts.l5} color={theme.colors.info || '#0ea5e9'} />
-            <MetricItem label="VAULT (KB)" value={brainStats.total_kb || 0} color={theme.colors.black} />
-          </View>
-          
-          {/* DATABASE CAPACITY MONITOR (v3.4.24) */}
-          <View style={{ marginTop: 16 }}>
-             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray }}>DATABASE CAPACITY</Text>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.primary }}>
-                  {brainStats.db_size_mb || 0} / {brainStats.db_limit_mb || 500} MB
-                </Text>
-             </View>
-             <View style={{ height: 6, backgroundColor: theme.colors.light, borderRadius: 3, overflow: 'hidden' }}>
-                <View 
-                  style={{ 
-                    width: `${Math.min(100, ((brainStats.db_size_mb || 0) / (brainStats.db_limit_mb || 500)) * 100)}%`, 
-                    height: '100%', 
-                    backgroundColor: ((brainStats.db_size_mb || 0) / (brainStats.db_limit_mb || 500)) > 0.8 ? theme.colors.danger : theme.colors.primary 
-                  }} 
-                />
-             </View>
-          </View>
+          <Text style={{ fontSize: 9, color: theme.colors.gray, marginTop: 12, textAlign: 'center' }}>
+            Current Tier: <Text style={{ color: theme.colors.primary, fontWeight: '800' }}>{subscriptionTier.toUpperCase()}</Text>
+          </Text>
         </View>
       </View>
 
+      <Text style={categoryTitleStyle}>ACTIVE INTELLIGENCE REPOSITORY</Text>
+      <View style={[styles.groupedCard, { padding: 18, backgroundColor: theme.colors.white, marginBottom: 24 }]}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
+          <MetricItem label="L1: PINNED" value={trueCounts.l1} color={theme.colors.primary} />
+          <MetricItem label="L2: EPISODIC" value={trueCounts.l2} color={theme.colors.gray} />
+          <MetricItem label="L3: SEMANTIC" value={trueCounts.l3} color={theme.colors.success} />
+          <MetricItem label="L4: TEMPORAL" value={trueCounts.l4} color={theme.colors.secondary} />
+          <MetricItem label="L5: KNOWLEDGE" value={trueCounts.l5} color={theme.colors.info || '#0ea5e9'} />
+          <MetricItem label="VAULT (MB)" value={brainStats.db_size_mb || 0} color={theme.colors.black} />
+        </View>
+      </View>
       <View style={{ marginBottom: 20, marginTop: 24 }}>
         {renderSectionTitle("DEVICE CONTROLS")}
         {renderSettingItem(
@@ -1650,6 +1669,14 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         >
           <Text style={{ fontSize: 14, color: theme.colors.black }}>Terms of Service</Text>
           <Ionicons name="eye-outline" size={18} color={theme.colors.gray} />
+        </TouchableOpacity>
+        <Divider />
+        <TouchableOpacity 
+          style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+          onPress={() => Linking.openURL('mailto:cai40@yahoo.com')}
+        >
+          <Text style={{ fontSize: 14, color: theme.colors.black }}>Contact Support</Text>
+          <Ionicons name="mail-outline" size={18} color={theme.colors.gray} />
         </TouchableOpacity>
         <Divider />
         <TouchableOpacity 

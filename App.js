@@ -8,6 +8,7 @@ import ChatSection from './src/components/ChatSection';
 import SettingsSection from './src/components/SettingsSection';
 import LoginSection from './src/components/LoginSection';
 import SubscriptionSection from './src/components/SubscriptionSection';
+import LegalGate from './src/components/LegalGate';
 import StatusIndicator from './src/components/shared/StatusIndicator';
 import { styles, theme } from './src/styles/theme';
 import * as Sentry from '@sentry/react-native';
@@ -157,6 +158,8 @@ const AppShell = () => {
         <TabItem icon="chatbubble-ellipses" label="Continuum" tab="chat" activeTab={activeTab} setActiveTab={setActiveTab} />
         <TabItem icon="options" label="Setup" tab="settings" activeTab={activeTab} setActiveTab={setActiveTab} />
       </View>
+
+      <LegalGate />
     </SafeAreaView>
   );
 }

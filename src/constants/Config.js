@@ -7,6 +7,6 @@ export const SYNC_COOLDOWN = 30000; // 30s
 export const SILENCE_THRESHOLD = -35; // dB
 export const SHORT_SILENCE_TIMEOUT = 2000; // 2s
 export const LONG_SILENCE_TIMEOUT = 10000; // 10s
-export const BUILD_ID = "3.4.50";
+export const BUILD_ID = "3.4.60-LegalFortress";
 export const APP_VERSION = "3.4.50";
 export const GIT_COMMIT = 'cdcb868';

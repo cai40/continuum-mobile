@@ -259,9 +259,25 @@ const ChatSection = () => {
 
   const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
     if (isTyping) return;
-    const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
 
-    // Check if we have local transcript AND no text input
+    // QUOTA ENFORCEMENT (v3.4.50)
+    const { daily } = useAppContext().getTierLimits();
+    const { dailyMessageCount, incrementDailyCount } = useAppContext();
+
+    if (dailyMessageCount >= daily) {
+      Alert.alert(
+        "Daily Limit Reached",
+        `You have used your ${daily} daily conversations for the ${useAppContext().subscriptionTier.toUpperCase()} tier. Upgrade for higher limits!`,
+        [
+          { text: "View Plans", onPress: () => useAppContext().setActiveTab('subscription') },
+          { text: "Later", style: "cancel" }
+        ]
+      );
+      return;
+    }
+
+    const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
+    // ... rest of the setup
     const finalInput = isFromVoice ? localTranscript : input;
     if (!finalInput.trim() && !activeAttachment) return;
 
@@ -270,6 +286,7 @@ const ChatSection = () => {
     const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachment: activeAttachment };
 
     setMessages(prev => [...prev, userMsg]);
+    incrementDailyCount(); // TRACK USAGE
 
     setInput('');
     setLocalTranscript('');
@@ -294,10 +311,16 @@ const ChatSection = () => {
     formData.append('persona', persona);
     formData.append('history', JSON.stringify(messages.slice(-20)));
 
+    const openrouterProviders = [
+      'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro', 
+      'deepseek_v4_flash', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax'
+    ];
+    
     const activeKey = 
       provider === 'groq' ? groqKey : 
       (provider === 'gemini' ? geminiKey : 
-      ((provider === 'openrouter' || provider === 'or_free' || provider === 'deepseek' || provider === 'qwen' || provider === 'gpt4o_mini') ? openrouterKey : openaiKey));
+      (openrouterProviders.includes(provider) ? openrouterKey : openaiKey));
+    
     if (activeKey) formData.append('api_key', activeKey.trim());
 
     if (isVoiceMode) {
@@ -553,7 +576,7 @@ const ChatSection = () => {
               </TouchableOpacity>
             </>
           ) : (
-            ['gemini', 'openrouter', 'gpt4o_mini', 'or_free'].map((p) => (
+            ['gemini', 'openrouter', 'gpt4o_mini'].map((p) => (
               <TouchableOpacity
                 key={p}
                 onPress={() => {
@@ -573,7 +596,7 @@ const ChatSection = () => {
                   fontWeight: '800', 
                   color: provider === p ? 'white' : theme.colors.gray 
                 }}>
-                  {p === 'openrouter' ? 'Claude' : (p === 'or_free' ? 'OR FREE' : (p === 'gpt4o_mini' ? '4o MINI' : p.toUpperCase()))}
+                  {p === 'openrouter' ? 'Claude' : (p === 'gpt4o_mini' ? '4o MINI' : p.toUpperCase())}
                 </Text>
               </TouchableOpacity>
             ))

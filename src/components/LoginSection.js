@@ -20,7 +20,7 @@ const LoginHeader = React.memo(() => {
       <View style={loginStyles.logoCircle}>
          <Ionicons name="pulse" size={40} color={theme.colors.primary} />
       </View>
-      <Text style={loginStyles.title}>Continuum</Text>
+      <Text style={loginStyles.title}>Continuum 2.0</Text>
       <Text style={{ color: theme.colors.gray, fontSize: 10, marginTop: 10 }}>
         {serverVersion || 'Connecting...'}
       </Text>
@@ -42,44 +42,47 @@ const LoginSection = () => {
   useEffect(() => {
     const loadCredentials = async () => {
       try {
-        // 1. Initial Hardware Check
+        const savedEmail = await AsyncStorage.getItem('saved_email');
+        if (savedEmail) setEmail(savedEmail);
+
+        // Optional: Auto-trigger biometric on mount if not authenticated
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
         
         if (hasHardware && isEnrolled) {
-          const result = await LocalAuthentication.authenticateAsync({
-            promptMessage: user ? 'Unlock Continuum' : 'Login to Continuum',
-            fallbackLabel: 'Use Passcode',
-          });
-          
-          if (result.success) {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            
-            if (user) {
-              // CASE A: User has a session but is locked (Re-entry)
-              setIsBiometricAuthenticated(true);
-            } else {
-              // CASE B: User is cold-starting without a session
-              const savedEmail = await AsyncStorage.getItem('saved_email');
-              const savedPass = await AsyncStorage.getItem('saved_password');
-              
-              if (savedEmail && savedPass) {
-                setEmail(savedEmail);
-                setPassword(savedPass);
-                // Trigger auto-login with restored credentials
-                await performAuth(savedEmail, savedPass);
-              }
-            }
-          }
-        } else {
-          // No biometrics available, try to at least fill email for convenience
-          const savedEmail = await AsyncStorage.getItem('saved_email');
-          if (savedEmail) setEmail(savedEmail);
+          handleBiometricAutofill();
         }
-      } catch (e) { console.warn("Biometric check failed:", e); }
+      } catch (e) { console.warn("Credential load failed:", e); }
     };
     loadCredentials();
   }, [user]);
+
+  const handleBiometricAutofill = async () => {
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: user ? 'Unlock Continuum' : 'Autofill Credentials',
+        fallbackLabel: 'Use Passcode',
+      });
+      
+      if (result.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        
+        if (user) {
+          // If already logged in, this unlocks the vault
+          setIsBiometricAuthenticated(true);
+        } else {
+          // If not logged in, this fills the fields from the secure vault
+          const savedEmail = await AsyncStorage.getItem('saved_email');
+          const savedPass = await AsyncStorage.getItem('saved_password');
+          
+          if (savedEmail) setEmail(savedEmail);
+          if (savedPass) setPassword(savedPass);
+        }
+      }
+    } catch (e) {
+      console.warn("Biometric failed:", e);
+    }
+  };
 
   // ─── Shared Auth Logic ────────────────────────────────────────────────────────
   const performAuth = async (targetEmail, targetPass) => {
@@ -110,7 +113,6 @@ const LoginSection = () => {
     setIsSyncing(true);
     
     try {
-      // Safety Check: Is the updates module active in this build?
       if (!Updates.isEnabled) {
         Alert.alert("Cloud Status", "Offline Mode: This build does not have OTA syncing enabled.");
         setIsSyncing(false);
@@ -192,58 +194,10 @@ const LoginSection = () => {
   };
 
   // ─── LOCKED STATE UI ────────────────────────────────────────────────────────
-  if (user) {
-    return (
-      <View style={loginStyles.container}>
-        <View style={loginStyles.content}>
-          <LoginHeader />
-          <View style={{ alignItems: 'center', marginTop: 40 }}>
-            <View style={{ 
-              width: 100, height: 100, borderRadius: 50, 
-              backgroundColor: theme.colors.light, 
-              justifyContent: 'center', alignItems: 'center',
-              marginBottom: 24
-            }}>
-              <Ionicons name="lock-closed" size={48} color={theme.colors.primary} />
-            </View>
-            <Text style={{ fontSize: 20, fontWeight: '700', color: theme.colors.black }}>Vault Locked</Text>
-            <Text style={{ fontSize: 14, color: theme.colors.gray, marginTop: 8, textAlign: 'center' }}>
-              Authentication required to access your memory brain.
-            </Text>
-            
-            <TouchableOpacity
-              style={[loginStyles.primaryButton, { width: '100%', marginTop: 40 }]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                // Trigger the same biometric logic manually
-                const retryBiometric = async () => {
-                  const result = await LocalAuthentication.authenticateAsync({
-                    promptMessage: 'Unlock Continuum',
-                    fallbackLabel: 'Use Passcode',
-                  });
-                  if (result.success) setIsBiometricAuthenticated(true);
-                };
-                retryBiometric();
-              }}
-            >
-              <Text style={loginStyles.buttonText}>Unlock with Biometrics</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{ marginTop: 24 }}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                supabase.auth.signOut();
-                setIsBiometricAuthenticated(false);
-              }}
-            >
-              <Text style={{ color: theme.colors.danger, fontWeight: '600' }}>Switch Account</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </View>
-    );
-  }
+  // We unified the UI so you always see the boxes, but can use biometrics to fill them.
+  // If user is logged in but NOT biometric authenticated, we show the "Vault Locked" overlay
+  // but allow them to see their email.
+  const isLocked = user && !loading;
 
   return (
     <View style={loginStyles.container}>
@@ -262,104 +216,121 @@ const LoginSection = () => {
       <View style={loginStyles.content}>
         <LoginHeader />
 
-        <View style={loginStyles.form}>
-          {/* Email */}
-          <View style={loginStyles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color={theme.colors.gray} style={loginStyles.inputIcon} />
-            <TextInput
-              style={loginStyles.input}
-              placeholder="Email Address"
-              placeholderTextColor={theme.colors.gray}
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-              textContentType="username"
-              autoComplete="username"
-              autoCorrect={false}
-              spellCheck={false}
-            />
-          </View>
-
-          {/* Password + Show/Hide Toggle */}
-          <View style={loginStyles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.gray} style={loginStyles.inputIcon} />
-            <TextInput
-              style={loginStyles.input}
-              placeholder="Password"
-              placeholderTextColor={theme.colors.gray}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              textContentType="password"
-              autoComplete="current-password"
-              autoCorrect={false}
-              spellCheck={false}
-            />
+        {isLocked ? (
+          <View style={{ alignItems: 'center', marginTop: 20 }}>
+            <View style={loginStyles.logoCircle}>
+              <Ionicons name="lock-closed" size={40} color={theme.colors.primary} />
+            </View>
+            <Text style={loginStyles.title}>Vault Locked</Text>
+            <Text style={{ color: theme.colors.gray, marginTop: 8, marginBottom: 32 }}>{user.email}</Text>
+            
             <TouchableOpacity
+              style={loginStyles.primaryButton}
+              onPress={handleBiometricAutofill}
+            >
+              <Text style={loginStyles.buttonText}>Unlock Vault</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{ marginTop: 24 }}
               onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setShowPassword(prev => !prev);
+                supabase.auth.signOut();
+                setIsBiometricAuthenticated(false);
               }}
-              style={{ paddingHorizontal: 8 }}
             >
-              <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={theme.colors.gray}
-              />
+              <Text style={{ color: theme.colors.danger, fontWeight: '600' }}>Switch Account</Text>
             </TouchableOpacity>
           </View>
+        ) : (
+          <View style={loginStyles.form}>
+            {/* Email */}
+            <View style={loginStyles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color={theme.colors.gray} style={loginStyles.inputIcon} />
+              <TextInput
+                style={loginStyles.input}
+                placeholder="Email Address"
+                placeholderTextColor={theme.colors.gray}
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                autoCorrect={false}
+              />
+            </View>
 
-          {/* Forgot Password (only shown in Sign In mode) */}
-          {!isSignUp && (
-            <TouchableOpacity
-              onPress={handlePasswordReset}
-              style={loginStyles.forgotButton}
-            >
-              <Text style={loginStyles.forgotText}>Forgot Password?</Text>
-            </TouchableOpacity>
-          )}
+            {/* Password + Biometric Assist */}
+            <View style={loginStyles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color={theme.colors.gray} style={loginStyles.inputIcon} />
+              <TextInput
+                style={loginStyles.input}
+                placeholder="Password"
+                placeholderTextColor={theme.colors.gray}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCorrect={false}
+              />
+              
+              <TouchableOpacity
+                onPress={handleBiometricAutofill}
+                style={{ paddingHorizontal: 8, borderLeftWidth: 1, borderLeftColor: theme.colors.border + '30', marginLeft: 8 }}
+              >
+                <Ionicons
+                  name={Platform.OS === 'ios' ? 'face-id' : 'finger-print'}
+                  size={24}
+                  color={theme.colors.primary}
+                />
+              </TouchableOpacity>
 
-          {/* Primary CTA */}
-          <TouchableOpacity
-            style={loginStyles.primaryButton}
-            onPress={handleAuth}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={loginStyles.buttonText}>
-                {isSignUp ? 'Create Account' : 'Sign In'}
-              </Text>
+              <TouchableOpacity
+                onPress={() => setShowPassword(prev => !prev)}
+                style={{ paddingHorizontal: 8 }}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={theme.colors.gray}
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Forgot Password */}
+            {!isSignUp && (
+              <TouchableOpacity onPress={handlePasswordReset} style={loginStyles.forgotButton}>
+                <Text style={loginStyles.forgotText}>Forgot Password?</Text>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
 
-          {/* Toggle Sign In / Sign Up */}
-          <TouchableOpacity
-            style={loginStyles.secondaryButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setIsSignUp(!isSignUp);
-            }}
-          >
-            <Text style={loginStyles.secondaryButtonText}>
-              {isSignUp ? 'Already have an account? Sign In' : 'New to Continuum? Create Account'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+            {/* Primary CTA */}
+            <TouchableOpacity style={loginStyles.primaryButton} onPress={handleAuth} disabled={loading}>
+              {loading ? <ActivityIndicator color="white" /> : (
+                <Text style={loginStyles.buttonText}>{isSignUp ? 'Create Account' : 'Sign In'}</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Toggle Sign In / Sign Up */}
+            <TouchableOpacity
+              style={loginStyles.secondaryButton}
+              onPress={() => setIsSignUp(!isSignUp)}
+            >
+              <Text style={loginStyles.secondaryButtonText}>
+                {isSignUp ? 'Already have an account? Sign In' : 'New to Continuum? Create Account'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Version Watermark */}
         <View style={{ marginTop: 32, alignItems: 'center' }}>
           <Text style={{ color: theme.colors.gray, fontSize: 10, opacity: 0.4 }}>
-            {serverVersion || BUILD_ID}
+            {BUILD_ID}
           </Text>
         </View>
       </View>
     </View>
   );
 };
+
 
 const loginStyles = StyleSheet.create({
   container: {

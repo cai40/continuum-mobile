@@ -61,10 +61,40 @@ export const AppProvider = ({ children }) => {
   const [serverVersion, setServerVersion] = useState("Loading...");
   const [isSyncingHistory, setIsSyncingHistory] = useState(false);
 
-  // 3-TIER SUBSCRIPTION ENGINE
+  // 3-TIER SUBSCRIPTION ENGINE (v3.4.50 Refined)
   const [subscriptionTier, setSubscriptionTier] = useState("free"); // 'free', 'pro', 'elite'
-  const [trialStart, setTrialStart] = useState(null);
+  const [dailyMessageCount, setDailyMessageCount] = useState(0);
   const [isSuperUser, setIsSuperUser] = useState(false);
+  const [hasAcceptedLegal, setHasAcceptedLegal] = useState(true); // Default to true during check
+
+  const recordLegalAcceptance = async () => {
+    try {
+      const email = user?.email || "anonymous";
+      const formData = new FormData();
+      formData.append('email', email);
+      formData.append('version', '1.0.0');
+
+      await fetch(`${API_URL}/legal/accept`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      await AsyncStorage.setItem(`legal_accepted_${email}`, 'true');
+      setHasAcceptedLegal(true);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      console.warn("Legal recording failed:", e);
+      // Still set local so they aren't blocked if offline, 
+      // but the backend record is the primary audit.
+      setHasAcceptedLegal(true);
+    }
+  };
+
+  const getTierLimits = () => {
+    if (isSuperUser || subscriptionTier === 'elite') return { daily: 9999, capacity: 50000 };
+    if (subscriptionTier === 'pro') return { daily: 100, capacity: 5000 };
+    return { daily: 10, capacity: 500 }; // Free
+  };
 
   const isHistoryLoaded = useRef(false);
 
@@ -80,7 +110,14 @@ export const AppProvider = ({ children }) => {
           setUser(session.user);
           // Biometric is required for hydrated sessions on cold start
           setIsBiometricAuthenticated(false);
+          
+          // LEGAL STATUS CHECK (v3.4.55)
+          const accepted = await AsyncStorage.getItem(`legal_accepted_${session.user.email}`);
+          setHasAcceptedLegal(accepted === 'true');
+          
           fetchAnalytics();
+        } else {
+          setHasAcceptedLegal(true); // Don't show modal on login screen
         }
         // Always try to fetch version even if no session
         const ver = await fetchSystemVersion();
@@ -133,6 +170,30 @@ export const AppProvider = ({ children }) => {
       clearInterval(pulseInterval);
     };
   }, []);
+
+  // PERSISTENCE: DAILY QUOTA TRACKING
+  useEffect(() => {
+    const checkDailyReset = async () => {
+      const lastDate = await AsyncStorage.getItem("@last_active_date");
+      const today = new Date().toDateString();
+      
+      if (lastDate !== today) {
+        setDailyMessageCount(0);
+        await AsyncStorage.setItem("@last_active_date", today);
+        await AsyncStorage.setItem("@daily_count", "0");
+      } else {
+        const savedCount = await AsyncStorage.getItem("@daily_count");
+        if (savedCount) setDailyMessageCount(parseInt(savedCount));
+      }
+    };
+    if (user) checkDailyReset();
+  }, [user]);
+
+  const incrementDailyCount = async () => {
+    const newCount = dailyMessageCount + 1;
+    setDailyMessageCount(newCount);
+    await AsyncStorage.setItem("@daily_count", newCount.toString());
+  };
 
   // Persistence: Load Vault
   useEffect(() => {
@@ -442,6 +503,9 @@ export const AppProvider = ({ children }) => {
         setSttLang,
         messages,
         setMessages,
+        dailyMessageCount,
+        incrementDailyCount,
+        getTierLimits,
         semanticProfile,
         setSemanticProfile,
         temporalEvents,
@@ -472,6 +536,8 @@ export const AppProvider = ({ children }) => {
         deleteAccount,
         isInitializing,
         isSyncingHistory,
+        hasAcceptedLegal,
+        recordLegalAcceptance,
         subscriptionTier,
         setSubscriptionTier,
         isSuperUser,

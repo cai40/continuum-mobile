@@ -59,7 +59,7 @@ const SubscriptionSection = ({ onBack }) => {
     }
     Alert.alert(
       'Downgrade to Free?',
-      'You will immediately lose access to Pro/Elite features. Your memories will be preserved, but L5 Global RAG and Voice Mode will be locked.\n\nThis does NOT cancel your Apple subscription — you must do that separately.',
+      'You will keep access to all 5 memory layers, but your capacity will be limited to 500 facts and 10 conversations per day.\n\nThis does NOT cancel your Apple subscription — you must do that separately.',
       [
         { text: 'Keep My Plan', style: 'cancel' },
         {
@@ -105,6 +105,25 @@ const SubscriptionSection = ({ onBack }) => {
     }
   };
 
+  const handleDirectSubscribe = async (sku, tier) => {
+    if (isSuperUser) {
+      Alert.alert('Super User', 'You already have full Elite access for life.');
+      return;
+    }
+    setLoading(true);
+    try {
+      // Mock purchase for direct subscription (no trial)
+      setTimeout(() => {
+        setSubscriptionTier(tier);
+        setLoading(false);
+        Alert.alert('Subscription Active! 🚀', `Welcome to Continuum ${tier.toUpperCase()}!\n\nYour subscription is now active and your neural capacity has been upgraded.`);
+      }, 1500);
+    } catch (err) {
+      Alert.alert('Subscription Error', err.message);
+      setLoading(false);
+    }
+  };
+
   // ─── Tier Card ────────────────────────────────────────────────────────────────
   const TierCard = ({ title, price, features, tier, icon, color, isPopular }) => {
     const isCurrent = subscriptionTier === tier;
@@ -118,7 +137,7 @@ const SubscriptionSection = ({ onBack }) => {
         <Text style={styles.tierPrice}>
           {price}<Text style={styles.pricePeriod}>{price === '$0' ? '' : '/mo'}</Text>
         </Text>
-        {price !== '$0' && <Text style={styles.trialText}>Includes 30-Day Free Trial</Text>}
+        {price !== '$0' && <Text style={styles.trialText}>Select your membership path</Text>}
 
         <View style={styles.featureList}>
           {features.map((f, i) => (
@@ -134,22 +153,34 @@ const SubscriptionSection = ({ onBack }) => {
             <Text style={[styles.subscribeButtonText, { color }]}>✓ Current Plan</Text>
           </View>
         ) : (
-          <TouchableOpacity
-            style={[styles.subscribeButton, { backgroundColor: color }]}
-            onPress={() => tier === 'free'
-              ? handleDowngrade()
-              : handleSubscribe(itemSkus[tier === 'pro' ? 0 : 1], tier)
-            }
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={styles.subscribeButtonText}>
-                {tier === 'free' ? 'Downgrade to Free' : 'Start Free Trial'}
-              </Text>
+          <View>
+            {tier !== 'free' && (
+              <TouchableOpacity
+                style={[styles.subscribeButton, { backgroundColor: color, marginBottom: 12 }]}
+                onPress={() => handleDirectSubscribe(itemSkus[tier === 'pro' ? 0 : 1], tier)}
+                disabled={loading}
+              >
+                <Text style={styles.subscribeButtonText}>Subscribe Now</Text>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.subscribeButton, { backgroundColor: tier === 'free' ? color : 'transparent', borderWidth: tier === 'free' ? 0 : 2, borderColor: color }]}
+              onPress={() => tier === 'free'
+                ? handleDowngrade()
+                : handleSubscribe(itemSkus[tier === 'pro' ? 0 : 1], tier)
+              }
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color={tier === 'free' ? "white" : color} />
+              ) : (
+                <Text style={[styles.subscribeButtonText, { color: tier === 'free' ? 'white' : color }]}>
+                  {tier === 'free' ? 'Downgrade to Free' : 'Start 30-Day Free Trial'}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
         )}
       </View>
     );
@@ -178,7 +209,7 @@ const SubscriptionSection = ({ onBack }) => {
         <TierCard
           title="Continuum Free"
           price="$0"
-          features={['L4 Recent Memory', 'Standard AI Core', 'Basic Support']}
+          features={['Full 5-Layer Access', '10 Conversations / Day', '500 Fact Capacity']}
           tier="free"
           icon="leaf-outline"
           color={theme.colors.gray}
@@ -187,7 +218,7 @@ const SubscriptionSection = ({ onBack }) => {
         <TierCard
           title="Continuum Pro"
           price="$9.99"
-          features={['Unlimited L1-L4 Sync', 'Advanced Voice Mode', 'Faster Response', 'No Ads']}
+          features={['Hands-Free Voice Mode', '100 Conversations / Day', '5,000 Fact Capacity', 'Pro AI Models']}
           tier="pro"
           icon="flash-outline"
           color={theme.colors.primary}
@@ -197,7 +228,7 @@ const SubscriptionSection = ({ onBack }) => {
         <TierCard
           title="Continuum Elite"
           price="$24.99"
-          features={['L5 Global RAG', 'External Doc Indexing', 'Multi-Device Sync', 'Priority Support']}
+          features={['Everything in Pro', 'Unlimited Conversations', '50,000 Fact Capacity', 'Multi-Device Sync']}
           tier="elite"
           icon="diamond-outline"
           color="#6C5CE7"

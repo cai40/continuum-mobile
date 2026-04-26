@@ -3,21 +3,21 @@
     "name": "Continuum 2.0",
     "slug": "continuum-2-0",
     "scheme": "continuum",
-    "version": "3.4.46",
+    "version": "3.4.60",
     "description": "Your autonomous AI memory advisor. Continuum builds a multi-layered semantic profile of your life to provide high-context advice and 24/7 memory retrieval.",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon.jpg",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash-icon.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#081b4b"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.continuum.advisor.cloud",
-      "buildNumber": "19",
+      "buildNumber": "20",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Continuum needs access to your microphone to enable hands-free AI voice interactions.",
         "NSSpeechRecognitionUsageDescription": "Continuum uses on-device neural processing to transcribe your voice instantly and privately.",
@@ -31,7 +31,7 @@
     "android": {
       "package": "com.continuum.advisor.cloud",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/adaptive-icon.jpg",
         "backgroundColor": "#051431"
       },
       "permissions": [
