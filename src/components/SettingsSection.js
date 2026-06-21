@@ -20,7 +20,7 @@ import { useAppContext } from "../context/AppContext";
 import { pulseFetch, ingestDocument } from "../services/apiService";
 import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
-import { formatFullDate, getImportanceColor } from "../utils/helpers";
+import { formatFullDate, getImportanceColor, normalizeDocumentAsset } from "../utils/helpers";
 
 const SettingsSection = (props) => {
   const {
@@ -161,6 +161,12 @@ const SettingsSection = (props) => {
     }));
   };
 
+  const refreshKnowledgeBaseAfterIngest = () => {
+    onRefreshMemories();
+    setTimeout(() => onRefreshMemories(), 5000);
+    setTimeout(() => onRefreshMemories(), 15000);
+  };
+
   const handleSyncKnowledge = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
@@ -170,7 +176,7 @@ const SettingsSection = (props) => {
       });
 
       if (!result.canceled) {
-        const asset = result.assets[0];
+        const asset = normalizeDocumentAsset(result.assets[0]);
         Alert.alert(
           "Intelligence Ingestion",
           `Prepare to vectorize "${asset.name}"? This will populate Layer 5 in the cloud.`,
@@ -184,16 +190,24 @@ const SettingsSection = (props) => {
                   await ingestDocument(
                     asset.uri,
                     asset.name,
-                    asset.mimeType || 'application/pdf',
+                    asset.type,
                     setCloudWakingUp,
-                    session?.access_token
+                    session?.access_token,
+                    {
+                      size: asset.size,
+                      lastModified: asset.lastModified,
+                    }
                   );
+                  refreshKnowledgeBaseAfterIngest();
                   Alert.alert(
                     "Sync Successful", 
-                    "Document sent to the Render Indexer. It will appear in Layer 5 once processing is complete."
+                    "Document sent to the Render Indexer. Layer 5 will refresh automatically as processing completes."
                   );
                 } catch (e) {
-                  Alert.alert("Sync Fault", "The cloud brain was unable to receive the document. Ensure your subscription is active.");
+                  const message = e.message === "DOCUMENT_INGEST_UNAVAILABLE"
+                    ? "The current backend deploy does not expose document ingestion yet. TXT/PDF chat attachments can still be sent, but persistent Layer 5 sync needs the backend route."
+                    : "The cloud brain was unable to receive the document. Ensure your subscription is active.";
+                  Alert.alert("Sync Fault", message);
                 } finally {
                   setIsSyncing(false);
                 }
@@ -1255,6 +1269,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           <View>
             <TouchableOpacity
               onPress={handleSyncKnowledge}
+              disabled={isSyncing}
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -1264,12 +1279,13 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 marginBottom: 16,
                 borderWidth: 1,
                 borderColor: '#0ea5e9',
-                borderStyle: 'dashed'
+                borderStyle: 'dashed',
+                opacity: isSyncing ? 0.6 : 1
               }}
             >
               <Ionicons name="cloud-upload-outline" size={20} color='#0ea5e9' style={{ marginRight: 10 }} />
               <Text style={{ color: '#0ea5e9', fontWeight: '800', fontSize: 13 }}>
-                SYNC DOCUMENT INTELLIGENCE
+                {isSyncing ? "SYNCING DOCUMENT..." : "SYNC DOCUMENT INTELLIGENCE"}
               </Text>
             </TouchableOpacity>
 

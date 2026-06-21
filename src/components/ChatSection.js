@@ -16,6 +16,7 @@ import { useAppContext } from '../context/AppContext';
 import { chatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { styles, theme } from '../styles/theme';
+import { normalizeDocumentAsset } from '../utils/helpers';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
 const ChatSection = () => {
@@ -160,11 +161,11 @@ const ChatSection = () => {
       });
 
       if (!result.canceled) {
-        const asset = result.assets[0];
+        const asset = normalizeDocumentAsset(result.assets[0]);
         setAttachment({
           uri: asset.uri,
           name: asset.name,
-          type: asset.mimeType || 'application/octet-stream'
+          type: asset.type
         });
       }
     } catch (err) {

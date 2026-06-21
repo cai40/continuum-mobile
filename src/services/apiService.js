@@ -1,5 +1,24 @@
 import { Platform } from "react-native";
 import { API_URL } from "../constants/Config";
+import { inferDocumentMimeType } from "../utils/helpers";
+
+const createHttpError = async (res) => {
+  let detail = "";
+  try {
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const data = await res.json();
+      detail = data?.detail || data?.message || JSON.stringify(data);
+    } else {
+      detail = await res.text();
+    }
+  } catch (e) {}
+
+  const error = new Error(res.status >= 500 ? "UPSTREAM_WAKING" : `HTTP_${res.status}`);
+  error.status = res.status;
+  error.detail = detail;
+  return error;
+};
 
 /**
  * GLOBAL PULSE ENGINE:
@@ -13,10 +32,15 @@ export const pulseFetch = async (
   onStatusUpdate = null,
   authToken = null,
 ) => {
+  const isFormDataBody =
+    options.body &&
+    typeof FormData !== "undefined" &&
+    options.body instanceof FormData;
+
   const headers = {
     Accept: "application/json",
-    "Content-Type": "application/json",
     "User-Agent": "Continuum-Mobile/1.0",
+    ...(!isFormDataBody ? { "Content-Type": "application/json" } : {}),
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     ...options.headers,
   };
@@ -31,7 +55,7 @@ export const pulseFetch = async (
 
       const fetchPromise = (async () => {
         const res = await fetch(url, { ...options, headers });
-        if (!res.ok) throw new Error("UPSTREAM_WAKING");
+        if (!res.ok) throw await createHttpError(res);
 
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.includes("application/json")) {
@@ -262,13 +286,23 @@ export const ingestDocument = async (
   mimeType,
   onStatusUpdate = null,
   authToken = null,
+  fileMetadata = {},
 ) => {
+  const uploadType = mimeType || inferDocumentMimeType(fileName, fileUri);
   const formData = new FormData();
   formData.append("file", {
     uri: fileUri,
     name: fileName,
-    type: mimeType,
+    type: uploadType,
   });
+  formData.append("source_name", fileName);
+  formData.append("source_mime_type", uploadType);
+  formData.append("replace_existing", "true");
+
+  if (fileMetadata.size) formData.append("source_size", String(fileMetadata.size));
+  if (fileMetadata.lastModified) {
+    formData.append("source_updated_at", String(fileMetadata.lastModified));
+  }
 
   try {
     const data = await pulseFetch(
@@ -276,9 +310,6 @@ export const ingestDocument = async (
       {
         method: "POST",
         body: formData,
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
       },
       3,
       onStatusUpdate,
@@ -287,6 +318,12 @@ export const ingestDocument = async (
     return data;
   } catch (err) {
     console.error("Ingestion Service Error:", err);
+    if (err.status === 404) {
+      const unavailable = new Error("DOCUMENT_INGEST_UNAVAILABLE");
+      unavailable.status = 404;
+      unavailable.detail = "The backend does not expose the document ingestion route yet.";
+      throw unavailable;
+    }
     throw err;
   }
 };
