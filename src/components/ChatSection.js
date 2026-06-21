@@ -30,6 +30,11 @@ const ChatSection = () => {
     syncRemoteHistory,
     isSyncingHistory,
     isFeatureAvailable,
+    dailyMessageCount,
+    incrementDailyCount,
+    getTierLimits,
+    subscriptionTier,
+    setActiveTab,
   } = useAppContext();
 
   const [input, setInput] = useState('');
@@ -216,7 +221,7 @@ const ChatSection = () => {
         "Hands-free voice mode is reserved for Pro and Elite members. Start your 30-day free trial now!",
         [
           { text: "Later", style: "cancel" },
-          { text: "View Plans", onPress: () => useAppContext().setActiveTab('subscription') }
+          { text: "View Plans", onPress: () => setActiveTab('subscription') }
         ]
       );
       return;
@@ -262,15 +267,14 @@ const ChatSection = () => {
     if (isTyping) return;
 
     // QUOTA ENFORCEMENT (v3.4.50)
-    const { daily } = useAppContext().getTierLimits();
-    const { dailyMessageCount, incrementDailyCount } = useAppContext();
+    const { daily } = getTierLimits();
 
     if (dailyMessageCount >= daily) {
       Alert.alert(
         "Daily Limit Reached",
-        `You have used your ${daily} daily conversations for the ${useAppContext().subscriptionTier.toUpperCase()} tier. Upgrade for higher limits!`,
+        `You have used your ${daily} daily conversations for the ${subscriptionTier.toUpperCase()} tier. Upgrade for higher limits!`,
         [
-          { text: "View Plans", onPress: () => useAppContext().setActiveTab('subscription') },
+          { text: "View Plans", onPress: () => setActiveTab('subscription') },
           { text: "Later", style: "cancel" }
         ]
       );
@@ -400,6 +404,26 @@ const ChatSection = () => {
 
     // Store reference to abort later if needed
     abortControllerRef.current = { abort: () => xhr.abort() };
+  };
+
+  const handleSendPress = async () => {
+    try {
+      if (recording) {
+        await stopRecording();
+        return;
+      }
+
+      if (input.trim() || attachment) {
+        await sendMessage();
+        return;
+      }
+
+      await startRecording();
+    } catch (err) {
+      console.warn("Send button error:", err);
+      setIsTyping(false);
+      Alert.alert("Send Error", "Continuum could not start this message. Please try again.");
+    }
   };
 
   const deleteSelectedMessages = async () => {
@@ -748,7 +772,7 @@ const ChatSection = () => {
             autoCapitalize="sentences"
           />
           <TouchableOpacity
-            onPress={() => recording ? stopRecording() : (input.trim() || attachment ? sendMessage() : startRecording())}
+            onPress={handleSendPress}
             style={styles.sendPill}
           >
             <Ionicons name={recording ? "stop" : (input.trim() || attachment ? "arrow-up" : "mic-outline")} size={20} color="white" />
