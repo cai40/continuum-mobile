@@ -263,6 +263,29 @@ const ChatSection = () => {
   };
   stopRecordingRef.current = stopRecording;
 
+  const readAttachmentAsBase64 = async (activeAttachment) => {
+    if (!activeAttachment?.uri) return null;
+    try {
+      const file = new FileSystem.File(activeAttachment.uri);
+      if (typeof file.base64 === 'function') {
+        return await file.base64();
+      }
+    } catch (err) {
+      console.warn("Attachment base64 read failed:", err);
+    }
+    return null;
+  };
+
+  const buildMessageForAttachment = (message, activeAttachment) => {
+    if (!activeAttachment || activeAttachment.type?.startsWith('audio')) return message;
+
+    return [
+      `Use the newly attached file "${activeAttachment.name}" as the primary source for this request.`,
+      "Do not summarize or answer from previously uploaded documents unless I explicitly ask for them.",
+      message || "Please summarize this file.",
+    ].join("\n\n");
+  };
+
   const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
     if (isTyping) return;
 
@@ -283,11 +306,12 @@ const ChatSection = () => {
 
     const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
     // ... rest of the setup
-    const finalInput = isFromVoice ? localTranscript : input;
-    if (!finalInput.trim() && !activeAttachment) return;
+    const rawInput = isFromVoice ? localTranscript : input;
+    if (!rawInput.trim() && !activeAttachment) return;
+    const finalInput = buildMessageForAttachment(rawInput.trim(), activeAttachment);
 
     // Visual placeholder for voice
-    const displayInput = isFromVoice ? finalInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
+    const displayInput = isFromVoice ? rawInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
     const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachment: activeAttachment };
 
     setMessages(prev => [...prev, userMsg]);
@@ -314,7 +338,7 @@ const ChatSection = () => {
     formData.append('message', finalInput);
     formData.append('provider', provider);
     formData.append('persona', persona);
-    formData.append('history', JSON.stringify(messages.slice(-20)));
+    formData.append('history', JSON.stringify(activeAttachment && !isFromVoice ? [] : messages.slice(-20)));
 
     const openrouterProviders = [
       'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro', 
@@ -335,6 +359,13 @@ const ChatSection = () => {
 
     if (activeAttachment && !isFromVoice) {
       formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
+      formData.append('file_name', activeAttachment.name);
+      formData.append('file_type', activeAttachment.type);
+
+      const attachmentB64 = await readAttachmentAsBase64(activeAttachment);
+      if (attachmentB64) {
+        formData.append(activeAttachment.type?.startsWith('image/') ? 'image_b64' : 'file_b64', attachmentB64);
+      }
     }
 
     if (location) {
