@@ -8,6 +8,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
+import JSZip from 'jszip';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent
@@ -58,6 +59,50 @@ const ChatSection = () => {
   const silenceTimerRef = useRef(null);
   const longSilenceTimerRef = useRef(null);
   const stopRecordingRef = useRef(null);
+  const MAX_INLINE_DOCUMENT_CHARS = 12000;
+
+  const getAttachmentExtension = (activeAttachment) => {
+    const name = activeAttachment?.name || '';
+    const cleanName = name.split('?')[0].split('#')[0];
+    return cleanName.includes('.') ? cleanName.split('.').pop().toLowerCase() : '';
+  };
+
+  const isDocxAttachment = (activeAttachment) =>
+    getAttachmentExtension(activeAttachment) === 'docx' ||
+    activeAttachment?.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  const isLegacyWordAttachment = (activeAttachment) =>
+    getAttachmentExtension(activeAttachment) === 'doc' ||
+    activeAttachment?.type === 'application/msword';
+
+  const decodeXmlEntities = (value) =>
+    value
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, code) => String.fromCharCode(parseInt(code, 16)));
+
+  const wordXmlToText = (xml) => decodeXmlEntities(
+    xml
+      .replace(/<w:tab[^>]*\/>/g, '\t')
+      .replace(/<w:br[^>]*\/>/g, '\n')
+      .replace(/<w:cr[^>]*\/>/g, '\n')
+      .replace(/<\/w:p>/g, '\n')
+      .replace(/<\/w:tr>/g, '\n')
+      .replace(/<[^>]+>/g, '')
+  )
+    .split('\n')
+    .map(line => line.replace(/[ \t]+/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n');
+
+  const truncateDocumentText = (text) => {
+    if (!text || text.length <= MAX_INLINE_DOCUMENT_CHARS) return text;
+    return `${text.substring(0, MAX_INLINE_DOCUMENT_CHARS)}\n\n[Document text truncated after ${MAX_INLINE_DOCUMENT_CHARS} characters.]`;
+  };
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -167,6 +212,12 @@ const ChatSection = () => {
 
       if (!result.canceled) {
         const asset = normalizeDocumentAsset(result.assets[0]);
+        if (isLegacyWordAttachment(asset)) {
+          Alert.alert(
+            "Legacy Word Format",
+            "Older .doc files may not be readable. If this upload fails, save the document as .docx or PDF and upload that version."
+          );
+        }
         setAttachment({
           uri: asset.uri,
           name: asset.name,
@@ -276,14 +327,54 @@ const ChatSection = () => {
     return null;
   };
 
-  const buildMessageForAttachment = (message, activeAttachment) => {
+  const extractDocxTextFromBase64 = async (base64Content) => {
+    if (!base64Content) return '';
+
+    try {
+      const zip = await JSZip.loadAsync(base64Content, { base64: true });
+      const wordXmlFiles = Object.keys(zip.files)
+        .filter(name => /^word\/(document|footnotes|endnotes|comments|header\d+|footer\d+)\.xml$/.test(name))
+        .sort((a, b) => {
+          if (a === 'word/document.xml') return -1;
+          if (b === 'word/document.xml') return 1;
+          return a.localeCompare(b);
+        });
+
+      const sections = [];
+      for (const fileName of wordXmlFiles) {
+        const xml = await zip.file(fileName)?.async('string');
+        const text = xml ? wordXmlToText(xml) : '';
+        if (text) sections.push(text);
+      }
+
+      return truncateDocumentText(sections.join('\n\n'));
+    } catch (err) {
+      console.warn("DOCX text extraction failed:", err);
+      return '';
+    }
+  };
+
+  const buildMessageForAttachment = (message, activeAttachment, extractedText = '') => {
     if (!activeAttachment || activeAttachment.type?.startsWith('audio')) return message;
 
-    return [
+    const instructions = [
       `Use the newly attached file "${activeAttachment.name}" as the primary source for this request.`,
       "Do not summarize or answer from previously uploaded documents unless I explicitly ask for them.",
-      message || "Please summarize this file.",
-    ].join("\n\n");
+    ];
+
+    if (extractedText) {
+      instructions.push(
+        "The current Word document text extracted on-device is below:",
+        extractedText,
+      );
+    } else if (isLegacyWordAttachment(activeAttachment)) {
+      instructions.push(
+        "This is a legacy .doc Word file. If its contents are unavailable, say that the file must be saved as .docx or PDF instead of using older document memory.",
+      );
+    }
+
+    instructions.push(message || "Please summarize this file.");
+    return instructions.join("\n\n");
   };
 
   const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
@@ -308,7 +399,14 @@ const ChatSection = () => {
     // ... rest of the setup
     const rawInput = isFromVoice ? localTranscript : input;
     if (!rawInput.trim() && !activeAttachment) return;
-    const finalInput = buildMessageForAttachment(rawInput.trim(), activeAttachment);
+
+    const attachmentB64 = activeAttachment && !isFromVoice
+      ? await readAttachmentAsBase64(activeAttachment)
+      : null;
+    const extractedDocxText = attachmentB64 && isDocxAttachment(activeAttachment)
+      ? await extractDocxTextFromBase64(attachmentB64)
+      : '';
+    const finalInput = buildMessageForAttachment(rawInput.trim(), activeAttachment, extractedDocxText);
 
     // Visual placeholder for voice
     const displayInput = isFromVoice ? rawInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
@@ -362,9 +460,12 @@ const ChatSection = () => {
       formData.append('file_name', activeAttachment.name);
       formData.append('file_type', activeAttachment.type);
 
-      const attachmentB64 = await readAttachmentAsBase64(activeAttachment);
       if (attachmentB64) {
         formData.append(activeAttachment.type?.startsWith('image/') ? 'image_b64' : 'file_b64', attachmentB64);
+      }
+      if (extractedDocxText) {
+        formData.append('file_text', extractedDocxText);
+        formData.append('document_text', extractedDocxText);
       }
     }
 
