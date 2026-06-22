@@ -75,6 +75,12 @@ const ChatSection = () => {
     getAttachmentExtension(activeAttachment) === 'doc' ||
     activeAttachment?.type === 'application/msword';
 
+  const isPlainTextAttachment = (activeAttachment) => {
+    const extension = getAttachmentExtension(activeAttachment);
+    return ['txt', 'md', 'markdown', 'csv', 'log'].includes(extension) ||
+      activeAttachment?.type?.startsWith('text/');
+  };
+
   const decodeXmlEntities = (value) =>
     value
       .replace(/&amp;/g, '&')
@@ -327,6 +333,19 @@ const ChatSection = () => {
     return null;
   };
 
+  const readAttachmentAsText = async (activeAttachment) => {
+    if (!activeAttachment?.uri) return '';
+    try {
+      const file = new FileSystem.File(activeAttachment.uri);
+      if (typeof file.text === 'function') {
+        return truncateDocumentText(await file.text());
+      }
+    } catch (err) {
+      console.warn("Attachment text read failed:", err);
+    }
+    return '';
+  };
+
   const extractDocxTextFromBase64 = async (base64Content) => {
     if (!base64Content) return '';
 
@@ -364,7 +383,7 @@ const ChatSection = () => {
 
     if (extractedText) {
       instructions.push(
-        "The current Word document text extracted on-device is below:",
+        "The current document text extracted on-device is below:",
         extractedText,
       );
     } else if (isLegacyWordAttachment(activeAttachment)) {
@@ -406,7 +425,12 @@ const ChatSection = () => {
     const extractedDocxText = attachmentB64 && isDocxAttachment(activeAttachment)
       ? await extractDocxTextFromBase64(attachmentB64)
       : '';
-    const finalInput = buildMessageForAttachment(rawInput.trim(), activeAttachment, extractedDocxText);
+    const extractedText = extractedDocxText || (
+      activeAttachment && !isFromVoice && isPlainTextAttachment(activeAttachment)
+        ? await readAttachmentAsText(activeAttachment)
+        : ''
+    );
+    const finalInput = buildMessageForAttachment(rawInput.trim(), activeAttachment, extractedText);
 
     // Visual placeholder for voice
     const displayInput = isFromVoice ? rawInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
@@ -463,9 +487,9 @@ const ChatSection = () => {
       if (attachmentB64) {
         formData.append(activeAttachment.type?.startsWith('image/') ? 'image_b64' : 'file_b64', attachmentB64);
       }
-      if (extractedDocxText) {
-        formData.append('file_text', extractedDocxText);
-        formData.append('document_text', extractedDocxText);
+      if (extractedText) {
+        formData.append('file_text', extractedText);
+        formData.append('document_text', extractedText);
       }
     }
 
