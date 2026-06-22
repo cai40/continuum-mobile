@@ -75,10 +75,28 @@ const ChatSection = () => {
     getAttachmentExtension(activeAttachment) === 'doc' ||
     activeAttachment?.type === 'application/msword';
 
+  const isPdfAttachment = (activeAttachment) =>
+    getAttachmentExtension(activeAttachment) === 'pdf' ||
+    activeAttachment?.type === 'application/pdf';
+
   const isPlainTextAttachment = (activeAttachment) => {
     const extension = getAttachmentExtension(activeAttachment);
     return ['txt', 'md', 'markdown', 'csv', 'log'].includes(extension) ||
       activeAttachment?.type?.startsWith('text/');
+  };
+
+  const ensurePdfJsRuntime = () => {
+    if (!Promise.withResolvers) {
+      Promise.withResolvers = () => {
+        let resolve;
+        let reject;
+        const promise = new Promise((res, rej) => {
+          resolve = res;
+          reject = rej;
+        });
+        return { promise, resolve, reject };
+      };
+    }
   };
 
   const decodeXmlEntities = (value) =>
@@ -346,6 +364,63 @@ const ChatSection = () => {
     return '';
   };
 
+  const readAttachmentAsBytes = async (activeAttachment) => {
+    if (!activeAttachment?.uri) return null;
+    try {
+      const file = new FileSystem.File(activeAttachment.uri);
+      if (typeof file.bytes === 'function') {
+        return await file.bytes();
+      }
+    } catch (err) {
+      console.warn("Attachment byte read failed:", err);
+    }
+    return null;
+  };
+
+  const extractPdfText = async (activeAttachment) => {
+    if (!isPdfAttachment(activeAttachment)) return '';
+
+    try {
+      ensurePdfJsRuntime();
+      const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.js');
+      const pdfjs = pdfjsModule.getDocument ? pdfjsModule : pdfjsModule.default;
+      const bytes = await readAttachmentAsBytes(activeAttachment);
+      if (!bytes || !pdfjs?.getDocument) return '';
+
+      const loadingTask = pdfjs.getDocument({
+        data: bytes,
+        disableWorker: true,
+        isEvalSupported: false,
+        useWorkerFetch: false,
+      });
+      const pdf = await loadingTask.promise;
+      const pages = [];
+
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items
+          .map(item => item?.str || '')
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (pageText) pages.push(`[Page ${pageNumber}]\n${pageText}`);
+
+        if (pages.join('\n\n').length >= MAX_INLINE_DOCUMENT_CHARS) break;
+      }
+
+      if (typeof loadingTask.destroy === 'function') {
+        loadingTask.destroy();
+      }
+
+      return truncateDocumentText(pages.join('\n\n'));
+    } catch (err) {
+      console.warn("PDF text extraction failed:", err);
+      return '';
+    }
+  };
+
   const extractDocxTextFromBase64 = async (base64Content) => {
     if (!base64Content) return '';
 
@@ -425,7 +500,10 @@ const ChatSection = () => {
     const extractedDocxText = attachmentB64 && isDocxAttachment(activeAttachment)
       ? await extractDocxTextFromBase64(attachmentB64)
       : '';
-    const extractedText = extractedDocxText || (
+    const extractedPdfText = activeAttachment && !isFromVoice && isPdfAttachment(activeAttachment)
+      ? await extractPdfText(activeAttachment)
+      : '';
+    const extractedText = extractedDocxText || extractedPdfText || (
       activeAttachment && !isFromVoice && isPlainTextAttachment(activeAttachment)
         ? await readAttachmentAsText(activeAttachment)
         : ''
