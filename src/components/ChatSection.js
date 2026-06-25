@@ -60,6 +60,7 @@ const ChatSection = () => {
   const longSilenceTimerRef = useRef(null);
   const stopRecordingRef = useRef(null);
   const MAX_INLINE_DOCUMENT_CHARS = 12000;
+  const MAX_WEB_CONTEXT_CHARS = 12000;
 
   const getAttachmentExtension = (activeAttachment) => {
     const name = activeAttachment?.name || '';
@@ -126,6 +127,149 @@ const ChatSection = () => {
   const truncateDocumentText = (text) => {
     if (!text || text.length <= MAX_INLINE_DOCUMENT_CHARS) return text;
     return `${text.substring(0, MAX_INLINE_DOCUMENT_CHARS)}\n\n[Document text truncated after ${MAX_INLINE_DOCUMENT_CHARS} characters.]`;
+  };
+
+  const truncateWebContext = (text) => {
+    if (!text || text.length <= MAX_WEB_CONTEXT_CHARS) return text;
+    return `${text.substring(0, MAX_WEB_CONTEXT_CHARS)}\n\n[Web context truncated after ${MAX_WEB_CONTEXT_CHARS} characters.]`;
+  };
+
+  const stripHtmlToText = (html = '') => decodeXmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|section|article|li|h[1-6]|tr)>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+  )
+    .replace(/\r/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const normalizeUrl = (value) => {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return '';
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
+  const extractUrls = (value) => {
+    const matches = (value || '').match(/https?:\/\/[^\s)]+/gi) || [];
+    return [...new Set(matches.map(url => url.replace(/[.,;!?]+$/, '')))];
+  };
+
+  const decodeDuckDuckGoUrl = (href = '') => {
+    const normalized = decodeXmlEntities(href);
+    const match = normalized.match(/[?&]uddg=([^&]+)/);
+    if (match) return decodeURIComponent(match[1]);
+    if (normalized.startsWith('//')) return `https:${normalized}`;
+    return normalized;
+  };
+
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = 12000) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  const readWebPage = async (rawUrl) => {
+    const url = normalizeUrl(rawUrl);
+    if (!url) return '';
+
+    try {
+      const readerUrl = /^http:\/\//i.test(url)
+        ? `https://r.jina.ai/${url}`
+        : `https://r.jina.ai/http://${url}`;
+      const readerRes = await fetchWithTimeout(readerUrl, {
+        headers: { Accept: 'text/plain' },
+      }, 15000);
+      const readerText = await readerRes.text();
+      if (readerRes.ok && readerText.trim()) {
+        return truncateWebContext(`URL: ${url}\n\n${readerText.trim()}`);
+      }
+    } catch (err) {
+      console.warn("Reader fetch failed:", err);
+    }
+
+    try {
+      const res = await fetchWithTimeout(url, {
+        headers: { Accept: 'text/html,text/plain,application/xhtml+xml' },
+      }, 12000);
+      const text = await res.text();
+      if (!res.ok || !text.trim()) return '';
+      return truncateWebContext(`URL: ${url}\n\n${stripHtmlToText(text)}`);
+    } catch (err) {
+      console.warn("Direct web fetch failed:", err);
+      return '';
+    }
+  };
+
+  const shouldSearchWeb = (message = '') => {
+    const normalized = message.toLowerCase();
+    return /(\bweb\b|\binternet\b|\bonline\b|\bsearch\b|\bgoogle\b|\bbrowse\b|\blatest\b|\bcurrent\b|\bnews\b|联网|上网|网上|网络|搜索|搜一下|查一下|查找|最新|新闻)/i.test(normalized);
+  };
+
+  const searchWeb = async (query) => {
+    const trimmed = (query || '').trim();
+    if (!trimmed) return '';
+
+    try {
+      const searchUrl = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(trimmed)}`;
+      const res = await fetchWithTimeout(searchUrl, {
+        headers: { Accept: 'text/html' },
+      }, 12000);
+      const html = await res.text();
+      if (!res.ok || !html.trim()) return '';
+
+      const resultPattern = /<a rel="nofollow" href="([^"]+)"[^>]*class=['"]result-link['"][^>]*>([\s\S]*?)<\/a>[\s\S]*?<td class=['"]result-snippet['"]>([\s\S]*?)<\/td>/gi;
+      const results = [];
+      let match;
+
+      while ((match = resultPattern.exec(html)) && results.length < 5) {
+        results.push({
+          title: stripHtmlToText(match[2]),
+          url: decodeDuckDuckGoUrl(match[1]),
+          snippet: stripHtmlToText(match[3]),
+        });
+      }
+
+      if (results.length === 0) {
+        return `Web search query: ${trimmed}\n\nNo readable search results were returned.`;
+      }
+
+      const pageReads = await Promise.all(
+        results.slice(0, 3).map(async (result) => {
+          const text = await readWebPage(result.url);
+          return text ? text.substring(0, 3000) : '';
+        })
+      );
+
+      const summary = results.map((result, index) => [
+        `${index + 1}. ${result.title}`,
+        result.url,
+        result.snippet,
+      ].filter(Boolean).join('\n')).join('\n\n');
+
+      const pageContext = pageReads
+        .filter(Boolean)
+        .map((text, index) => `Top result page ${index + 1}:\n${text}`)
+        .join('\n\n---\n\n');
+
+      return truncateWebContext([
+        `Web search query: ${trimmed}`,
+        `Search results:\n${summary}`,
+        pageContext ? `Fetched page context:\n${pageContext}` : '',
+      ].filter(Boolean).join('\n\n'));
+    } catch (err) {
+      console.warn("Web search failed:", err);
+      return '';
+    }
   };
 
   const onRefresh = async () => {
@@ -471,6 +615,35 @@ const ChatSection = () => {
     return instructions.join("\n\n");
   };
 
+  const buildMessageWithWebContext = (message, webContextText = '') => {
+    if (!webContextText) return message;
+
+    return [
+      "Use the following live web context as a primary source for this request. Cite URLs when relevant and say if the web context is incomplete.",
+      webContextText,
+      message,
+    ].join('\n\n');
+  };
+
+  const collectWebContextForMessage = async (message) => {
+    if (!message?.trim()) return '';
+
+    const sections = [];
+    const urls = extractUrls(message).slice(0, 3);
+
+    for (const url of urls) {
+      const pageText = await readWebPage(url);
+      if (pageText) sections.push(pageText);
+    }
+
+    if (urls.length === 0 && shouldSearchWeb(message)) {
+      const searchText = await searchWeb(message);
+      if (searchText) sections.push(searchText);
+    }
+
+    return truncateWebContext(sections.filter(Boolean).join('\n\n---\n\n'));
+  };
+
   const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
     if (isTyping) return;
 
@@ -508,7 +681,11 @@ const ChatSection = () => {
         ? await readAttachmentAsText(activeAttachment)
         : ''
     );
-    const finalInput = buildMessageForAttachment(rawInput.trim(), activeAttachment, extractedText);
+    const attachmentInput = buildMessageForAttachment(rawInput.trim(), activeAttachment, extractedText);
+    const liveWebContext = !isFromVoice
+      ? await collectWebContextForMessage(rawInput)
+      : '';
+    const finalInput = buildMessageWithWebContext(attachmentInput, liveWebContext);
 
     // Visual placeholder for voice
     const displayInput = isFromVoice ? rawInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
