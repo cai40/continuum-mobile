@@ -129,6 +129,35 @@ const ChatSection = () => {
     return `${text.substring(0, MAX_INLINE_DOCUMENT_CHARS)}\n\n[Document text truncated after ${MAX_INLINE_DOCUMENT_CHARS} characters.]`;
   };
 
+  const HANDS_FREE_RESPONSE_RULES = [
+    "Hands-free voice mode is active.",
+    "Reply like a natural spoken conversation.",
+    "Keep the answer very short: one or two brief sentences, under 35 words unless I explicitly ask for detail.",
+    "Do not use Markdown, headings, bullets, numbered lists, tables, code blocks, emoji, or symbols such as #, *, _, `, [, ], or •.",
+    "Use plain words that sound good when read aloud.",
+    "If the question is broad, give the shortest useful answer and ask one simple follow-up question.",
+  ].join(' ');
+
+  const applyHandsFreeInstructions = (message) => [
+    HANDS_FREE_RESPONSE_RULES,
+    message,
+  ].join('\n\n');
+
+  const buildHandsFreePersona = (basePersona) => [
+    basePersona,
+    HANDS_FREE_RESPONSE_RULES,
+  ].filter(Boolean).join('\n\n');
+
+  const sanitizeHandsFreeText = (text = '') => text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/^[\s>*-]*[-*•]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .replace(/[*_~#>\[\]{}|]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   const truncateWebContext = (text) => {
     if (!text || text.length <= MAX_WEB_CONTEXT_CHARS) return text;
     return `${text.substring(0, MAX_WEB_CONTEXT_CHARS)}\n\n[Web context truncated after ${MAX_WEB_CONTEXT_CHARS} characters.]`;
@@ -685,7 +714,13 @@ const ChatSection = () => {
     const liveWebContext = !isFromVoice
       ? await collectWebContextForMessage(rawInput)
       : '';
-    const finalInput = buildMessageWithWebContext(attachmentInput, liveWebContext);
+    const contextualInput = buildMessageWithWebContext(attachmentInput, liveWebContext);
+    const finalInput = isVoiceMode
+      ? applyHandsFreeInstructions(contextualInput)
+      : contextualInput;
+    const requestPersona = isVoiceMode
+      ? buildHandsFreePersona(persona)
+      : persona;
 
     // Visual placeholder for voice
     const displayInput = isFromVoice ? rawInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
@@ -714,7 +749,7 @@ const ChatSection = () => {
     const formData = new FormData();
     formData.append('message', finalInput);
     formData.append('provider', provider);
-    formData.append('persona', persona);
+    formData.append('persona', requestPersona);
     formData.append('history', JSON.stringify(activeAttachment && !isFromVoice ? [] : messages.slice(-20)));
 
     const openrouterProviders = [
@@ -732,6 +767,8 @@ const ChatSection = () => {
     if (isVoiceMode) {
       formData.append('synthesize_voice', 'True');
       formData.append('voice_model', selectedVoice);
+      formData.append('response_style', 'hands_free_short_plain');
+      formData.append('tts_instructions', HANDS_FREE_RESPONSE_RULES);
     }
 
     if (activeAttachment && !isFromVoice) {
@@ -789,10 +826,11 @@ const ChatSection = () => {
         isHandled = true;
         setIsTyping(false);
         setStreamingContent('');
-        if (!finalText.trim()) return;
+        const responseText = isVoiceMode ? sanitizeHandsFreeText(finalText) : finalText;
+        if (!responseText.trim()) return;
 
         setMessages(prev => {
-          const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: finalText };
+          const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: responseText };
           // REPAIR: Absolute safeguard to ensure 'Transcribing...' is ALWAYS replaced by the time the AI finishes
           if (isFromVoice) {
             return prev.map(m => {
