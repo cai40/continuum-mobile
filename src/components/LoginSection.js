@@ -225,10 +225,10 @@ const LoginSection = () => {
             <Text style={{ color: theme.colors.gray, marginTop: 8, marginBottom: 32 }}>{user.email}</Text>
             
             <TouchableOpacity
-              style={loginStyles.primaryButton}
+              style={loginStyles.lockedUnlockButton}
               onPress={handleBiometricAutofill}
             >
-              <Text style={loginStyles.buttonText}>Unlock Vault</Text>
+              <Text style={loginStyles.lockedUnlockText}>Unlock Vault</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -417,6 +417,26 @@ const loginStyles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '700',
+  },
+  lockedUnlockButton: {
+    backgroundColor: theme.colors.primary,
+    minWidth: 132,
+    height: 46,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  lockedUnlockText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.1,
   },
   secondaryButton: {
     marginTop: 24,

@@ -41,3 +41,37 @@ export const stringifyContent = (content) => {
   if (typeof content === 'object' && content !== null) return content.text || JSON.stringify(content);
   return String(content);
 };
+
+const DOCUMENT_MIME_BY_EXTENSION = {
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  text: 'text/plain',
+  md: 'text/plain',
+  markdown: 'text/plain',
+  csv: 'text/plain',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+
+export const inferDocumentMimeType = (name = '', uri = '', fallback = 'application/octet-stream') => {
+  const cleanName = String(name || uri || '').split('?')[0].split('#')[0];
+  const extension = cleanName.includes('.') ? cleanName.split('.').pop().toLowerCase() : '';
+  return DOCUMENT_MIME_BY_EXTENSION[extension] || fallback;
+};
+
+export const normalizeDocumentAsset = (asset, fallbackType = 'application/octet-stream') => {
+  const name = asset?.name || asset?.fileName || 'document';
+  const genericMimeTypes = ['application/octet-stream', 'application/x-unknown'];
+  const reportedType = asset?.mimeType;
+  const type = reportedType && !genericMimeTypes.includes(reportedType)
+    ? reportedType
+    : inferDocumentMimeType(name, asset?.uri, fallbackType);
+
+  return {
+    uri: asset?.uri,
+    name,
+    type,
+    size: asset?.size,
+    lastModified: asset?.lastModified || asset?.modificationTime || null,
+  };
+};
