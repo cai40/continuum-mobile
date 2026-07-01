@@ -1,0 +1,71 @@
+name: SnoreGuard
+options:
+  bundleIdPrefix: com.snoreguard
+  deploymentTarget:
+    iOS: "17.0"
+    watchOS: "10.0"
+  createIntermediateGroups: true
+
+packages:
+  SnoreGuardCore:
+    path: Packages/SnoreGuardCore
+
+targets:
+  SnoreGuard:
+    type: application
+    platform: iOS
+    sources:
+      - SnoreGuard
+    dependencies:
+      - package: SnoreGuardCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.snoreguard.ios
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "SnoreGuard listens for snoring during sleep to deliver gentle Apple Watch taps."
+        INFOPLIST_KEY_UIBackgroundModes:
+          - audio
+        SWIFT_VERSION: "5.9"
+    info:
+      path: SnoreGuard/Resources/Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: SnoreGuard
+
+  SnoreGuardWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - SnoreGuardWatch
+    dependencies:
+      - package: SnoreGuardCore
+      - target: SnoreGuard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.snoreguard.watchkitapp
+        INFOPLIST_KEY_WKBackgroundModes:
+          - alarm
+        SWIFT_VERSION: "5.9"
+    info:
+      path: SnoreGuardWatch/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: SnoreGuard
+        WKCompanionAppBundleIdentifier: com.snoreguard.ios
+
+  SnoreGuardCoreTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Packages/SnoreGuardCore/Tests/SnoreGuardCoreTests
+    dependencies:
+      - package: SnoreGuardCore
+      - target: SnoreGuard
+
+schemes:
+  SnoreGuard:
+    build:
+      targets:
+        SnoreGuard: all
+        SnoreGuardWatch: all
+    test:
+      targets:
+        - SnoreGuardCoreTests
