@@ -40,7 +40,7 @@ const ChatSection = () => {
 
   const [input, setInput] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [attachment, setAttachment] = useState(null);
+  const [attachments, setAttachments] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -61,6 +61,7 @@ const ChatSection = () => {
   const stopRecordingRef = useRef(null);
   const MAX_INLINE_DOCUMENT_CHARS = 12000;
   const MAX_WEB_CONTEXT_CHARS = 12000;
+  const MAX_ATTACHMENTS = 8;
 
   const getAttachmentExtension = (activeAttachment) => {
     const name = activeAttachment?.name || '';
@@ -84,6 +85,19 @@ const ChatSection = () => {
     const extension = getAttachmentExtension(activeAttachment);
     return ['txt', 'md', 'markdown', 'csv', 'log'].includes(extension) ||
       activeAttachment?.type?.startsWith('text/');
+  };
+
+  const addAttachments = (newAttachments) => {
+    const validAttachments = newAttachments.filter(item => item?.uri);
+    if (validAttachments.length === 0) return;
+
+    setAttachments(prev => {
+      const next = [...prev, ...validAttachments].slice(0, MAX_ATTACHMENTS);
+      if (prev.length + validAttachments.length > MAX_ATTACHMENTS) {
+        Alert.alert("Attachment Limit", `You can attach up to ${MAX_ATTACHMENTS} files at one time.`);
+      }
+      return next;
+    });
   };
 
   const ensurePdfJsRuntime = () => {
@@ -385,17 +399,19 @@ const ChatSection = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_ATTACHMENTS,
       allowsEditing: false,
       quality: 0.8,
     });
 
     if (!result.canceled) {
-      const asset = result.assets[0];
-      setAttachment({
+      const imageAttachments = result.assets.map((asset, index) => ({
         uri: asset.uri,
-        name: asset.fileName || 'image.jpg',
+        name: asset.fileName || `image-${Date.now()}-${index + 1}.jpg`,
         type: asset.mimeType || 'image/jpeg'
-      });
+      }));
+      addAttachments(imageAttachments);
     }
   };
 
@@ -403,31 +419,32 @@ const ChatSection = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
-        copyToCacheDirectory: true
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'text/markdown', 'text/csv'],
+        copyToCacheDirectory: true,
+        multiple: true
       });
 
       if (!result.canceled) {
-        const asset = normalizeDocumentAsset(result.assets[0]);
-        if (isLegacyWordAttachment(asset)) {
+        const documentAttachments = result.assets.map(asset => normalizeDocumentAsset(asset));
+        if (documentAttachments.some(item => isLegacyWordAttachment(item))) {
           Alert.alert(
             "Legacy Word Format",
             "Older .doc files may not be readable. If this upload fails, save the document as .docx or PDF and upload that version."
           );
         }
-        setAttachment({
-          uri: asset.uri,
-          name: asset.name,
-          type: asset.type
-        });
+        addAttachments(documentAttachments);
       }
     } catch (err) {
       console.warn("Document Picker Error:", err);
     }
   };
 
-  const clearAttachment = () => {
-    setAttachment(null);
+  const removeAttachment = (indexToRemove) => {
+    setAttachments(prev => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const clearAttachments = () => {
+    setAttachments([]);
   };
 
   const playNextStreamChunk = async () => {
@@ -621,11 +638,14 @@ const ChatSection = () => {
     }
   };
 
-  const buildMessageForAttachment = (message, activeAttachment, extractedText = '') => {
-    if (!activeAttachment || activeAttachment.type?.startsWith('audio')) return message;
+  const buildMessageForAttachments = (message, activeAttachments, extractedText = '') => {
+    if (!activeAttachments || activeAttachments.length === 0) return message;
+
+    const names = activeAttachments.map((item, index) => `${index + 1}. ${item.name}`).join('\n');
+    const hasLegacyWord = activeAttachments.some(item => isLegacyWordAttachment(item));
 
     const instructions = [
-      `Use the newly attached file "${activeAttachment.name}" as the primary source for this request.`,
+      `Use the newly attached files as the primary sources for this request:\n${names}`,
       "Do not summarize or answer from previously uploaded documents unless I explicitly ask for them.",
     ];
 
@@ -634,9 +654,9 @@ const ChatSection = () => {
         "The current document text extracted on-device is below:",
         extractedText,
       );
-    } else if (isLegacyWordAttachment(activeAttachment)) {
+    } else if (hasLegacyWord) {
       instructions.push(
-        "This is a legacy .doc Word file. If its contents are unavailable, say that the file must be saved as .docx or PDF instead of using older document memory.",
+        "One or more files are legacy .doc Word files. If their contents are unavailable, say that those files must be saved as .docx or PDF instead of using older document memory.",
       );
     }
 
@@ -673,6 +693,24 @@ const ChatSection = () => {
     return truncateWebContext(sections.filter(Boolean).join('\n\n---\n\n'));
   };
 
+  const extractAttachmentText = async (activeAttachment, attachmentB64) => {
+    if (!activeAttachment) return '';
+
+    if (attachmentB64 && isDocxAttachment(activeAttachment)) {
+      return await extractDocxTextFromBase64(attachmentB64);
+    }
+
+    if (isPdfAttachment(activeAttachment)) {
+      return await extractPdfText(activeAttachment);
+    }
+
+    if (isPlainTextAttachment(activeAttachment)) {
+      return await readAttachmentAsText(activeAttachment);
+    }
+
+    return '';
+  };
+
   const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
     if (isTyping) return;
 
@@ -691,26 +729,37 @@ const ChatSection = () => {
       return;
     }
 
-    const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
+    const activeAttachments = Array.isArray(overrideAttachment)
+      ? overrideAttachment.filter(item => item?.uri)
+      : ((overrideAttachment && overrideAttachment.uri) ? [overrideAttachment] : attachments);
+    const hasAttachments = activeAttachments.length > 0;
     // ... rest of the setup
     const rawInput = isFromVoice ? localTranscript : input;
-    if (!rawInput.trim() && !activeAttachment) return;
+    if (!rawInput.trim() && !hasAttachments) return;
 
-    const attachmentB64 = activeAttachment && !isFromVoice
-      ? await readAttachmentAsBase64(activeAttachment)
-      : null;
-    const extractedDocxText = attachmentB64 && isDocxAttachment(activeAttachment)
-      ? await extractDocxTextFromBase64(attachmentB64)
-      : '';
-    const extractedPdfText = activeAttachment && !isFromVoice && isPdfAttachment(activeAttachment)
-      ? await extractPdfText(activeAttachment)
-      : '';
-    const extractedText = extractedDocxText || extractedPdfText || (
-      activeAttachment && !isFromVoice && isPlainTextAttachment(activeAttachment)
-        ? await readAttachmentAsText(activeAttachment)
-        : ''
-    );
-    const attachmentInput = buildMessageForAttachment(rawInput.trim(), activeAttachment, extractedText);
+    const attachmentPayloads = [];
+    const extractedTextSections = [];
+
+    if (!isFromVoice && hasAttachments) {
+      for (const [index, currentAttachment] of activeAttachments.entries()) {
+        const attachmentB64 = await readAttachmentAsBase64(currentAttachment);
+        const extractedText = await extractAttachmentText(currentAttachment, attachmentB64);
+
+        attachmentPayloads.push({
+          ...currentAttachment,
+          base64: attachmentB64,
+          extractedText,
+          index,
+        });
+
+        if (extractedText) {
+          extractedTextSections.push(`File ${index + 1}: ${currentAttachment.name}\n${extractedText}`);
+        }
+      }
+    }
+
+    const extractedText = truncateDocumentText(extractedTextSections.join('\n\n---\n\n'));
+    const attachmentInput = buildMessageForAttachments(rawInput.trim(), activeAttachments, extractedText);
     const liveWebContext = !isFromVoice
       ? await collectWebContextForMessage(rawInput)
       : '';
@@ -723,15 +772,21 @@ const ChatSection = () => {
       : persona;
 
     // Visual placeholder for voice
-    const displayInput = isFromVoice ? rawInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
-    const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachment: activeAttachment };
+    const displayInput = isFromVoice ? rawInput : (input || (hasAttachments ? `User attached ${activeAttachments.length} file${activeAttachments.length > 1 ? 's' : ''}.` : "User attached a file."));
+    const userMsg = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: displayInput,
+      attachment: activeAttachments[0] || null,
+      attachments: activeAttachments,
+    };
 
     setMessages(prev => [...prev, userMsg]);
     incrementDailyCount(); // TRACK USAGE
 
     setInput('');
     setLocalTranscript('');
-    setAttachment(null);
+    setAttachments([]);
     setIsTyping(true);
 
     // Audio Playback Setup
@@ -750,7 +805,7 @@ const ChatSection = () => {
     formData.append('message', finalInput);
     formData.append('provider', provider);
     formData.append('persona', requestPersona);
-    formData.append('history', JSON.stringify(activeAttachment && !isFromVoice ? [] : messages.slice(-20)));
+    formData.append('history', JSON.stringify(hasAttachments && !isFromVoice ? [] : messages.slice(-20)));
 
     const openrouterProviders = [
       'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro', 
@@ -771,14 +826,37 @@ const ChatSection = () => {
       formData.append('tts_instructions', HANDS_FREE_RESPONSE_RULES);
     }
 
-    if (activeAttachment && !isFromVoice) {
-      formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
-      formData.append('file_name', activeAttachment.name);
-      formData.append('file_type', activeAttachment.type);
+    if (hasAttachments && !isFromVoice) {
+      formData.append('attachment_count', String(attachmentPayloads.length));
+      formData.append('attachments_metadata', JSON.stringify(attachmentPayloads.map(item => ({
+        name: item.name,
+        type: item.type,
+        index: item.index,
+        has_extracted_text: Boolean(item.extractedText),
+      }))));
 
-      if (attachmentB64) {
-        formData.append(activeAttachment.type?.startsWith('image/') ? 'image_b64' : 'file_b64', attachmentB64);
-      }
+      attachmentPayloads.forEach((currentAttachment, index) => {
+        const filePayload = {
+          uri: currentAttachment.uri,
+          name: currentAttachment.name,
+          type: currentAttachment.type,
+        };
+
+        if (index === 0) {
+          formData.append('file', filePayload);
+          formData.append('file_name', currentAttachment.name);
+          formData.append('file_type', currentAttachment.type);
+        }
+
+        formData.append('files', filePayload);
+        formData.append(`file_${index + 1}`, filePayload);
+
+        if (currentAttachment.base64) {
+          const fieldPrefix = currentAttachment.type?.startsWith('image/') ? 'image_b64' : 'file_b64';
+          formData.append(index === 0 ? fieldPrefix : `${fieldPrefix}_${index + 1}`, currentAttachment.base64);
+        }
+      });
+
       if (extractedText) {
         formData.append('file_text', extractedText);
         formData.append('document_text', extractedText);
@@ -862,7 +940,7 @@ const ChatSection = () => {
         return;
       }
 
-      if (input.trim() || attachment) {
+      if (input.trim() || attachments.length > 0) {
         await sendMessage();
         return;
       }
@@ -938,6 +1016,7 @@ const ChatSection = () => {
   const renderChatItem = ({ item }) => {
     if (!item || !item.content) return null;
     const isSelected = selectedIds.has(item.id);
+    const itemAttachments = item.attachments || (item.attachment ? [item.attachment] : []);
 
     return (
       <TouchableOpacity
@@ -974,22 +1053,26 @@ const ChatSection = () => {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexShrink: 1 }}>
-            {item.attachment && (
-              <View style={{ marginBottom: 8 }}>
-                {item.attachment.type.startsWith('image/') ? (
-                  <Image 
-                    source={{ uri: item.attachment.uri }} 
-                    style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: theme.colors.light }} 
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.light, padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: theme.colors.primary }}>
-                    <Ionicons name="document-attach" size={20} color={theme.colors.primary} />
-                    <Text style={{ marginLeft: 8, fontSize: 13, color: theme.colors.black, fontWeight: '600' }} numberOfLines={1}>
-                      {item.attachment.name}
-                    </Text>
+            {itemAttachments.length > 0 && (
+              <View style={{ marginBottom: 8, gap: 8 }}>
+                {itemAttachments.map((attachedItem, index) => (
+                  <View key={`${attachedItem.uri}_${index}`}>
+                    {attachedItem.type?.startsWith('image/') ? (
+                      <Image 
+                        source={{ uri: attachedItem.uri }} 
+                        style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: theme.colors.light }} 
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.light, padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: theme.colors.primary }}>
+                        <Ionicons name="document-attach" size={20} color={theme.colors.primary} />
+                        <Text style={{ marginLeft: 8, fontSize: 13, color: theme.colors.black, fontWeight: '600', flex: 1 }} numberOfLines={1}>
+                          {attachedItem.name}
+                        </Text>
+                      </View>
+                    )}
                   </View>
-                )}
+                ))}
               </View>
             )}
             <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>{item.content}</Text>
@@ -1157,15 +1240,24 @@ const ChatSection = () => {
         </View>
       )}
 
-      {attachment && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, backgroundColor: theme.colors.light, marginHorizontal: 16, padding: 8, borderRadius: 12 }}>
-          <Ionicons name={attachment.type.startsWith('image/') ? "image" : "document-text"} size={20} color={theme.colors.primary} />
-          <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: theme.colors.black }} numberOfLines={1}>
-            {attachment.name}
-          </Text>
-          <TouchableOpacity onPress={clearAttachment}>
-            <Ionicons name="close-circle" size={20} color={theme.colors.danger} />
-          </TouchableOpacity>
+      {attachments.length > 0 && (
+        <View style={{ marginHorizontal: 16, marginBottom: 8, gap: 6 }}>
+          {attachments.map((currentAttachment, index) => (
+            <View key={`${currentAttachment.uri}_${index}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.light, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 12 }}>
+              <Ionicons name={currentAttachment.type?.startsWith('image/') ? "image" : "document-text"} size={20} color={theme.colors.primary} />
+              <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: theme.colors.black }} numberOfLines={1}>
+                {currentAttachment.name}
+              </Text>
+              <TouchableOpacity onPress={() => removeAttachment(index)}>
+                <Ionicons name="close-circle" size={20} color={theme.colors.danger} />
+              </TouchableOpacity>
+            </View>
+          ))}
+          {attachments.length > 1 && (
+            <TouchableOpacity onPress={clearAttachments} style={{ alignSelf: 'flex-end', paddingHorizontal: 8, paddingVertical: 4 }}>
+              <Text style={{ color: theme.colors.danger, fontSize: 11, fontWeight: '700' }}>Clear all</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1212,7 +1304,7 @@ const ChatSection = () => {
         <View style={[styles.capsuleInput, { flex: 1 }]}>
           <TextInput
             style={styles.textInput}
-            placeholder={attachment ? "Describe this file..." : "Message..."}
+            placeholder={attachments.length > 0 ? "Describe these files..." : "Message..."}
             value={input}
             onChangeText={setInput}
             multiline
@@ -1224,7 +1316,7 @@ const ChatSection = () => {
             onPress={handleSendPress}
             style={styles.sendPill}
           >
-            <Ionicons name={recording ? "stop" : (input.trim() || attachment ? "arrow-up" : "mic-outline")} size={20} color="white" />
+            <Ionicons name={recording ? "stop" : (input.trim() || attachments.length > 0 ? "arrow-up" : "mic-outline")} size={20} color="white" />
           </TouchableOpacity>
         </View>
       </View>
