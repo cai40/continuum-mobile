@@ -15,7 +15,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
-import { resolveBridgeBaseUrl, resolveBridgeSecret } from '../utils/openclawBridge';
+import { resolveBridgeBaseUrl, resolveBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -34,6 +34,11 @@ const ChatSection = () => {
     openclawVpsIp,
     openclawBridgeHttpsUrl,
     openclawBridgeSecret,
+    dailyMessageCount,
+    incrementDailyCount,
+    getTierLimits,
+    subscriptionTier,
+    setActiveTab,
   } = useAppContext();
 
   const [input, setInput] = useState('');
@@ -220,7 +225,7 @@ const ChatSection = () => {
         "Hands-free voice mode is reserved for Pro and Elite members. Start your 30-day free trial now!",
         [
           { text: "Later", style: "cancel" },
-          { text: "View Plans", onPress: () => useAppContext().setActiveTab('subscription') }
+          { text: "View Plans", onPress: () => setActiveTab('subscription') }
         ]
       );
       return;
@@ -263,147 +268,126 @@ const ChatSection = () => {
   stopRecordingRef.current = stopRecording;
 
   const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
-    if (isTyping) return;
+    try {
+      if (isTyping) {
+        handleStop();
+      }
 
-    // QUOTA ENFORCEMENT (v3.4.50)
-    const { daily } = useAppContext().getTierLimits();
-    const { dailyMessageCount, incrementDailyCount } = useAppContext();
+      const { daily } = getTierLimits();
 
-    if (dailyMessageCount >= daily) {
-      Alert.alert(
-        "Daily Limit Reached",
-        `You have used your ${daily} daily conversations for the ${useAppContext().subscriptionTier.toUpperCase()} tier. Upgrade for higher limits!`,
-        [
-          { text: "View Plans", onPress: () => useAppContext().setActiveTab('subscription') },
-          { text: "Later", style: "cancel" }
-        ]
-      );
-      return;
-    }
+      if (dailyMessageCount >= daily) {
+        Alert.alert(
+          "Daily Limit Reached",
+          `You have used your ${daily} daily conversations for the ${subscriptionTier.toUpperCase()} tier. Upgrade for higher limits!`,
+          [
+            { text: "View Plans", onPress: () => setActiveTab('subscription') },
+            { text: "Later", style: "cancel" }
+          ]
+        );
+        return;
+      }
 
-    const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
-    // ... rest of the setup
-    const finalInput = isFromVoice ? localTranscript : input;
-    if (!finalInput.trim() && !activeAttachment) return;
+      const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
+      const finalInput = isFromVoice ? localTranscript : input;
+      if (!finalInput.trim() && !activeAttachment) return;
 
-    // Visual placeholder for voice
-    const displayInput = isFromVoice ? finalInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
-    const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachment: activeAttachment };
+      const openrouterProviders = [
+        'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',
+        'deepseek_v4_flash', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
+      ];
+      const activeKey =
+        provider === 'groq' ? groqKey :
+        (provider === 'gemini' ? geminiKey :
+        (openrouterProviders.includes(provider) ? openrouterKey : openaiKey));
 
-    setMessages(prev => [...prev, userMsg]);
-    incrementDailyCount(); // TRACK USAGE
+      if (provider === 'gemini' && !activeKey?.trim()) {
+        Alert.alert("Gemini key required", "Add your Gemini API key under Setup → Intelligence & API Keys.");
+        return;
+      }
 
-    setInput('');
-    setLocalTranscript('');
-    setAttachment(null);
-    setIsTyping(true);
+      const activeToken = session?.access_token?.trim();
+      if (!activeToken) {
+        Alert.alert("Security Error", "Session expired. Please log in again.");
+        return;
+      }
 
-    // Audio Playback Setup
-    if (isVoiceMode) {
-      try {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldRouteThroughEarpieceIOS: false,
-        });
-      } catch (e) { console.log("Audio Mode Setup Error:", e); }
-    }
+      const displayInput = isFromVoice ? finalInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
+      const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachment: activeAttachment };
 
-    const formData = new FormData();
-    formData.append('message', finalInput);
-    formData.append('provider', provider);
-    formData.append('persona', persona);
-    formData.append('history', JSON.stringify(messages.slice(-20)));
+      setMessages(prev => [...prev, userMsg]);
+      incrementDailyCount();
+      setInput('');
+      setLocalTranscript('');
+      setAttachment(null);
+      setIsTyping(true);
 
-    const openrouterProviders = [
-      'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro', 
-      'deepseek_v4_flash', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax'
-    ];
-    
-    const activeKey = 
-      provider === 'groq' ? groqKey : 
-      (provider === 'gemini' ? geminiKey : 
-      (openrouterProviders.includes(provider) ? openrouterKey : openaiKey));
-    
-    if (activeKey) formData.append('api_key', activeKey.trim());
+      if (isVoiceMode) {
+        try {
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+            shouldRouteThroughEarpieceIOS: false,
+          });
+        } catch (e) { console.log("Audio Mode Setup Error:", e); }
+      }
 
-    if (isVoiceMode) {
-      formData.append('synthesize_voice', 'True');
-      formData.append('voice_model', selectedVoice);
-    }
+      const formData = new FormData();
+      formData.append('message', finalInput);
+      formData.append('provider', provider);
+      formData.append('persona', persona);
+      formData.append('history', JSON.stringify(messages.slice(-20)));
+      if (activeKey) formData.append('api_key', activeKey.trim());
+      if (isVoiceMode) {
+        formData.append('synthesize_voice', 'True');
+        formData.append('voice_model', selectedVoice);
+      }
+      if (activeAttachment && !isFromVoice) {
+        formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
+      }
+      if (location) {
+        formData.append('lat', location.coords.latitude.toString());
+        formData.append('lon', location.coords.longitude.toString());
+      }
+      formData.append('client_time', new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
 
-    if (activeAttachment && !isFromVoice) {
-      formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
-    }
+      const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
+      const bridgeUrl = resolveBridgeBaseUrl({
+        httpsUrl: openclawBridgeHttpsUrl,
+        vpsIp: openclawVpsIp,
+        defaultVpsIp: "135.181.155.197",
+      });
+      const useOpenClawBridge =
+        openclawChatEnabled &&
+        bridgeUrl &&
+        isHttpsBridgeUrl(bridgeUrl) &&
+        !activeAttachment &&
+        !isVoiceMode;
 
-    if (location) {
-      formData.append('lat', location.coords.latitude.toString());
-      formData.append('lon', location.coords.longitude.toString());
-    }
+      const clientTime = new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-    formData.append('client_time', new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
+      let isHandled = false;
+      let bridgeAttempted = useOpenClawBridge;
+      let renderFallbackUsed = false;
 
-    const activeToken = session?.access_token?.trim();
-    if (!activeToken) {
-      Alert.alert("Security Error", "Session expired. Please log in again.");
-      setIsTyping(false);
-      return;
-    }
-
-    const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
-    const bridgeUrl = resolveBridgeBaseUrl({
-      httpsUrl: openclawBridgeHttpsUrl,
-      vpsIp: openclawVpsIp,
-      defaultVpsIp: "135.181.155.197",
-    });
-
-    const useOpenClawBridge =
-      openclawChatEnabled &&
-      bridgeUrl &&
-      !activeAttachment &&
-      !isVoiceMode;
-
-    const clientTime = new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-    let isHandled = false;
-    const streamCallbacks = {
-      onUpdate: (event, json) => {
-        if (event === 'text' && json.token) {
-          setStreamingContent(prev => prev + json.token);
-        } else if (event === 'audio' && json.audio) {
-          soundQueueRef.current.push(json.audio);
-          if (!isPlayingQueueRef.current) playNextStreamChunk();
-        } else if (event === 'transcript') {
-          const transcript = json.text || (typeof json === 'string' ? json : null);
-          if (transcript) {
-            setMessages(prev => prev.map(m =>
-              m.id === userMsg.id ? { ...m, content: transcript } : m
-            ));
-          }
-        } else if (event === 'error') {
-          if (!isHandled) {
-            isHandled = true;
-            setIsTyping(false);
-            setStreamingContent('');
-            Alert.alert("Continuum Fault", json.detail || "An unexpected error occurred.");
-          }
-        }
-      },
-      onDone: (finalText, voiceTranscript) => {
-        if (isHandled) return;
-        isHandled = true;
+      const typingSafetyTimer = setTimeout(() => {
         setIsTyping(false);
         setStreamingContent('');
-        if (!finalText.trim()) {
-          if (useOpenClawBridge) {
-            Alert.alert(
-              "No reply from bridge",
-              "Try again, or turn off Route chat through OpenClaw in Settings.",
-            );
-          }
+      }, 130000);
+
+      const clearTypingSafety = () => clearTimeout(typingSafetyTimer);
+
+      const finishSuccess = (finalText, voiceTranscript) => {
+        if (!finalText.trim() && bridgeAttempted && !renderFallbackUsed) {
+          finishError("Bridge returned empty reply");
           return;
         }
+        if (isHandled) return;
+        isHandled = true;
+        clearTypingSafety();
+        setIsTyping(false);
+        setStreamingContent('');
+        if (!finalText.trim()) return;
 
         setMessages(prev => {
           const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: finalText };
@@ -417,18 +401,54 @@ const ChatSection = () => {
           }
           return [...prev, aiMsg];
         });
-      },
-      onError: (err) => {
+      };
+
+      const startRenderStream = () => {
+        const xhrDirect = chatStream(
+          formData,
+          onStreamUpdate,
+          finishSuccess,
+          finishError,
+          activeToken,
+        );
+        abortControllerRef.current = { abort: () => xhrDirect.abort() };
+        return xhrDirect;
+      };
+
+      const finishError = (err) => {
+        if (bridgeAttempted && !renderFallbackUsed) {
+          renderFallbackUsed = true;
+          bridgeAttempted = false;
+          isHandled = false;
+          startRenderStream();
+          return;
+        }
         if (isHandled) return;
         isHandled = true;
+        clearTypingSafety();
         setIsTyping(false);
         setStreamingContent('');
-        Alert.alert("Chat Error", err);
-      },
-    };
+        Alert.alert("Chat Error", String(err || "Could not send message."));
+      };
 
-    let xhr;
-    try {
+      const onStreamUpdate = (event, json) => {
+        if (event === 'text' && json.token) {
+          setStreamingContent(prev => prev + json.token);
+        } else if (event === 'audio' && json.audio) {
+          soundQueueRef.current.push(json.audio);
+          if (!isPlayingQueueRef.current) playNextStreamChunk();
+        } else if (event === 'transcript') {
+          const transcript = json.text || (typeof json === 'string' ? json : null);
+          if (transcript) {
+            setMessages(prev => prev.map(m =>
+              m.id === userMsg.id ? { ...m, content: transcript } : m
+            ));
+          }
+        } else if (event === 'error') {
+          finishError(json.detail || "An unexpected error occurred.");
+        }
+      };
+
       if (useOpenClawBridge) {
         const payload = {
           message: finalInput,
@@ -442,27 +462,36 @@ const ChatSection = () => {
           lon: location?.coords?.longitude?.toString(),
           client_time: clientTime,
         };
-        xhr = openClawChatStream(
+        const xhr = openClawChatStream(
           bridgeUrl,
           bridgeSecret,
           payload,
-          streamCallbacks.onUpdate,
-          streamCallbacks.onDone,
-          streamCallbacks.onError,
+          onStreamUpdate,
+          finishSuccess,
+          finishError,
           activeToken,
         );
+        abortControllerRef.current = { abort: () => xhr.abort() };
       } else {
-        xhr = chatStream(formData,
-          streamCallbacks.onUpdate,
-          streamCallbacks.onDone,
-          streamCallbacks.onError,
-          activeToken,
-        );
+        startRenderStream();
       }
-      abortControllerRef.current = { abort: () => xhr.abort() };
     } catch (e) {
       setIsTyping(false);
-      Alert.alert("Chat Error", e.message || String(e));
+      setStreamingContent('');
+      Alert.alert("Send failed", e.message || String(e));
+    }
+  };
+
+  const onPressSend = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (recording) {
+      stopRecording();
+      return;
+    }
+    if (input.trim() || attachment) {
+      sendMessage();
+    } else {
+      startRecording();
     }
   };
 
@@ -705,6 +734,9 @@ const ChatSection = () => {
       <FlatList
         ref={chatListRef}
         inverted={true}
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         data={
           streamingContent.trim() 
             ? [{ id: 'stream', role: 'assistant', content: streamingContent }, ...[...messages].reverse()] 
@@ -760,7 +792,7 @@ const ChatSection = () => {
         </View>
       )}
 
-      <View style={[styles.inputWrapper, { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 10, paddingBottom: 10 }]}>
+      <View style={[styles.inputWrapper, { flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 10, paddingBottom: 10, flexShrink: 0 }]}>
         <TouchableOpacity
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setIsVoiceMode(!isVoiceMode); }}
           style={{
@@ -810,10 +842,17 @@ const ChatSection = () => {
             autoCorrect={true}
             spellCheck={true}
             autoCapitalize="sentences"
+            returnKeyType="send"
+            blurOnSubmit={false}
+            onSubmitEditing={() => {
+              if (input.trim() || attachment) onPressSend();
+            }}
           />
           <TouchableOpacity
-            onPress={() => recording ? stopRecording() : (input.trim() || attachment ? sendMessage() : startRecording())}
+            onPress={onPressSend}
             style={styles.sendPill}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={0.7}
           >
             <Ionicons name={recording ? "stop" : (input.trim() || attachment ? "arrow-up" : "mic-outline")} size={20} color="white" />
           </TouchableOpacity>

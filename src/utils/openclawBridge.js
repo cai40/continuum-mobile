@@ -15,6 +15,9 @@ export function resolveBridgeBaseUrl({ httpsUrl, vpsIp, defaultVpsIp }) {
   }
   const ip = vpsIp?.trim() || defaultVpsIp?.trim();
   if (!ip) return null;
+  if (/^https:\/\//i.test(ip)) {
+    return ip.replace(/\/$/, '');
+  }
   return `http://${ip}:${OPENCLAW_BRIDGE_PORT}`;
 }
 
