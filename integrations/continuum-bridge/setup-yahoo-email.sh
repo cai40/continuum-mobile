@@ -17,11 +17,17 @@ if [ ! -d "$SKILL_SRC" ]; then
 fi
 
 mkdir -p "$(dirname "$SKILL_DST")"
+rm -rf "$SKILL_DST"
 cp -r "$SKILL_SRC" "$SKILL_DST"
 echo "Installed skill to $SKILL_DST"
 
 echo "Installing npm dependencies..."
 (cd "$SKILL_DST" && npm install --production --no-audit --no-fund)
+
+echo "Verifying delete command..."
+if ! node "$SKILL_DST/scripts/imap.js" delete 2>&1 | grep -qi 'uid(s) required'; then
+  echo "WARNING: delete command not found in imap.js — run git pull in $REPO"
+fi
 
 if [ -f "$CONFIG_FILE" ] && [ "${FORCE_YAHOO_SETUP:-}" != "1" ]; then
   echo "Config already exists: $CONFIG_FILE"

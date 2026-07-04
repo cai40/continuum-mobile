@@ -59,6 +59,7 @@ export function buildOpenClawVpsCommands({
     "node scripts/ask.js --json \"Reply with exactly: Continuum bridge OK\"",
     "openclaw gateway restart",
     "cd /tmp/continuum-mobile && git pull",
+    "bash integrations/continuum-bridge/sync-imap-skill.sh",
     "bash integrations/continuum-bridge/setup-bridge-service.sh",
     "bash integrations/continuum-bridge/setup-cloudflare-tunnel.sh",
     "bash integrations/continuum-bridge/setup-yahoo-email.sh",

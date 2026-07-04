@@ -9,6 +9,21 @@ const { maybeDeleteEmails, wantsEmailDelete } = require('./emailDelete');
 
 const execFileAsync = promisify(execFile);
 
+async function probeImapDeleteCommand(imapScript) {
+  try {
+    await execFileAsync('node', [imapScript, 'delete'], {
+      timeout: 10000,
+      cwd: path.dirname(path.dirname(imapScript)),
+    });
+    return false;
+  } catch (err) {
+    const msg = `${err.stderr || ''} ${err.message || ''}`.toLowerCase();
+    if (msg.includes('unknown command')) return false;
+    if (msg.includes('uid(s) required') || msg.includes('uid required')) return true;
+    return false;
+  }
+}
+
 const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move)\b/i;
 
 function findImapScript() {
@@ -225,7 +240,16 @@ async function getEmailHealth() {
   }
   try {
     await runImapCheck(imapScript, 'check inbox', { email_limit: 3, email_recent: '24h' });
-    return { ready: true, config: configPath, max_limit: MAX_LIMIT, delete_supported: true };
+    const deleteSupported = await probeImapDeleteCommand(imapScript);
+    return {
+      ready: true,
+      config: configPath,
+      max_limit: MAX_LIMIT,
+      delete_supported: deleteSupported,
+      delete_hint: deleteSupported
+        ? null
+        : 'Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/sync-imap-skill.sh',
+    };
   } catch (err) {
     return { ready: false, reason: err.message || String(err) };
   }

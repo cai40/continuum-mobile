@@ -233,10 +233,13 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false 
     };
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
+    const syncHint = /unknown command:\s*delete/i.test(detail)
+      ? ' Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/sync-imap-skill.sh'
+      : '';
     return {
       executed: false,
       summary: null,
-      error: `Email delete failed: ${detail}`,
+      error: `Email delete failed: ${detail}.${syncHint}`,
       uids,
       skippedUids,
     };
