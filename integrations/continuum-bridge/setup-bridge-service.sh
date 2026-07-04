@@ -33,8 +33,9 @@ RestartSec=5
 WantedBy=default.target
 EOF
 
-# Copy latest server if repo present
-if [ -f "${REPO_DIR}/integrations/continuum-bridge/server.js" ]; then
+# Copy latest server if repo present (skip when already in place)
+if [ -f "${REPO_DIR}/integrations/continuum-bridge/server.js" ] && \
+   [ "${REPO_DIR}/integrations/continuum-bridge/server.js" != "${BRIDGE_DIR}/server.js" ]; then
   cp "${REPO_DIR}/integrations/continuum-bridge/server.js" "${BRIDGE_DIR}/server.js"
 fi
 
