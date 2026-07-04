@@ -382,8 +382,12 @@ const ChatSection = () => {
             ));
           }
         } else if (event === 'error') {
-          Alert.alert("Continuum Fault", json.detail || "An unexpected error occurred.");
-          setIsTyping(false);
+          if (!isHandled) {
+            isHandled = true;
+            setIsTyping(false);
+            setStreamingContent('');
+            Alert.alert("Continuum Fault", json.detail || "An unexpected error occurred.");
+          }
         }
       },
       onDone: (finalText, voiceTranscript) => {
@@ -391,7 +395,15 @@ const ChatSection = () => {
         isHandled = true;
         setIsTyping(false);
         setStreamingContent('');
-        if (!finalText.trim()) return;
+        if (!finalText.trim()) {
+          if (useOpenClawBridge) {
+            Alert.alert(
+              "No reply from bridge",
+              "Try again, or turn off Route chat through OpenClaw in Settings.",
+            );
+          }
+          return;
+        }
 
         setMessages(prev => {
           const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: finalText };
@@ -407,6 +419,8 @@ const ChatSection = () => {
         });
       },
       onError: (err) => {
+        if (isHandled) return;
+        isHandled = true;
         setIsTyping(false);
         setStreamingContent('');
         Alert.alert("Chat Error", err);
@@ -414,38 +428,42 @@ const ChatSection = () => {
     };
 
     let xhr;
-    if (useOpenClawBridge) {
-      const payload = {
-        message: finalInput,
-        provider,
-        persona,
-        history: messages.slice(-20),
-        gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
-        groq_key: provider === 'groq' ? (groqKey || '').trim() : '',
-        api_key: (activeKey || '').trim(),
-        lat: location?.coords?.latitude?.toString(),
-        lon: location?.coords?.longitude?.toString(),
-        client_time: clientTime,
-      };
-      xhr = openClawChatStream(
-        bridgeUrl,
-        bridgeSecret,
-        payload,
-        streamCallbacks.onUpdate,
-        streamCallbacks.onDone,
-        streamCallbacks.onError,
-        activeToken,
-      );
-    } else {
-      xhr = chatStream(formData,
-        streamCallbacks.onUpdate,
-        streamCallbacks.onDone,
-        streamCallbacks.onError,
-        activeToken,
-      );
+    try {
+      if (useOpenClawBridge) {
+        const payload = {
+          message: finalInput,
+          provider,
+          persona,
+          history: messages.slice(-20),
+          gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
+          groq_key: provider === 'groq' ? (groqKey || '').trim() : '',
+          api_key: (activeKey || '').trim(),
+          lat: location?.coords?.latitude?.toString(),
+          lon: location?.coords?.longitude?.toString(),
+          client_time: clientTime,
+        };
+        xhr = openClawChatStream(
+          bridgeUrl,
+          bridgeSecret,
+          payload,
+          streamCallbacks.onUpdate,
+          streamCallbacks.onDone,
+          streamCallbacks.onError,
+          activeToken,
+        );
+      } else {
+        xhr = chatStream(formData,
+          streamCallbacks.onUpdate,
+          streamCallbacks.onDone,
+          streamCallbacks.onError,
+          activeToken,
+        );
+      }
+      abortControllerRef.current = { abort: () => xhr.abort() };
+    } catch (e) {
+      setIsTyping(false);
+      Alert.alert("Chat Error", e.message || String(e));
     }
-
-    abortControllerRef.current = { abort: () => xhr.abort() };
   };
 
   const deleteSelectedMessages = async () => {

@@ -254,8 +254,26 @@ export const chatStream = (
 
 /**
  * Chat via OpenClaw VPS bridge: Continuum memory + Yahoo email skills.
- * Requires bridge running on VPS port OPENCLAW_BRIDGE_PORT.
  */
+function parseBridgeHttpError(responseText, status) {
+  let msg = `Bridge error (${status})`;
+  if (!responseText?.trim()) return msg;
+  try {
+    const outer = JSON.parse(responseText);
+    let detail = outer.error || outer.detail || outer.message;
+    if (typeof detail === "string" && detail.trim().startsWith("{")) {
+      try {
+        const inner = JSON.parse(detail);
+        detail = inner.detail || inner.error || detail;
+      } catch (e) {}
+    }
+    if (detail) msg = String(detail);
+  } catch (e) {
+    msg = responseText.slice(0, 200);
+  }
+  return msg;
+}
+
 export const openClawChatStream = (
   bridgeBaseUrl,
   bridgeSecret,
@@ -272,6 +290,32 @@ export const openClawChatStream = (
   let userTranscript = "";
   let currentEvent = "";
 
+  const finish = (errorMsg) => {
+    if (doneCalled) return;
+    doneCalled = true;
+    if (errorMsg) onError(errorMsg);
+    else onDone(fullText, userTranscript);
+  };
+
+  const handleComplete = () => {
+    if (xhr.status >= 400) {
+      finish(parseBridgeHttpError(xhr.responseText, xhr.status));
+      return;
+    }
+
+    const responseText = xhr.responseText || "";
+    const trimmed = responseText.trim();
+    if (!trimmed) {
+      finish(fullText ? null : "Empty response from OpenClaw bridge.");
+      return;
+    }
+    if (trimmed.startsWith("{") && !trimmed.includes("event:")) {
+      finish(parseBridgeHttpError(responseText, xhr.status || 500));
+      return;
+    }
+    if (!doneCalled) finish(null);
+  };
+
   xhr.open("POST", `${bridgeBaseUrl.replace(/\/$/, "")}/chat/stream`);
   xhr.timeout = 120000;
 
@@ -286,16 +330,22 @@ export const openClawChatStream = (
   xhr.onreadystatechange = () => {
     if (xhr.readyState === 3 || xhr.readyState === 4) {
       const responseText = xhr.responseText;
-      if (!responseText) return;
+
+      if (xhr.readyState === 4 && xhr.status >= 400) {
+        handleComplete();
+        return;
+      }
+
+      if (!responseText) {
+        if (xhr.readyState === 4) handleComplete();
+        return;
+      }
 
       let lastNewLineIndex = responseText.lastIndexOf("\n");
       if (xhr.readyState === 4) lastNewLineIndex = responseText.length;
 
       if (lastNewLineIndex <= lastProcessedIndex) {
-        if (xhr.readyState === 4 && !doneCalled) {
-          doneCalled = true;
-          onDone(fullText, userTranscript);
-        }
+        if (xhr.readyState === 4) handleComplete();
         return;
       }
 
@@ -316,10 +366,7 @@ export const openClawChatStream = (
           const rawData = line.replace("data: ", "").trim();
 
           if (rawData === "[DONE]") {
-            if (!doneCalled) {
-              doneCalled = true;
-              onDone(fullText, userTranscript);
-            }
+            finish(null);
             return;
           }
 
@@ -331,21 +378,18 @@ export const openClawChatStream = (
             } else if (currentEvent === "transcript" && json.text) {
               userTranscript = json.text;
             } else if (currentEvent === "error") {
-              onError(json.detail || "OpenClaw bridge error");
+              finish(json.detail || "OpenClaw bridge error");
             }
           } catch (e) {}
         }
       });
 
-      if (xhr.readyState === 4 && !doneCalled) {
-        doneCalled = true;
-        onDone(fullText, userTranscript);
-      }
+      if (xhr.readyState === 4) handleComplete();
     }
   };
 
-  xhr.onerror = () => onError("Cannot reach OpenClaw bridge on VPS.");
-  xhr.ontimeout = () => onError("OpenClaw bridge timed out.");
+  xhr.onerror = () => finish("Cannot reach OpenClaw bridge.");
+  xhr.ontimeout = () => finish("OpenClaw bridge timed out.");
 
   xhr.send(JSON.stringify(payload));
 
