@@ -145,7 +145,7 @@ async function handleChatStream(req, res, config) {
       'Do NOT reference emails from earlier chat turns unless they appear in the list below.',
       'Do NOT say you cannot access email or external accounts.',
       deleteEnabled
-        ? 'The user has enabled email deletion. If a delete was executed, confirm what was removed. Do not claim you cannot delete mail.'
+        ? 'The user has enabled email deletion. The bridge may have ALREADY moved/deleted mail via IMAP before this reply — check for [Email delete executed] below. Confirm only what that block lists. NEVER tell the user to run terminal/bash/VPS commands. NEVER invent shell commands.'
         : 'Do NOT delete emails unless the user has enabled "Allow email delete" in app settings.',
       '',
       emailContext,

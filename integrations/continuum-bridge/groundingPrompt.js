@@ -15,7 +15,11 @@ const EMAIL_LIVE_INBOX_APPEND = [
 
 const EMAIL_LIVE_INBOX_DELETE_APPEND = [
   EMAIL_LIVE_INBOX_APPEND,
-  'Email deletion may already have been executed by the bridge when the user requested it — confirm only what the context states was removed.',
+  'The OpenClaw VPS bridge executes Yahoo email delete/trash automatically in this turn when the user asks — you do NOT run commands.',
+  'NEVER tell the user to run terminal, bash, shell, VPS, or CLI commands for email.',
+  'NEVER invent fake commands like "delete uid ..." in code blocks.',
+  'If [Email delete executed] appears below, confirm exactly what was deleted from that block only.',
+  'If delete failed or was disabled, explain using the error text — do not claim you lack all execution ability.',
 ].join(' ');
 
 function appendGroundingPersona(persona, extraBlocks = []) {

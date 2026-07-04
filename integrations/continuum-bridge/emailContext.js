@@ -9,7 +9,7 @@ const { maybeDeleteEmails, wantsEmailDelete } = require('./emailDelete');
 
 const execFileAsync = promisify(execFile);
 
-const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash)\b/i;
+const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move)\b/i;
 
 function findImapScript() {
   const home = process.env.HOME || '/root';

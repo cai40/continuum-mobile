@@ -6,15 +6,20 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
-const MAX_DELETE_PER_REQUEST = 25;
+const MAX_DELETE_PER_REQUEST = 100;
+const DELETE_BATCH_SIZE = 25;
 
-const DELETE_INTENT = /\b(delete|remove|trash|purge|discard)\b/i;
-const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge)\b/i;
+const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
+const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
+const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter)\b/i;
+
+const JUNK_FROM = /noreply|no-reply|donotreply|do-not-reply|marketing|newsletter|promo@|promotions?@|mailer-daemon/i;
+const JUNK_SUBJECT = /unsubscribe|sale|deal|\d+\s*%\s*off|promo|free shipping|limited time|act now|clearance|coupon|discount/i;
 
 function wantsEmailDelete(message) {
   const text = message || '';
   if (DELETE_BLOCKED.test(text)) return false;
-  return DELETE_INTENT.test(text);
+  return DELETE_INTENT.test(text) || (JUNK_INTENT.test(text) && /\b(trash|delete|remove|move|clear)\b/i.test(text));
 }
 
 function parseIndexList(raw) {
@@ -39,14 +44,42 @@ function parseIndexList(raw) {
   return Array.from(values);
 }
 
+function parseExplicitUids(message) {
+  const uids = new Set();
+  const text = message || '';
+
+  for (const match of text.matchAll(/\buids?\s*[:#]?\s*([\d,\s]+)/gi)) {
+    for (const num of match[1].matchAll(/\d{4,}/g)) {
+      uids.add(parseInt(num[0], 10));
+    }
+  }
+
+  for (const match of text.matchAll(/\buid\s*[:#]?\s*(\d+)/gi)) {
+    uids.add(parseInt(match[1], 10));
+  }
+
+  return Array.from(uids);
+}
+
+function isLikelyJunk(email) {
+  const from = String(email.from?.text || email.from || '');
+  const subject = String(email.subject || '');
+  return JUNK_FROM.test(from) || JUNK_SUBJECT.test(subject);
+}
+
+function filterToFetchedUids(candidateUids, emails) {
+  const fetched = new Set(emails.map((e) => Number(e.uid)).filter(Number.isFinite));
+  return candidateUids.filter((uid) => fetched.has(Number(uid)));
+}
+
 function resolveDeleteUids(message, emails) {
   if (!Array.isArray(emails) || emails.length === 0) return [];
 
   const text = message || '';
   const uids = new Set();
 
-  for (const match of text.matchAll(/\buid\s*[:#]?\s*(\d+)\b/gi)) {
-    uids.add(parseInt(match[1], 10));
+  for (const uid of parseExplicitUids(text)) {
+    uids.add(uid);
   }
 
   for (const match of text.matchAll(/\b(?:email|message|mail)\s*#?\s*(\d+(?:\s*(?:,|and)\s*\d+|\s*-\s*\d+)*)/gi)) {
@@ -89,13 +122,21 @@ function resolveDeleteUids(message, emails) {
     }
   }
 
+  if (JUNK_INTENT.test(text) && (DELETE_INTENT.test(text) || /\b(trash|move)\b/i.test(text))) {
+    for (const email of emails) {
+      if (isLikelyJunk(email)) uids.add(Number(email.uid));
+    }
+  }
+
   if (/\bdelete\s+(all|every)\b/i.test(text) && uids.size === 0) {
     for (const email of emails) {
       if (email?.uid) uids.add(Number(email.uid));
     }
   }
 
-  return Array.from(uids).filter((uid) => Number.isFinite(uid)).slice(0, MAX_DELETE_PER_REQUEST);
+  const candidates = Array.from(uids).filter((uid) => Number.isFinite(uid));
+  const verified = filterToFetchedUids(candidates, emails);
+  return verified.slice(0, MAX_DELETE_PER_REQUEST);
 }
 
 async function runImapDelete(imapScript, uids) {
@@ -103,7 +144,7 @@ async function runImapDelete(imapScript, uids) {
   const args = [imapScript, 'delete', ...uids.map(String)];
 
   const { stdout, stderr } = await execFileAsync('node', args, {
-    timeout: 60000,
+    timeout: 120000,
     maxBuffer: 1024 * 1024,
     cwd: skillRoot,
     env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
@@ -120,8 +161,25 @@ async function runImapDelete(imapScript, uids) {
   }
 }
 
-function formatDeleteResult(result, emails, deletedUids) {
-  const deletedSet = new Set(deletedUids.map(Number));
+async function runImapDeleteBatched(imapScript, uids) {
+  const chunks = [];
+  for (let i = 0; i < uids.length; i += DELETE_BATCH_SIZE) {
+    chunks.push(uids.slice(i, i + DELETE_BATCH_SIZE));
+  }
+  const results = [];
+  for (const chunk of chunks) {
+    results.push(await runImapDelete(imapScript, chunk));
+  }
+  return {
+    success: results.every((r) => r.success !== false),
+    uids,
+    action: 'deleted',
+    count: uids.length,
+    batches: chunks.length,
+  };
+}
+
+function formatDeleteResult(result, emails, deletedUids, skippedUids = []) {
   const lines = deletedUids.map((uid) => {
     const email = emails.find((item) => Number(item.uid) === Number(uid));
     if (!email) return `- UID ${uid}`;
@@ -130,35 +188,48 @@ function formatDeleteResult(result, emails, deletedUids) {
     return `- UID ${uid}: "${subject}" from ${from}`;
   });
 
-  const header = result?.success
-    ? `Deleted ${deletedUids.length} email(s):`
-    : `Delete attempted for ${deletedUids.length} email(s):`;
-
-  return [header, ...lines].join('\n');
+  const parts = [`Deleted ${deletedUids.length} email(s) via Yahoo IMAP:`];
+  if (lines.length) parts.push(...lines);
+  if (skippedUids.length) {
+    parts.push(`Skipped ${skippedUids.length} UID(s) not in the fetched inbox (may be invalid or already removed): ${skippedUids.slice(0, 10).join(', ')}${skippedUids.length > 10 ? '...' : ''}`);
+  }
+  if (result?.batches > 1) {
+    parts.push(`(Executed in ${result.batches} batch(es).)`);
+  }
+  return parts.join('\n');
 }
 
 async function maybeDeleteEmails(message, emails, imapScript, { enabled = false } = {}) {
   if (!enabled || !wantsEmailDelete(message) || !imapScript) {
-    return { executed: false, summary: null, error: null, uids: [] };
+    return { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
   }
 
+  const requestedUids = parseExplicitUids(message);
   const uids = resolveDeleteUids(message, emails);
+  const fetchedSet = new Set(emails.map((e) => Number(e.uid)));
+  const skippedUids = requestedUids.filter((uid) => !fetchedSet.has(uid));
+
   if (uids.length === 0) {
+    const hint = JUNK_INTENT.test(message)
+      ? 'No junk/spam matches in the fetched inbox slice. Try a higher Email Fetch Limit or say "delete email 1, 2, 3".'
+      : 'Use "delete email 1", "delete uid 12345" (must be in fetched list), "delete junk to trash", or "delete from spam@...".';
     return {
       executed: false,
       summary: null,
-      error: 'Delete requested but no matching emails found. Use "delete email 1", "delete uid 12345", "delete from spam@...", or "delete subject Newsletter".',
+      error: `Delete requested but no matching fetched emails. ${hint}`,
       uids: [],
+      skippedUids,
     };
   }
 
   try {
-    const result = await runImapDelete(imapScript, uids);
+    const result = await runImapDeleteBatched(imapScript, uids);
     return {
       executed: true,
-      summary: formatDeleteResult(result, emails, uids),
+      summary: formatDeleteResult(result, emails, uids, skippedUids),
       error: null,
       uids,
+      skippedUids,
     };
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
@@ -167,6 +238,7 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false 
       summary: null,
       error: `Email delete failed: ${detail}`,
       uids,
+      skippedUids,
     };
   }
 }
@@ -175,5 +247,7 @@ module.exports = {
   MAX_DELETE_PER_REQUEST,
   wantsEmailDelete,
   resolveDeleteUids,
+  parseExplicitUids,
+  isLikelyJunk,
   maybeDeleteEmails,
 };

@@ -309,8 +309,8 @@ const ChatSection = () => {
       if (!finalInput.trim() && !activeAttachment) return;
 
       const isEmailQuery =
-        /\b(email|inbox|yahoo|mail|unread|smtp|imap)\b/i.test(finalInput)
-        || /\b(delete|remove|trash)\b.*\b(email|mail|inbox|message)\b/i.test(finalInput);
+        /\b(email|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash)\b/i.test(finalInput)
+        || /\b(delete|remove|trash|move)\b.*\b(email|mail|inbox|message|junk|spam)\b/i.test(finalInput);
 
       const openrouterProviders = [
         'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',
