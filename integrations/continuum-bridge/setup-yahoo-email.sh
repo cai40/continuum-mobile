@@ -25,7 +25,9 @@ echo "Installing npm dependencies..."
 (cd "$SKILL_DST" && npm install --production --no-audit --no-fund)
 
 echo "Verifying delete command..."
-if ! node "$SKILL_DST/scripts/imap.js" delete 2>&1 | grep -qi 'uid(s) required'; then
+if grep -q "case 'delete'" "$SKILL_DST/scripts/imap.js"; then
+  echo "✓ delete handler in imap.js"
+else
   echo "WARNING: delete command not found in imap.js — run git pull in $REPO"
 fi
 

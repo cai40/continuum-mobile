@@ -11,15 +11,28 @@ const execFileAsync = promisify(execFile);
 
 async function probeImapDeleteCommand(imapScript) {
   try {
+    const fs = require('fs');
+    const source = fs.readFileSync(imapScript, 'utf8');
+    if (!source.includes("case 'delete'")) return false;
+  } catch {
+    return false;
+  }
+  try {
     await execFileAsync('node', [imapScript, 'delete'], {
       timeout: 10000,
       cwd: path.dirname(path.dirname(imapScript)),
+      env: {
+        ...process.env,
+        NODE_PATH: path.join(path.dirname(path.dirname(imapScript)), 'node_modules'),
+      },
     });
     return false;
   } catch (err) {
     const msg = `${err.stderr || ''} ${err.message || ''}`.toLowerCase();
     if (msg.includes('unknown command')) return false;
-    if (msg.includes('uid(s) required') || msg.includes('uid required')) return true;
+    if (msg.includes('required')) return true;
+    // Config missing during probe — source check above is enough
+    if (msg.includes('no email configuration')) return true;
     return false;
   }
 }
@@ -29,11 +42,22 @@ const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove
 function findImapScript() {
   const home = process.env.HOME || '/root';
   const candidates = [
+    '/tmp/continuum-mobile/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js',
     path.join(home, '.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js'),
     path.join(home, '.openclaw/workspace/skills/imap-smtp-email/scripts/imap.js'),
-    '/tmp/continuum-mobile/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js',
   ];
   return candidates.find((p) => {
+    try {
+      fs.accessSync(p);
+      const skillRoot = path.dirname(path.dirname(p));
+      const hasDeps = fs.existsSync(path.join(skillRoot, 'node_modules', 'imap'));
+      const source = fs.readFileSync(p, 'utf8');
+      const hasDelete = source.includes("case 'delete'");
+      return hasDeps && hasDelete;
+    } catch {
+      return false;
+    }
+  }) || candidates.find((p) => {
     try {
       fs.accessSync(p);
       return true;
