@@ -5,7 +5,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
-const { maybeDeleteEmails, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
+const { maybeDeleteEmails, wantsEmailDelete, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
