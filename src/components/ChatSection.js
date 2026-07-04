@@ -408,6 +408,12 @@ const ChatSection = () => {
           const built = await buildMessageWithAttachments(finalInput, activeAttachments);
           chatMessage = built.message;
           documentTextInjected = built.documentTextInjected;
+          if (documentTextInjected && built.extractedFileCount) {
+            const confirmedContent = `${displayInput}\n✓ Extracted text from ${built.extractedFileCount} file(s)`;
+            setMessages((prev) => prev.map((m) => (
+              m.id === userMsg.id ? { ...m, content: confirmedContent } : m
+            )));
+          }
           const hasDocAttachments = activeAttachments.some((f) => !f.type?.startsWith('image/'));
           if (hasDocAttachments && !documentTextInjected) {
             setIsTyping(false);
@@ -433,7 +439,9 @@ const ChatSection = () => {
         persona,
         documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : [],
       ));
-      formData.append('history', JSON.stringify(messages.slice(-20)));
+      // Fresh file analysis: drop chat history so prior "can't read file" replies
+      // and unrelated memory context cannot override the extracted attachment text.
+      formData.append('history', JSON.stringify(documentTextInjected ? [] : messages.slice(-20)));
       if (activeKey) formData.append('api_key', activeKey.trim());
       if (isVoiceMode) {
         formData.append('synthesize_voice', 'True');

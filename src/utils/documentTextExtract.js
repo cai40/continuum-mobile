@@ -78,6 +78,8 @@ export async function buildMessageWithAttachments(userMessage, attachments) {
   const instruction = String(userMessage || '').trim() || 'Analyze the attached file(s) below.';
   return {
     message: [
+      '[FILE ANALYSIS MODE — device-extracted document text is included below. Analyze ONLY this content. Do NOT claim you lack file-reading capabilities, cannot access attachments, or need the user to paste the file. Ignore unrelated prior chat or memory unless the user explicitly asks.]',
+      '',
       instruction,
       '',
       '---',
@@ -86,5 +88,6 @@ export async function buildMessageWithAttachments(userMessage, attachments) {
       blocks.join('\n\n---\n\n'),
     ].join('\n'),
     documentTextInjected: true,
+    extractedFileCount: blocks.length,
   };
 }
