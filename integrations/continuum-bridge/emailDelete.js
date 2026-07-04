@@ -3,7 +3,7 @@
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { selectJunkUids } = require('./emailTriage');
+const { selectJunkUids, triageMessages } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
 
@@ -13,11 +13,48 @@ const DELETE_BATCH_SIZE = 25;
 const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
 const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
 const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable)\b/i;
+const CATEGORY_DELETE = /\bcategory\s*[13]\b|github\s*\/?\s*cursor|cursor\[bot\]|automated\s+cursor|promotions?\s*(?:&|and)\s*newsletters?\b/i;
 
 function wantsEmailDelete(message) {
   const text = message || '';
   if (DELETE_BLOCKED.test(text)) return false;
-  return DELETE_INTENT.test(text) || (JUNK_INTENT.test(text) && /\b(trash|delete|remove|move|clear)\b/i.test(text));
+  if (DELETE_INTENT.test(text)) return true;
+  if (/\bmove\b/i.test(text) && /\b(trash|bin)\b/i.test(text)) return true;
+  if (JUNK_INTENT.test(text) && /\b(trash|delete|remove|move|clear)\b/i.test(text)) return true;
+  if (CATEGORY_DELETE.test(text) && /\b(trash|delete|remove|move)\b/i.test(text)) return true;
+  return false;
+}
+
+function isGithubCursorRow(row) {
+  return /github|cursor\[bot\]|cursor\s*bot/i.test(`${row.from} ${row.subject}`);
+}
+
+function resolveCategoryDeleteUids(text, emails) {
+  if (!Array.isArray(emails) || emails.length === 0) return [];
+
+  const uids = new Set();
+  const triaged = triageMessages(emails);
+  const wantsCat1 = /\bcategory\s*1\b|github\s*\/?\s*cursor|cursor\[bot\]|cursor\s*bot|automated\s+cursor|github\s+notifications?/i.test(text);
+  const wantsCat3 = /\bcategory\s*3\b|promo(?:tional)?s?\s*(?:&|and)\s*newsletters?|\bnewsletters?\b|\bmarketing\b/i.test(text);
+
+  if (wantsCat1) {
+    for (const row of triaged) {
+      if (isGithubCursorRow(row) && row.selectable_as_junk && row.uid != null) {
+        uids.add(Number(row.uid));
+      }
+    }
+  }
+
+  if (wantsCat3) {
+    for (const row of triaged) {
+      if (!row.selectable_as_junk || row.uid == null) continue;
+      if (row.category !== 'newsletter' && row.category !== 'spam') continue;
+      if (isGithubCursorRow(row)) continue;
+      uids.add(Number(row.uid));
+    }
+  }
+
+  return Array.from(uids);
 }
 
 function filterToFetchedUids(candidateUids, emails) {
@@ -118,6 +155,10 @@ function resolveDeleteUids(message, emails) {
     const includeGithub = !/\b(keep|exclude|without|no)\s+github\b/i.test(text);
     const { uids: junkUids } = selectJunkUids(emails, { includeGithub });
     for (const uid of junkUids) uids.add(uid);
+  }
+
+  if (CATEGORY_DELETE.test(text)) {
+    for (const uid of resolveCategoryDeleteUids(text, emails)) uids.add(uid);
   }
 
   if (/\bdelete\s+(all|every)\b/i.test(text) && uids.size === 0) {
