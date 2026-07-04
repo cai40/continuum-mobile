@@ -13,8 +13,8 @@ import {
   useSpeechRecognitionEvent
 } from 'expo-speech-recognition';
 import { useAppContext } from '../context/AppContext';
-import { chatStream } from '../services/apiService';
-import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
+import { chatStream, openClawChatStream } from '../services/apiService';
+import { API_URL, OPENCLAW_BRIDGE_PORT, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -29,6 +29,9 @@ const ChatSection = () => {
     syncRemoteHistory,
     isSyncingHistory,
     isFeatureAvailable,
+    openclawChatEnabled,
+    openclawVpsIp,
+    openclawBridgeSecret,
   } = useAppContext();
 
   const [input, setInput] = useState('');
@@ -346,17 +349,24 @@ const ChatSection = () => {
       return;
     }
 
+    const useOpenClawBridge =
+      openclawChatEnabled &&
+      openclawVpsIp?.trim() &&
+      openclawBridgeSecret?.trim() &&
+      !activeAttachment &&
+      !isVoiceMode;
+
+    const clientTime = new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
     let isHandled = false;
-    // Capture XHR for abort functionality
-    const xhr = chatStream(formData,
-      (event, json) => {
+    const streamCallbacks = {
+      onUpdate: (event, json) => {
         if (event === 'text' && json.token) {
           setStreamingContent(prev => prev + json.token);
         } else if (event === 'audio' && json.audio) {
           soundQueueRef.current.push(json.audio);
           if (!isPlayingQueueRef.current) playNextStreamChunk();
         } else if (event === 'transcript') {
-          // REPAIR: Relaxed validation to ensure placeholder replacement even if data is structured differently
           const transcript = json.text || (typeof json === 'string' ? json : null);
           if (transcript) {
             setMessages(prev => prev.map(m =>
@@ -368,7 +378,7 @@ const ChatSection = () => {
           setIsTyping(false);
         }
       },
-      (finalText, voiceTranscript) => {
+      onDone: (finalText, voiceTranscript) => {
         if (isHandled) return;
         isHandled = true;
         setIsTyping(false);
@@ -377,7 +387,6 @@ const ChatSection = () => {
 
         setMessages(prev => {
           const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: finalText };
-          // REPAIR: Absolute safeguard to ensure 'Transcribing...' is ALWAYS replaced by the time the AI finishes
           if (isFromVoice) {
             return prev.map(m => {
               if (m.id === userMsg.id && m.content.includes("Transcribing...")) {
@@ -389,15 +398,46 @@ const ChatSection = () => {
           return [...prev, aiMsg];
         });
       },
-      (err) => {
+      onError: (err) => {
         setIsTyping(false);
         setStreamingContent('');
         Alert.alert("Chat Error", err);
       },
-      activeToken
-    );
+    };
 
-    // Store reference to abort later if needed
+    let xhr;
+    if (useOpenClawBridge) {
+      const bridgeUrl = `http://${openclawVpsIp.trim()}:${OPENCLAW_BRIDGE_PORT}`;
+      const payload = {
+        message: finalInput,
+        provider,
+        persona,
+        history: messages.slice(-20),
+        gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
+        groq_key: provider === 'groq' ? (groqKey || '').trim() : '',
+        api_key: (activeKey || '').trim(),
+        lat: location?.coords?.latitude?.toString(),
+        lon: location?.coords?.longitude?.toString(),
+        client_time: clientTime,
+      };
+      xhr = openClawChatStream(
+        bridgeUrl,
+        openclawBridgeSecret.trim(),
+        payload,
+        streamCallbacks.onUpdate,
+        streamCallbacks.onDone,
+        streamCallbacks.onError,
+        activeToken,
+      );
+    } else {
+      xhr = chatStream(formData,
+        streamCallbacks.onUpdate,
+        streamCallbacks.onDone,
+        streamCallbacks.onError,
+        activeToken,
+      );
+    }
+
     abortControllerRef.current = { abort: () => xhr.abort() };
   };
 

@@ -39,6 +39,7 @@ export const AppProvider = ({ children }) => {
   const [sttLang, setSttLang] = useState("en-US");
   const [openclawVpsIp, setOpenclawVpsIp] = useState("135.181.155.197");
   const [openclawBridgeSecret, setOpenclawBridgeSecret] = useState("");
+  const [openclawChatEnabled, setOpenclawChatEnabled] = useState(false);
 
   const [messages, setMessages] = useState([]);
   const [semanticProfile, setSemanticProfile] = useState([]);
@@ -213,6 +214,7 @@ export const AppProvider = ({ children }) => {
           "@stt_lang",
           "@openclaw_vps_ip",
           "@openclaw_bridge_secret",
+          "@openclaw_chat_enabled",
         ]);
 
         keys.forEach(([key, value]) => {
@@ -227,6 +229,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@stt_lang") setSttLang(value);
           if (key === "@openclaw_vps_ip") setOpenclawVpsIp(value);
           if (key === "@openclaw_bridge_secret") setOpenclawBridgeSecret(value);
+          if (key === "@openclaw_chat_enabled") setOpenclawChatEnabled(value === "true");
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
@@ -347,6 +350,7 @@ export const AppProvider = ({ children }) => {
       await AsyncStorage.multiSet([
         ["@openclaw_vps_ip", openclawVpsIp.trim()],
         ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
+        ["@openclaw_chat_enabled", openclawChatEnabled ? "true" : "false"],
       ]);
     } catch (e) {
       console.warn("OpenClaw settings save failed:", e);
@@ -522,6 +526,8 @@ export const AppProvider = ({ children }) => {
         setOpenclawVpsIp,
         openclawBridgeSecret,
         setOpenclawBridgeSecret,
+        openclawChatEnabled,
+        setOpenclawChatEnabled,
         saveOpenClawSettings,
         messages,
         setMessages,

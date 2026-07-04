@@ -7,12 +7,15 @@ import {
   ScrollView,
   Alert,
   Share,
+  Switch,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "../context/AppContext";
-import { API_URL, SUPABASE_URL, SUPABASE_ANON_KEY } from "../constants/Config";
+import { testOpenClawBridge } from "../services/apiService";
+import { API_URL, OPENCLAW_BRIDGE_PORT, SUPABASE_URL, SUPABASE_ANON_KEY } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 
 const DEFAULT_VPS_IP = "135.181.155.197";
@@ -50,6 +53,8 @@ export function buildOpenClawVpsCommands({
     "cd ~/.openclaw/workspace/skills/continuum-brain",
     "node scripts/ask.js --json \"Reply with exactly: Continuum bridge OK\"",
     "openclaw gateway restart",
+    "cd /tmp/continuum-mobile && git pull",
+    "bash integrations/continuum-bridge/setup-bridge-service.sh",
   ];
 
   return {
@@ -68,11 +73,14 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     setOpenclawVpsIp,
     openclawBridgeSecret,
     setOpenclawBridgeSecret,
+    openclawChatEnabled,
+    setOpenclawChatEnabled,
     saveOpenClawSettings,
   } = useAppContext();
 
   const [copied, setCopied] = useState(false);
   const [localSecret, setLocalSecret] = useState("");
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     if (!openclawBridgeSecret && !localSecret) {
@@ -119,6 +127,41 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     Alert.alert("Saved", "OpenClaw gateway settings stored on this device.");
   };
 
+  const handleTestBridge = async () => {
+    const ip = openclawVpsIp?.trim() || DEFAULT_VPS_IP;
+    const secret = openclawBridgeSecret || bridgeSecret;
+    if (!secret) {
+      Alert.alert("Bridge secret required", "Save a bridge secret first.");
+      return;
+    }
+    setTesting(true);
+    try {
+      const url = `http://${ip}:${OPENCLAW_BRIDGE_PORT}`;
+      const health = await testOpenClawBridge(url, secret);
+      Alert.alert("Bridge OK", `Connected to ${health.service || "continuum-bridge"} on ${ip}`);
+    } catch (e) {
+      Alert.alert(
+        "Bridge unreachable",
+        "Run setup-bridge-service.sh on your VPS first.\n\n" + (e.message || String(e)),
+      );
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleToggleChat = async (value) => {
+    setOpenclawChatEnabled(value);
+    const secret = openclawBridgeSecret || bridgeSecret;
+    if (!openclawBridgeSecret) {
+      setOpenclawBridgeSecret(secret);
+    }
+    await AsyncStorage.multiSet([
+      ["@openclaw_chat_enabled", value ? "true" : "false"],
+      ["@openclaw_vps_ip", (openclawVpsIp || DEFAULT_VPS_IP).trim()],
+      ["@openclaw_bridge_secret", secret.trim()],
+    ]);
+  };
+
   const handleCopyCommands = async () => {
     if (!ensureReady()) return;
     if (!openclawBridgeSecret) {
@@ -158,11 +201,26 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       </View>
 
       <Text style={{ fontSize: 13, color: theme.colors.gray, lineHeight: 20, marginBottom: 20 }}>
-        Connect your Hetzner VPS to Continuum memory. OpenClaw handles email/SMS channels;
-        Continuum stays your brain (L1–L5).
+        Use Continuum app as your chat UI. When enabled, messages route through your
+        OpenClaw VPS (Continuum memory + Yahoo email). No SSH needed.
       </Text>
 
-      <Text style={styles.categoryTitle}>VPS ADDRESS</Text>
+      <View style={[styles.groupedCard, { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={{ fontSize: 15, fontWeight: "700", color: theme.colors.black }}>
+            Route chat through OpenClaw
+          </Text>
+          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+            Chat tab uses VPS bridge instead of Render only
+          </Text>
+        </View>
+        <Switch
+          value={openclawChatEnabled}
+          onValueChange={handleToggleChat}
+        />
+      </View>
+
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>VPS ADDRESS</Text>
       <View style={styles.groupedCard}>
         <TextInput
           style={[styles.keyInput, { borderWidth: 0 }]}
@@ -217,6 +275,23 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       </TouchableOpacity>
 
       <TouchableOpacity
+        onPress={handleTestBridge}
+        disabled={testing}
+        style={{
+          backgroundColor: theme.colors.light,
+          paddingVertical: 14,
+          borderRadius: 16,
+          marginTop: 12,
+          alignItems: "center",
+          opacity: testing ? 0.6 : 1,
+        }}
+      >
+        <Text style={{ color: theme.colors.primary, fontWeight: "700", fontSize: 14 }}>
+          {testing ? "Testing bridge..." : "Test bridge connection"}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         onPress={handleShare}
         style={{
           backgroundColor: theme.colors.light,
@@ -238,9 +313,10 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       </TouchableOpacity>
 
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 28, lineHeight: 18 }}>
-        After setup on VPS, run: openclaw chat{"\n"}
-        Ask: "Use continuum-brain to answer using my memory."{"\n\n"}
-        Docs: docs/OPENCLAW_INTEGRATION.md
+        1. Copy VPS setup commands and run on server{"\n"}
+        2. Run: bash integrations/continuum-bridge/setup-bridge-service.sh{"\n"}
+        3. Enable "Route chat through OpenClaw" above{"\n"}
+        4. Chat normally — ask about email: "check my Yahoo inbox"
       </Text>
     </ScrollView>
   );

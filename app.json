@@ -25,7 +25,14 @@
         "NSCameraUsageDescription": "Continuum needs access to your camera to capture images for real-time visual AI analysis.",
         "NSFaceIDUsageDescription": "Continuum uses FaceID to securely unlock your stored credentials and memory vault.",
         "NSLocationWhenInUseUsageDescription": "Continuum uses your location to provide real-time weather, travel advice, and environmental context for your AI advisor.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSExceptionDomains": {
+            "135.181.155.197": {
+              "NSExceptionAllowsInsecureHTTPLoads": true
+            }
+          }
+        }
       }
     },
     "android": {
@@ -39,7 +46,8 @@
         "ACCESS_FINE_LOCATION",
         "FOREGROUND_SERVICE"
       ],
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "usesCleartextTraffic": true
     },
     "web": {
       "favicon": "./assets/favicon.png"

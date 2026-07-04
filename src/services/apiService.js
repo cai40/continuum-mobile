@@ -253,6 +253,114 @@ export const chatStream = (
 };
 
 /**
+ * Chat via OpenClaw VPS bridge: Continuum memory + Yahoo email skills.
+ * Requires bridge running on VPS port OPENCLAW_BRIDGE_PORT.
+ */
+export const openClawChatStream = (
+  bridgeBaseUrl,
+  bridgeSecret,
+  payload,
+  onUpdate,
+  onDone,
+  onError,
+  authToken = null,
+) => {
+  const xhr = new XMLHttpRequest();
+  let lastProcessedIndex = 0;
+  let doneCalled = false;
+  let fullText = "";
+  let userTranscript = "";
+  let currentEvent = "";
+
+  xhr.open("POST", `${bridgeBaseUrl.replace(/\/$/, "")}/chat/stream`);
+  xhr.timeout = 120000;
+
+  xhr.setRequestHeader("Content-Type", "application/json");
+  if (authToken) {
+    xhr.setRequestHeader("Authorization", `Bearer ${authToken}`);
+  }
+  if (bridgeSecret) {
+    xhr.setRequestHeader("X-Bridge-Secret", bridgeSecret);
+  }
+
+  xhr.onreadystatechange = () => {
+    if (xhr.readyState === 3 || xhr.readyState === 4) {
+      const responseText = xhr.responseText;
+      if (!responseText) return;
+
+      let lastNewLineIndex = responseText.lastIndexOf("\n");
+      if (xhr.readyState === 4) lastNewLineIndex = responseText.length;
+
+      if (lastNewLineIndex <= lastProcessedIndex) {
+        if (xhr.readyState === 4 && !doneCalled) {
+          doneCalled = true;
+          onDone(fullText, userTranscript);
+        }
+        return;
+      }
+
+      const completeData = responseText.substring(
+        lastProcessedIndex,
+        lastNewLineIndex,
+      );
+      lastProcessedIndex = lastNewLineIndex;
+      const lines = completeData.split("\n");
+
+      lines.forEach((rawLine) => {
+        const line = rawLine.trim();
+        if (!line) return;
+
+        if (line.startsWith("event: ")) {
+          currentEvent = line.replace("event: ", "").trim();
+        } else if (line.startsWith("data: ")) {
+          const rawData = line.replace("data: ", "").trim();
+
+          if (rawData === "[DONE]") {
+            if (!doneCalled) {
+              doneCalled = true;
+              onDone(fullText, userTranscript);
+            }
+            return;
+          }
+
+          try {
+            const json = JSON.parse(rawData);
+            onUpdate(currentEvent, json);
+            if (currentEvent === "text" && json.token) {
+              fullText += json.token;
+            } else if (currentEvent === "transcript" && json.text) {
+              userTranscript = json.text;
+            } else if (currentEvent === "error") {
+              onError(json.detail || "OpenClaw bridge error");
+            }
+          } catch (e) {}
+        }
+      });
+
+      if (xhr.readyState === 4 && !doneCalled) {
+        doneCalled = true;
+        onDone(fullText, userTranscript);
+      }
+    }
+  };
+
+  xhr.onerror = () => onError("Cannot reach OpenClaw bridge on VPS.");
+  xhr.ontimeout = () => onError("OpenClaw bridge timed out.");
+
+  xhr.send(JSON.stringify(payload));
+
+  return xhr;
+};
+
+export const testOpenClawBridge = async (bridgeBaseUrl, bridgeSecret) => {
+  const res = await fetch(`${bridgeBaseUrl.replace(/\/$/, "")}/health`, {
+    headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
+  });
+  if (!res.ok) throw new Error(`Bridge health check failed (${res.status})`);
+  return res.json();
+};
+
+/**
  * LAYER 5 INGESTION:
  * Uploads a document (PDF/Text) to be vectorized into the cloud knowledge base.
  */

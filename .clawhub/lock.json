@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "@gzlicanyi/imap-smtp-email": {
+      "version": "0.0.16",
+      "installedAt": 1783159307605,
+      "ownerHandle": "gzlicanyi"
+    }
+  }
+}

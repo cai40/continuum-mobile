@@ -2,15 +2,18 @@
 'use strict';
 
 /**
- * Continuum Bridge — thin HTTP router on the OpenClaw VPS.
- * POST /ask  → Continuum /chat (memory-aware brain)
- * GET  /health → liveness
- *
- * Bind loopback by default. Use SSH tunnel or reverse proxy for remote access.
+ * Continuum ↔ OpenClaw bridge
+ * - POST /chat/stream  ← Continuum mobile app (Continuum memory + OpenClaw email)
+ * - POST /ask          ← CLI / OpenClaw skill
+ * - GET  /health
  */
 
 const http = require('http');
 const path = require('path');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+
+const execFileAsync = promisify(execFile);
 
 const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
@@ -37,13 +40,65 @@ function json(res, status, payload) {
   res.end(body);
 }
 
-async function handleAsk(req, res, config) {
+function verifyBridgeSecret(req, config) {
+  const header = req.headers['x-bridge-secret'] || '';
   const auth = req.headers.authorization || '';
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  if (config.bridgeSecret && token !== config.bridgeSecret) {
-    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
+  const secret = config.bridgeSecret || '';
+  if (!secret) return true;
+  return header === secret || bearer === secret;
+}
+
+function buildContinuumForm(payload) {
+  const form = new FormData();
+  form.append('message', payload.message);
+  form.append('provider', payload.provider || 'gemini');
+  form.append('history', JSON.stringify(payload.history || []));
+  if (payload.persona) form.append('persona', payload.persona);
+  if (payload.gemini_key) form.append('gemini_key', payload.gemini_key);
+  if (payload.groq_key) form.append('groq_key', payload.groq_key);
+  if (payload.api_key) form.append('api_key', payload.api_key);
+  if (payload.lat) form.append('lat', String(payload.lat));
+  if (payload.lon) form.append('lon', String(payload.lon));
+  if (payload.client_time) form.append('client_time', payload.client_time);
+  if (payload.synthesize_voice) form.append('synthesize_voice', 'True');
+  if (payload.voice_model) form.append('voice_model', payload.voice_model);
+  return form;
+}
+
+async function maybeFetchEmailContext(message) {
+  if (!/\b(email|inbox|yahoo|mail|unread|smtp|imap)\b/i.test(message || '')) {
+    return null;
   }
 
+  const home = process.env.HOME || '/root';
+  const candidates = [
+    path.join(home, '.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js'),
+    path.join(home, '.openclaw/workspace/skills/imap-smtp-email/scripts/imap.js'),
+  ];
+  const imapScript = candidates.find((p) => {
+    try {
+      require('fs').accessSync(p);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  if (!imapScript) return null;
+
+  try {
+    const { stdout } = await execFileAsync(
+      'node',
+      [imapScript, 'check', '--limit', '8', '--recent', '24h'],
+      { timeout: 90000, maxBuffer: 2 * 1024 * 1024 },
+    );
+    return stdout.trim().slice(0, 12000);
+  } catch {
+    return null;
+  }
+}
+
+async function handleAsk(req, res, config) {
   const raw = await readBody(req);
   let body;
   try {
@@ -58,7 +113,7 @@ async function handleAsk(req, res, config) {
   }
 
   const result = await callContinuum(message, config, {
-    channel: body.channel,
+    channel: body.channel || 'bridge',
     sender: body.sender,
     history: body.history || [],
     clientTime: body.client_time,
@@ -72,6 +127,71 @@ async function handleAsk(req, res, config) {
   });
 }
 
+async function handleChatStream(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+
+  const userAuth = req.headers.authorization || '';
+  if (!userAuth.startsWith('Bearer ')) {
+    return json(res, 401, { success: false, error: 'Missing Continuum session token' });
+  }
+
+  const raw = await readBody(req);
+  let payload;
+  try {
+    payload = JSON.parse(raw || '{}');
+  } catch {
+    return json(res, 400, { success: false, error: 'Invalid JSON body' });
+  }
+
+  let message = (payload.message || '').trim();
+  if (!message) {
+    return json(res, 400, { success: false, error: 'message is required' });
+  }
+
+  const emailContext = await maybeFetchEmailContext(message);
+  if (emailContext) {
+    message = [
+      '[OpenClaw Yahoo inbox snapshot — use for email questions]',
+      emailContext,
+      '',
+      '[User message]',
+      message,
+    ].join('\n');
+    payload.message = message;
+  }
+
+  const form = buildContinuumForm(payload);
+  const upstream = await fetch(`${config.apiUrl}/chat/stream`, {
+    method: 'POST',
+    headers: { Authorization: userAuth },
+    body: form,
+  });
+
+  if (!upstream.ok) {
+    const detail = await upstream.text();
+    return json(res, upstream.status, { success: false, error: detail });
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+
+  const reader = upstream.body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(Buffer.from(value));
+    }
+  } finally {
+    res.end();
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const config = loadConfig();
@@ -81,11 +201,19 @@ const server = http.createServer(async (req, res) => {
         success: true,
         service: 'continuum-bridge',
         continuum_api: config.apiUrl,
+        openclaw: true,
       });
     }
 
     if (req.method === 'POST' && req.url === '/ask') {
+      if (!verifyBridgeSecret(req, config)) {
+        return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      }
       return await handleAsk(req, res, config);
+    }
+
+    if (req.method === 'POST' && req.url === '/chat/stream') {
+      return await handleChatStream(req, res, config);
     }
 
     return json(res, 404, { success: false, error: 'Not found' });
@@ -97,5 +225,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Continuum bridge listening on http://${HOST}:${PORT}`);
   console.log('  GET  /health');
-  console.log('  POST /ask  (Authorization: Bearer <BRIDGE_SECRET>)');
+  console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');
+  console.log('  POST /ask          (CLI / skill)');
 });
