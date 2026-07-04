@@ -6,6 +6,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
 const { maybeDeleteEmails, wantsEmailDelete } = require('./emailDelete');
+const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
 
@@ -37,7 +38,7 @@ async function probeImapDeleteCommand(imapScript) {
   }
 }
 
-const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move)\b/i;
+const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify)\b/i;
 
 function findImapScript() {
   const home = process.env.HOME || '/root';
@@ -113,8 +114,9 @@ function formatEmailMessages(rawStdout, limit) {
     const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
     const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
     const preview = stripHtml(previewSource).slice(0, 220);
+    const triage = classifyEmail(msg);
     return [
-      `--- Email ${idx + 1}${unread ? ' (unread)' : ''} ---`,
+      `--- Email ${idx + 1}${unread ? ' (unread)' : ''} [${triage.category}] ---`,
       uid ? `UID: ${uid}` : null,
       `From: ${from}`,
       `Subject: ${subject}`,
@@ -163,7 +165,8 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
 
 async function fetchEmailContext(message, payloadOptions = {}) {
   const deleteRequested = wantsEmailDelete(message);
-  if (!EMAIL_KEYWORDS.test(message || '') && !deleteRequested) {
+  const triageRequested = wantsTriage(message);
+  if (!EMAIL_KEYWORDS.test(message || '') && !deleteRequested && !triageRequested) {
     return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null };
   }
 
@@ -218,10 +221,22 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     });
 
     let finalContext = context;
+    if (triageRequested) {
+      const triage = buildTriageContext(messages, message);
+      finalContext = [
+        context,
+        '',
+        '[Email triage]',
+        triage.report,
+        triage.junkCount
+          ? `\nJunk UIDs for trash/delete (from fetched list only): ${triage.junkUids.join(', ')}`
+          : '\nNo selectable junk in the fetched inbox slice. Raise Email Fetch Limit or widen lookback.',
+      ].join('\n');
+    }
     if (deleteResult.executed && deleteResult.summary) {
-      finalContext = [context, '', '[Email delete executed]', deleteResult.summary].join('\n');
+      finalContext = [finalContext, '', '[Email delete executed]', deleteResult.summary].join('\n');
     } else if (deleteResult.error) {
-      finalContext = [context, '', `[Email delete] ${deleteResult.error}`].filter(Boolean).join('\n');
+      finalContext = [finalContext, '', `[Email delete] ${deleteResult.error}`].filter(Boolean).join('\n');
     }
 
     return {

@@ -3,6 +3,7 @@
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { selectJunkUids } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
 
@@ -11,19 +12,7 @@ const DELETE_BATCH_SIZE = 25;
 
 const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
 const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
-const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter)\b/i;
-
-const JUNK_FROM = /noreply|no-reply|donotreply|do-not-reply|marketing|newsletter|promo@|promotions?@|mailer-daemon/i;
-const JUNK_SUBJECT = /unsubscribe|sale|deal|\d+\s*%\s*off|promo|free shipping|limited time|act now|clearance|coupon|discount/i;
-const PROTECTED_MAIL = /security@yahoo|account.?security|termius|schwab|estatement|invoice|verification|two-step|app password|hetzner/i;
-
-function isLikelyJunk(email) {
-  const from = String(email.from?.text || email.from || '');
-  const subject = String(email.subject || '');
-  const blob = `${from} ${subject}`.toLowerCase();
-  if (PROTECTED_MAIL.test(blob)) return false;
-  return JUNK_FROM.test(from) || JUNK_SUBJECT.test(subject);
-}
+const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable)\b/i;
 
 function wantsEmailDelete(message) {
   const text = message || '';
@@ -126,9 +115,9 @@ function resolveDeleteUids(message, emails) {
   }
 
   if (JUNK_INTENT.test(text) && (DELETE_INTENT.test(text) || /\b(trash|move)\b/i.test(text))) {
-    for (const email of emails) {
-      if (isLikelyJunk(email)) uids.add(Number(email.uid));
-    }
+    const includeGithub = !/\b(keep|exclude|without|no)\s+github\b/i.test(text);
+    const { uids: junkUids } = selectJunkUids(emails, { includeGithub });
+    for (const uid of junkUids) uids.add(uid);
   }
 
   if (/\bdelete\s+(all|every)\b/i.test(text) && uids.size === 0) {
@@ -255,6 +244,5 @@ module.exports = {
   wantsEmailDelete,
   resolveDeleteUids,
   parseExplicitUids,
-  isLikelyJunk,
   maybeDeleteEmails,
 };

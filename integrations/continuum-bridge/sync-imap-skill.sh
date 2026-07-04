@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sync imap-smtp-email skill from continuum-mobile repo (includes delete command)
+# Sync imap-smtp-email + email-triage skills from continuum-mobile repo
 set -euo pipefail
 
 export PATH="/usr/local/bin:/usr/bin:$PATH"
@@ -7,8 +7,10 @@ REPO="${CONTINUUM_MOBILE_REPO:-/tmp/continuum-mobile}"
 SKILL_SRC="${REPO}/skills/@gzlicanyi/imap-smtp-email"
 SKILL_DST="${HOME}/.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email"
 IMAP_JS="${SKILL_DST}/scripts/imap.js"
+TRIAGE_SRC="${REPO}/skills/email-triage"
+TRIAGE_DST="${HOME}/.openclaw/workspace/skills/email-triage"
 
-echo "=== Sync Yahoo IMAP skill (delete support) ==="
+echo "=== Sync Yahoo IMAP + email-triage skills ==="
 
 if [ ! -d "$SKILL_SRC" ]; then
   echo "Missing $SKILL_SRC — run: git clone https://github.com/cai40/continuum-mobile.git $REPO"
@@ -51,9 +53,26 @@ else
   echo "✓ delete handler in source (bridge uses /tmp/continuum-mobile after git pull)"
 fi
 
+if [ ! -d "$TRIAGE_SRC" ]; then
+  echo "✗ Missing $TRIAGE_SRC — run: cd $REPO && git pull origin master"
+  exit 1
+fi
+if [ ! -f "${TRIAGE_SRC}/scripts/classifier.js" ]; then
+  echo "✗ email-triage classifier missing in repo"
+  exit 1
+fi
+echo "✓ email-triage skill found in repo"
+
+mkdir -p "$(dirname "$TRIAGE_DST")"
+rm -rf "$TRIAGE_DST"
+cp -r "$TRIAGE_SRC" "$TRIAGE_DST"
+echo "Installed email-triage to $TRIAGE_DST"
+
+node -e "require('${TRIAGE_DST}/scripts/classifier')" && echo "✓ email-triage classifier loads"
+
 if systemctl --user is-active continuum-bridge >/dev/null 2>&1; then
   systemctl --user restart continuum-bridge
   echo "✓ continuum-bridge restarted"
 fi
 
-echo "Done. Bridge prefers $REPO/skills/.../imap.js after git pull."
+echo "Done. Bridge prefers $REPO/skills/.../imap.js and email-triage after git pull."
