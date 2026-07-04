@@ -5,10 +5,11 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
+const { maybeDeleteEmails, wantsEmailDelete } = require('./emailDelete');
 
 const execFileAsync = promisify(execFile);
 
-const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap)\b/i;
+const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash)\b/i;
 
 function findImapScript() {
   const home = process.env.HOME || '/root';
@@ -40,10 +41,14 @@ function formatEmailMessages(rawStdout, limit) {
   try {
     parsed = JSON.parse(rawStdout);
   } catch {
-    return rawStdout.trim().slice(0, 12000);
+    return { text: rawStdout.trim().slice(0, 12000), messages: [] };
   }
-  if (!Array.isArray(parsed)) return rawStdout.trim().slice(0, 12000);
-  if (parsed.length === 0) return 'No messages found in INBOX for the requested period.';
+  if (!Array.isArray(parsed)) {
+    return { text: rawStdout.trim().slice(0, 12000), messages: [] };
+  }
+  if (parsed.length === 0) {
+    return { text: 'No messages found in INBOX for the requested period.', messages: [] };
+  }
 
   const maxChars = Math.min(50000, Math.max(10000, limit * 450));
   const header = `Fetched ${parsed.length} email(s) (limit ${limit}, max ${MAX_LIMIT} per request):\n\n`;
@@ -52,11 +57,13 @@ function formatEmailMessages(rawStdout, limit) {
     const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
     const subject = msg.subject || '(no subject)';
     const date = msg.date || msg.receivedDate || msg.headerDate || '';
+    const uid = msg.uid != null ? String(msg.uid) : '';
     const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
     const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
     const preview = stripHtml(previewSource).slice(0, 220);
     return [
       `--- Email ${idx + 1}${unread ? ' (unread)' : ''} ---`,
+      uid ? `UID: ${uid}` : null,
       `From: ${from}`,
       `Subject: ${subject}`,
       `Date: ${date}`,
@@ -64,7 +71,7 @@ function formatEmailMessages(rawStdout, limit) {
     ].filter(Boolean).join('\n');
   }).join('\n\n');
 
-  return (header + body).slice(0, maxChars);
+  return { text: (header + body).slice(0, maxChars), messages: parsed };
 }
 
 function imapCheckArgs(fetchOptions) {
@@ -94,15 +101,18 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
   if (stderr?.trim()) {
     console.error('[continuum-bridge] imap stderr:', stderr.trim());
   }
+  const formatted = formatEmailMessages(stdout, fetchOptions.limit);
   return {
-    context: formatEmailMessages(stdout, fetchOptions.limit),
+    context: formatted.text,
+    messages: formatted.messages,
     fetchOptions,
   };
 }
 
 async function fetchEmailContext(message, payloadOptions = {}) {
-  if (!EMAIL_KEYWORDS.test(message || '')) {
-    return { matched: false, context: null, error: null, fetchOptions: null };
+  const deleteRequested = wantsEmailDelete(message);
+  if (!EMAIL_KEYWORDS.test(message || '') && !deleteRequested) {
+    return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null };
   }
 
   const imapScript = findImapScript();
@@ -112,6 +122,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       context: null,
       error: 'Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
       fetchOptions: null,
+      deleteResult: null,
     };
   }
 
@@ -134,12 +145,40 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       context: null,
       error: 'Yahoo credentials missing. Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
       fetchOptions: null,
+      deleteResult: null,
+    };
+  }
+
+  if (deleteRequested && !payloadOptions.email_delete_enabled) {
+    return {
+      matched: true,
+      context: null,
+      error: 'Email delete is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow email delete", Save, then try again.',
+      fetchOptions: null,
+      deleteResult: null,
     };
   }
 
   try {
-    const { context, fetchOptions } = await runImapCheck(imapScript, message, payloadOptions);
-    return { matched: true, context, error: null, fetchOptions };
+    const { context, messages, fetchOptions } = await runImapCheck(imapScript, message, payloadOptions);
+    const deleteResult = await maybeDeleteEmails(message, messages, imapScript, {
+      enabled: !!payloadOptions.email_delete_enabled,
+    });
+
+    let finalContext = context;
+    if (deleteResult.executed && deleteResult.summary) {
+      finalContext = [context, '', '[Email delete executed]', deleteResult.summary].join('\n');
+    } else if (deleteResult.error) {
+      finalContext = [context, '', `[Email delete] ${deleteResult.error}`].filter(Boolean).join('\n');
+    }
+
+    return {
+      matched: true,
+      context: finalContext,
+      error: null,
+      fetchOptions,
+      deleteResult,
+    };
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
     return {
@@ -147,6 +186,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       context: null,
       error: `Yahoo IMAP failed: ${detail}. Check app password at ~/.config/mail-skills/.env`,
       fetchOptions: null,
+      deleteResult: null,
     };
   }
 }
@@ -172,7 +212,7 @@ async function getEmailHealth() {
   }
   try {
     await runImapCheck(imapScript, 'check inbox', { email_limit: 3, email_recent: '24h' });
-    return { ready: true, config: configPath, max_limit: MAX_LIMIT };
+    return { ready: true, config: configPath, max_limit: MAX_LIMIT, delete_supported: true };
   } catch (err) {
     return { ready: false, reason: err.message || String(err) };
   }

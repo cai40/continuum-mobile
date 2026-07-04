@@ -566,6 +566,47 @@ async function markAsUnread(uids, mailbox = DEFAULT_MAILBOX) {
   }
 }
 
+// Delete message(s) by UID (mark \\Deleted + expunge)
+async function deleteMessages(uids, mailbox = DEFAULT_MAILBOX) {
+  if (!uids || uids.length === 0) {
+    throw new Error('At least one UID is required');
+  }
+
+  const normalizedUids = uids.map((uid) => parseInt(uid, 10)).filter((uid) => !Number.isNaN(uid));
+  if (normalizedUids.length === 0) {
+    throw new Error('No valid UIDs provided');
+  }
+
+  const imap = await connect();
+
+  try {
+    await openBox(imap, mailbox, false);
+
+    return new Promise((resolve, reject) => {
+      imap.addFlags(normalizedUids, '\\Deleted', (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        imap.expunge((expungeErr) => {
+          if (expungeErr) {
+            reject(expungeErr);
+            return;
+          }
+          resolve({
+            success: true,
+            uids: normalizedUids,
+            action: 'deleted',
+            count: normalizedUids.length,
+          });
+        });
+      });
+    });
+  } finally {
+    imap.end();
+  }
+}
+
 // List all mailboxes
 async function listMailboxes() {
   const imap = await connect();
@@ -698,6 +739,13 @@ async function main() {
         result = await markAsUnread(positional, options.mailbox);
         break;
 
+      case 'delete':
+        if (positional.length === 0) {
+          throw new Error('UID(s) required: node imap.js delete <uid> [uid2...]');
+        }
+        result = await deleteMessages(positional, options.mailbox);
+        break;
+
       case 'list-mailboxes':
         result = await listMailboxes();
         break;
@@ -712,7 +760,7 @@ async function main() {
 
       default:
         console.error('Unknown command:', command);
-        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, list-mailboxes, list-accounts');
+        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, list-mailboxes, list-accounts');
         process.exit(1);
     }
 

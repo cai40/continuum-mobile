@@ -37,6 +37,7 @@ const ChatSection = () => {
     openclawBridgeSecret,
     openclawEmailLimit,
     openclawEmailRecent,
+    openclawEmailDeleteEnabled,
     dailyMessageCount,
     incrementDailyCount,
     getTierLimits,
@@ -306,7 +307,9 @@ const ChatSection = () => {
       const finalInput = isFromVoice ? localTranscript : input;
       if (!finalInput.trim() && !activeAttachment) return;
 
-      const isEmailQuery = /\b(email|inbox|yahoo|mail|unread|smtp|imap)\b/i.test(finalInput);
+      const isEmailQuery =
+        /\b(email|inbox|yahoo|mail|unread|smtp|imap)\b/i.test(finalInput)
+        || /\b(delete|remove|trash)\b.*\b(email|mail|inbox|message)\b/i.test(finalInput);
 
       const openrouterProviders = [
         'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',
@@ -492,6 +495,7 @@ const ChatSection = () => {
           lon: location?.coords?.longitude?.toString(),
           client_time: clientTime,
           ...emailFetch,
+          email_delete_enabled: openclawEmailDeleteEnabled,
         };
         const xhr = openClawChatStream(
           bridgeUrl,

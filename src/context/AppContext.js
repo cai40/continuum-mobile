@@ -44,6 +44,7 @@ export const AppProvider = ({ children }) => {
   const [openclawChatEnabled, setOpenclawChatEnabled] = useState(false);
   const [openclawEmailLimit, setOpenclawEmailLimit] = useState(String(DEFAULT_OPENCLAW_EMAIL_LIMIT));
   const [openclawEmailRecent, setOpenclawEmailRecent] = useState(DEFAULT_OPENCLAW_EMAIL_RECENT);
+  const [openclawEmailDeleteEnabled, setOpenclawEmailDeleteEnabled] = useState(false);
 
   const [messages, setMessages] = useState([]);
   const [semanticProfile, setSemanticProfile] = useState([]);
@@ -223,6 +224,7 @@ export const AppProvider = ({ children }) => {
           "@openclaw_chat_enabled",
           "@openclaw_email_limit",
           "@openclaw_email_recent",
+          "@openclaw_email_delete_enabled",
         ]);
 
         keys.forEach(([key, value]) => {
@@ -241,6 +243,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@openclaw_chat_enabled") setOpenclawChatEnabled(value === "true");
           if (key === "@openclaw_email_limit") setOpenclawEmailLimit(value);
           if (key === "@openclaw_email_recent") setOpenclawEmailRecent(value);
+          if (key === "@openclaw_email_delete_enabled") setOpenclawEmailDeleteEnabled(value === "true");
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
@@ -367,6 +370,7 @@ export const AppProvider = ({ children }) => {
         ["@openclaw_chat_enabled", openclawChatEnabled ? "true" : "false"],
         ["@openclaw_email_limit", limit],
         ["@openclaw_email_recent", recent],
+        ["@openclaw_email_delete_enabled", openclawEmailDeleteEnabled ? "true" : "false"],
       ]);
     } catch (e) {
       console.warn("OpenClaw settings save failed:", e);
@@ -550,6 +554,8 @@ export const AppProvider = ({ children }) => {
         setOpenclawEmailLimit,
         openclawEmailRecent,
         setOpenclawEmailRecent,
+        openclawEmailDeleteEnabled,
+        setOpenclawEmailDeleteEnabled,
         saveOpenClawSettings,
         messages,
         setMessages,

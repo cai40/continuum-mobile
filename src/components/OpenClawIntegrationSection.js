@@ -102,6 +102,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     setOpenclawEmailLimit,
     openclawEmailRecent,
     setOpenclawEmailRecent,
+    openclawEmailDeleteEnabled,
+    setOpenclawEmailDeleteEnabled,
     saveOpenClawSettings,
   } = useAppContext();
 
@@ -184,6 +186,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
       ["@openclaw_email_limit", String(clampEmailLimit(openclawEmailLimit))],
       ["@openclaw_email_recent", normalizeEmailRecent(openclawEmailRecent)],
+      ["@openclaw_email_delete_enabled", openclawEmailDeleteEnabled ? "true" : "false"],
     ]);
   };
 
@@ -345,6 +348,28 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         How far back to search: 24h, 7d, or 30d. Override in chat: “last 7 days”.
       </Text>
 
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>ALLOW EMAIL DELETE</Text>
+      <View style={[styles.groupedCard, { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: theme.colors.black }}>
+            Permit inbox deletions
+          </Text>
+          <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
+            When ON, chat can delete Yahoo mail via the bridge (max 25 per request). Off by default.
+          </Text>
+        </View>
+        <Switch
+          value={openclawEmailDeleteEnabled}
+          onValueChange={async (value) => {
+            setOpenclawEmailDeleteEnabled(value);
+            await AsyncStorage.setItem("@openclaw_email_delete_enabled", value ? "true" : "false");
+          }}
+        />
+      </View>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Examples: “delete email 1”, “delete uid 12345”, “delete from noreply@…”, “delete all unread”.
+      </Text>
+
       <View style={[styles.groupedCard, { marginTop: 24, padding: 16 }]}>
         <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black, marginBottom: 8 }}>
           Status checklist
@@ -366,6 +391,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           Email fetch: {effectiveEmailLimit} messages / {effectiveEmailRecent}
+        </Text>
+        <Text style={{ fontSize: 12, color: openclawEmailDeleteEnabled ? theme.colors.danger : theme.colors.gray, marginTop: 4 }}>
+          Email delete: {openclawEmailDeleteEnabled ? "enabled" : "disabled"}
         </Text>
       </View>
 

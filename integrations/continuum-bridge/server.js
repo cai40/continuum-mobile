@@ -126,13 +126,18 @@ async function handleChatStream(req, res, config) {
   const emailContext = await maybeFetchEmailContext(message, {
     email_limit: payload.email_limit,
     email_recent: payload.email_recent,
+    email_delete_enabled: payload.email_delete_enabled,
   });
   const hasLiveInbox = emailContext && !emailContext.startsWith('[Yahoo email not available]');
 
   if (emailContext) {
+    const deleteEnabled = !!payload.email_delete_enabled;
     message = [
       'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
       'Summarize these emails directly. Do NOT say you cannot access email or external accounts.',
+      deleteEnabled
+        ? 'The user has enabled email deletion. If a delete was executed, confirm what was removed. Do not claim you cannot delete mail.'
+        : 'Do NOT delete emails unless the user has enabled "Allow email delete" in app settings.',
       '',
       emailContext,
       '',
@@ -144,7 +149,9 @@ async function handleChatStream(req, res, config) {
   }
 
   if (hasLiveInbox) {
-    const bridgePersona = 'You have live Yahoo inbox content in this message (already fetched). Summarize it. Never claim you lack email access.';
+    const bridgePersona = payload.email_delete_enabled
+      ? 'You have live Yahoo inbox content in this message (already fetched). Summarize it. Deletions may have already been executed by the bridge when requested. Never claim you lack email access.'
+      : 'You have live Yahoo inbox content in this message (already fetched). Summarize it. Never claim you lack email access.';
     payload.persona = payload.persona
       ? `${payload.persona}\n\n${bridgePersona}`
       : bridgePersona;
