@@ -1,0 +1,15 @@
+[Unit]
+Description=Continuum Bridge for OpenClaw VPS
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/continuum-mobile/integrations/continuum-bridge
+ExecStart=/usr/bin/node server.js
+Environment=CONTINUUM_BRIDGE_HOST=127.0.0.1
+Environment=CONTINUUM_BRIDGE_PORT=8787
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

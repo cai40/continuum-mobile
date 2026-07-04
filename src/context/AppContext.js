@@ -37,6 +37,8 @@ export const AppProvider = ({ children }) => {
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
   const [sttLang, setSttLang] = useState("en-US");
+  const [openclawVpsIp, setOpenclawVpsIp] = useState("135.181.155.197");
+  const [openclawBridgeSecret, setOpenclawBridgeSecret] = useState("");
 
   const [messages, setMessages] = useState([]);
   const [semanticProfile, setSemanticProfile] = useState([]);
@@ -209,6 +211,8 @@ export const AppProvider = ({ children }) => {
           "@chat_history",
           "@persona",
           "@stt_lang",
+          "@openclaw_vps_ip",
+          "@openclaw_bridge_secret",
         ]);
 
         keys.forEach(([key, value]) => {
@@ -221,6 +225,8 @@ export const AppProvider = ({ children }) => {
           if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@persona") setPersona(value);
           if (key === "@stt_lang") setSttLang(value);
+          if (key === "@openclaw_vps_ip") setOpenclawVpsIp(value);
+          if (key === "@openclaw_bridge_secret") setOpenclawBridgeSecret(value);
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
@@ -335,6 +341,17 @@ export const AppProvider = ({ children }) => {
       });
     }
   }, [brainStats]);
+
+  const saveOpenClawSettings = async () => {
+    try {
+      await AsyncStorage.multiSet([
+        ["@openclaw_vps_ip", openclawVpsIp.trim()],
+        ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
+      ]);
+    } catch (e) {
+      console.warn("OpenClaw settings save failed:", e);
+    }
+  };
 
   const saveKeys = async () => {
     try {
@@ -501,6 +518,11 @@ export const AppProvider = ({ children }) => {
         setPersona,
         sttLang,
         setSttLang,
+        openclawVpsIp,
+        setOpenclawVpsIp,
+        openclawBridgeSecret,
+        setOpenclawBridgeSecret,
+        saveOpenClawSettings,
         messages,
         setMessages,
         dailyMessageCount,

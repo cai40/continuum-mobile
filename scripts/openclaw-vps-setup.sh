@@ -71,7 +71,20 @@ install_channels() {
   openclaw plugins install @openclaw/sms || openclaw plugins install sms || warn "SMS plugin install failed — check docs"
 
   info "Installing email skill (IMAP/SMTP)..."
-  openclaw skills install imap-smtp-email || npx -y clawhub@latest install imap-smtp-email || warn "Email skill install failed"
+  openclaw skills install @gzlicanyi/imap-smtp-email || npx -y clawhub@latest install @gzlicanyi/imap-smtp-email || warn "Email skill install failed"
+
+  info "Installing Continuum brain skill..."
+  local skill_src="${CONTINUUM_SKILL_SRC:-}"
+  if [ -z "$skill_src" ] && [ -d "$(dirname "$0")/../skills/continuum-brain" ]; then
+    skill_src="$(cd "$(dirname "$0")/../skills/continuum-brain" && pwd)"
+  fi
+  if [ -n "$skill_src" ] && [ -d "$skill_src" ]; then
+    mkdir -p "${HOME}/.openclaw/workspace/skills"
+    cp -r "$skill_src" "${HOME}/.openclaw/workspace/skills/continuum-brain"
+    info "Continuum brain skill copied to ~/.openclaw/workspace/skills/continuum-brain"
+  else
+    warn "continuum-brain skill not found — clone continuum-mobile repo or set CONTINUUM_SKILL_SRC"
+  fi
 }
 
 # --- 5. Example config patches (edit placeholders before applying) ---
@@ -110,9 +123,22 @@ SMTP_PASS=your_yahoo_app_password
 SMTP_FROM=your@yahoo.com
 EOF
 
+  cat > "$dir/continuum-openclaw.env.example" <<'EOF'
+# Copy to ~/.config/continuum-openclaw/.env
+# Get values from Continuum app → Settings → OpenClaw Gateway
+CONTINUUM_API_URL=https://continuum-backend-0q9j.onrender.com
+SUPABASE_URL=https://yybojfgjhtrwqhtavorg.supabase.co
+SUPABASE_ANON_KEY=sb_publishable_o9AuvayIw6vnMtnqhdTpNg__V7pA5i5
+CONTINUUM_PROVIDER=gemini
+CONTINUUM_REFRESH_TOKEN=your_supabase_refresh_token
+GEMINI_API_KEY=your_gemini_api_key
+BRIDGE_SECRET=your_bridge_secret
+EOF
+
   info "Config templates written to $dir"
   info "  - sms.patch.json5 (edit Twilio + public URL, then: openclaw config patch --file $dir/sms.patch.json5)"
   info "  - yahoo-email.env.example (copy to ~/.config/imap-smtp-email/.env)"
+  info "  - continuum-openclaw.env.example (copy to ~/.config/continuum-openclaw/.env)"
 }
 
 # --- 6. systemd linger (keep gateway running after SSH logout) ---
@@ -143,18 +169,24 @@ ${GREEN}=== Next steps (manual) ===${NC}
    - cp ~/openclaw-config-templates/yahoo-email.env.example ~/.config/imap-smtp-email/.env
    - Edit credentials, chmod 600 ~/.config/imap-smtp-email/.env
 
-4. Approve first senders:
+4. Continuum brain (memory bridge):
+   - Continuum app → Settings → OpenClaw Gateway → Copy VPS Setup Commands
+   - Paste on VPS one line at a time (iPhone SSH)
+   - Or: cp ~/openclaw-config-templates/continuum-openclaw.env.example ~/.config/continuum-openclaw/.env
+   - Test: node ~/.openclaw/workspace/skills/continuum-brain/scripts/ask.js "Hello"
+
+5. Approve first senders:
      openclaw pairing list openclaw-weixin
      openclaw pairing approve openclaw-weixin <CODE>
      openclaw pairing list sms
      openclaw pairing approve sms <CODE>
 
-5. Verify:
+6. Verify:
      openclaw doctor
      openclaw gateway status
      openclaw channels status --probe
 
-6. Access dashboard from laptop (SSH tunnel):
+7. Access dashboard from laptop (SSH tunnel):
      ssh -L 18789:127.0.0.1:18789 user@YOUR_VPS
      openclaw dashboard   # or open http://127.0.0.1:18789 in browser
 

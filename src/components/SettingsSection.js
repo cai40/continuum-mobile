@@ -21,6 +21,7 @@ import { pulseFetch, ingestDocument } from "../services/apiService";
 import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
+import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
 
 const SettingsSection = (props) => {
   const {
@@ -70,7 +71,7 @@ const SettingsSection = (props) => {
   const onUpgrade = props.onUpgrade;
 
   // Navigation State
-  const [activeSubTab, setActiveSubTab] = useState(null); // null, 'api', 'voice', 'persona', 'data', 'diag', 'account'
+  const [activeSubTab, setActiveSubTab] = useState(null); // null, 'api', 'voice', 'persona', 'data', 'openclaw', 'diag', 'account'
 
   // Visibility States
   const [showGroq, setShowGroq] = useState(false);
@@ -1789,6 +1790,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       case "voice": return renderVoiceSettings();
       case "persona": return renderPersonaSettings();
       case "data": return renderDataSettings();
+      case "openclaw":
+        return <OpenClawIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "diag": return renderDiagnostics();
       case "account": return renderAccountSettings();
       default: return null;
@@ -1861,6 +1864,12 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             icon="server-outline"
             label="Data & Memory Vault"
             onPress={() => setActiveSubTab("data")}
+          />
+          <Divider />
+          <MenuRow
+            icon="link-outline"
+            label="OpenClaw Gateway"
+            onPress={() => setActiveSubTab("openclaw")}
           />
           <Divider />
           <MenuRow
