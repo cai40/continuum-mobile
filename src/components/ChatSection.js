@@ -887,7 +887,7 @@ const ChatSection = () => {
           onPress={() => {
             Alert.alert(
               "Attach Context",
-              "Add photos or documents (PDF, Word, PowerPoint, text). You can select multiple files.",
+              "Add photos or documents (PDF, Word, PowerPoint, Excel, text). You can select multiple files.",
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Photo Library", onPress: pickImage },

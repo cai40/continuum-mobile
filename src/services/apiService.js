@@ -406,7 +406,7 @@ export const testOpenClawBridge = async (bridgeBaseUrl, bridgeSecret) => {
 
 /**
  * LAYER 5 INGESTION:
- * Uploads document(s) (PDF, Word, PowerPoint, text) to be vectorized into the cloud knowledge base.
+ * Uploads document(s) (PDF, Word, PowerPoint, Excel, text) to be vectorized into the cloud knowledge base.
  */
 export const ingestDocument = async (
   fileUri,

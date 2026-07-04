@@ -9,6 +9,8 @@ export const DOCUMENT_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 ];
 
 const EXTENSION_MIME = {
@@ -18,6 +20,8 @@ const EXTENSION_MIME = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   ppt: 'application/vnd.ms-powerpoint',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
 
 export function resolveDocumentMimeType(fileName, mimeType) {
@@ -36,6 +40,7 @@ export function documentTypeLabel(mimeType, fileName) {
   if (resolved.includes('pdf')) return 'PDF';
   if (resolved.includes('word') || resolved.includes('wordprocessing')) return 'Word';
   if (resolved.includes('powerpoint') || resolved.includes('presentation')) return 'PowerPoint';
+  if (resolved.includes('excel') || resolved.includes('spreadsheet')) return 'Excel';
   if (resolved.includes('text/plain')) return 'Text';
   return 'Document';
 }
@@ -46,6 +51,7 @@ export function documentIconName(mimeType, fileName) {
   if (resolved.includes('pdf')) return 'document-text';
   if (resolved.includes('word') || resolved.includes('wordprocessing')) return 'document';
   if (resolved.includes('powerpoint') || resolved.includes('presentation')) return 'easel';
+  if (resolved.includes('excel') || resolved.includes('spreadsheet')) return 'grid';
   return 'document-attach';
 }
 

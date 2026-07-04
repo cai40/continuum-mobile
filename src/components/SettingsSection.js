@@ -1312,7 +1312,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               </Text>
             </TouchableOpacity>
             <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 8, lineHeight: 16 }}>
-              PDF, Word (.doc/.docx), PowerPoint (.ppt/.pptx), and plain text. Select multiple files at once (up to {MAX_DOCUMENT_ATTACHMENTS}).
+              PDF, Word (.doc/.docx), PowerPoint (.ppt/.pptx), Excel (.xls/.xlsx), and plain text. Select multiple files at once (up to {MAX_DOCUMENT_ATTACHMENTS}).
             </Text>
             {syncProgress ? (
               <Text style={{ fontSize: 11, color: '#0ea5e9', marginBottom: 12 }}>{syncProgress}</Text>
