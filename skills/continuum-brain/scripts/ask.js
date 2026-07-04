@@ -102,7 +102,35 @@ async function callContinuum(message, config, options = {}) {
   }
 
   const text = await res.text();
+  if (text.includes('event:') && text.includes('data:')) {
+    return { reply: parseSseResponse(text), raw: { sse: text } };
+  }
   return { reply: text.trim(), raw: { text } };
+}
+
+function parseSseResponse(body) {
+  let reply = '';
+  let currentEvent = '';
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('event:')) {
+      currentEvent = trimmed.slice(6).trim();
+    } else if (trimmed.startsWith('data:')) {
+      const rawData = trimmed.slice(5).trim();
+      if (rawData === '[DONE]') break;
+      try {
+        const json = JSON.parse(rawData);
+        if (currentEvent === 'text' && json.token) {
+          reply += json.token;
+        } else if (json.detail) {
+          throw new Error(json.detail);
+        }
+      } catch (err) {
+        if (err.message && !err.message.includes('Unexpected token')) throw err;
+      }
+    }
+  }
+  return reply.trim();
 }
 
 function parseArgs(argv) {
