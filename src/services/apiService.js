@@ -317,7 +317,7 @@ export const openClawChatStream = (
   };
 
   xhr.open("POST", `${bridgeBaseUrl.replace(/\/$/, "")}/chat/stream`);
-  xhr.timeout = 120000;
+  xhr.timeout = 180000;
 
   xhr.setRequestHeader("Content-Type", "application/json");
   if (authToken) {

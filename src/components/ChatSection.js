@@ -291,6 +291,8 @@ const ChatSection = () => {
       const finalInput = isFromVoice ? localTranscript : input;
       if (!finalInput.trim() && !activeAttachment) return;
 
+      const isEmailQuery = /\b(email|inbox|yahoo|mail|unread|smtp|imap)\b/i.test(finalInput);
+
       const openrouterProviders = [
         'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',
         'deepseek_v4_flash', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
@@ -308,6 +310,27 @@ const ChatSection = () => {
       const activeToken = session?.access_token?.trim();
       if (!activeToken) {
         Alert.alert("Security Error", "Session expired. Please log in again.");
+        return;
+      }
+
+      const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
+      const bridgeUrl = resolveBridgeBaseUrl({
+        httpsUrl: openclawBridgeHttpsUrl,
+        vpsIp: openclawVpsIp,
+        defaultVpsIp: "135.181.155.197",
+      });
+      const useOpenClawBridge =
+        openclawChatEnabled &&
+        bridgeUrl &&
+        isHttpsBridgeUrl(bridgeUrl) &&
+        !activeAttachment &&
+        !isVoiceMode;
+
+      if (isEmailQuery && !useOpenClawBridge) {
+        Alert.alert(
+          "Yahoo email needs OpenClaw bridge",
+          "Setup → OpenClaw Gateway:\n• Route chat through OpenClaw: ON\n• HTTPS Bridge URL: your trycloudflare.com URL\n• Save, then ask again.",
+        );
         return;
       }
 
@@ -351,19 +374,6 @@ const ChatSection = () => {
       }
       formData.append('client_time', new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }));
 
-      const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
-      const bridgeUrl = resolveBridgeBaseUrl({
-        httpsUrl: openclawBridgeHttpsUrl,
-        vpsIp: openclawVpsIp,
-        defaultVpsIp: "135.181.155.197",
-      });
-      const useOpenClawBridge =
-        openclawChatEnabled &&
-        bridgeUrl &&
-        isHttpsBridgeUrl(bridgeUrl) &&
-        !activeAttachment &&
-        !isVoiceMode;
-
       const clientTime = new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
       let isHandled = false;
@@ -373,7 +383,7 @@ const ChatSection = () => {
       const typingSafetyTimer = setTimeout(() => {
         setIsTyping(false);
         setStreamingContent('');
-      }, 130000);
+      }, isEmailQuery ? 180000 : 130000);
 
       const clearTypingSafety = () => clearTimeout(typingSafetyTimer);
 
@@ -416,7 +426,7 @@ const ChatSection = () => {
       };
 
       const finishError = (err) => {
-        if (bridgeAttempted && !renderFallbackUsed) {
+        if (bridgeAttempted && !renderFallbackUsed && !isEmailQuery) {
           renderFallbackUsed = true;
           bridgeAttempted = false;
           isHandled = false;

@@ -124,15 +124,27 @@ async function handleChatStream(req, res, config) {
   }
 
   const emailContext = await maybeFetchEmailContext(message);
+  const hasLiveInbox = emailContext && !emailContext.startsWith('[Yahoo email not available]');
+
   if (emailContext) {
     message = [
-      '[OpenClaw Yahoo inbox snapshot — use for email questions]',
+      'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
+      'Summarize these emails directly. Do NOT say you cannot access email or external accounts.',
+      '',
       emailContext,
       '',
-      '[User message]',
+      '---',
+      'User request:',
       message,
     ].join('\n');
     payload.message = message;
+  }
+
+  if (hasLiveInbox) {
+    const bridgePersona = 'You have live Yahoo inbox content in this message (already fetched). Summarize it. Never claim you lack email access.';
+    payload.persona = payload.persona
+      ? `${payload.persona}\n\n${bridgePersona}`
+      : bridgePersona;
   }
 
   const form = buildContinuumForm(payload);
