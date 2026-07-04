@@ -17,6 +17,12 @@ import { chatStream, openClawChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
+import {
+  DOCUMENT_MIME_TYPES,
+  MAX_DOCUMENT_ATTACHMENTS,
+  documentIconName,
+  normalizePickedAsset,
+} from '../utils/documentTypes';
 import { appendGroundingPersona } from '../utils/groundingPrompt';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
@@ -49,7 +55,7 @@ const ChatSection = () => {
 
   const [input, setInput] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [attachment, setAttachment] = useState(null);
+  const [attachments, setAttachments] = useState([]);
   const [isTyping, setIsTyping] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
   const [isVoiceMode, setIsVoiceMode] = useState(false);
@@ -171,11 +177,11 @@ const ChatSection = () => {
 
     if (!result.canceled) {
       const asset = result.assets[0];
-      setAttachment({
+      addAttachments([{
         uri: asset.uri,
         name: asset.fileName || 'image.jpg',
-        type: asset.mimeType || 'image/jpeg'
-      });
+        type: asset.mimeType || 'image/jpeg',
+      }]);
     }
   };
 
@@ -183,25 +189,39 @@ const ChatSection = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'],
-        copyToCacheDirectory: true
+        type: [...DOCUMENT_MIME_TYPES, 'image/*'],
+        copyToCacheDirectory: true,
+        multiple: true,
       });
 
       if (!result.canceled) {
-        const asset = result.assets[0];
-        setAttachment({
-          uri: asset.uri,
-          name: asset.name,
-          type: asset.mimeType || 'application/octet-stream'
-        });
+        const assets = (result.assets || []).slice(0, MAX_DOCUMENT_ATTACHMENTS);
+        if (result.assets?.length > MAX_DOCUMENT_ATTACHMENTS) {
+          Alert.alert('File limit', `Only the first ${MAX_DOCUMENT_ATTACHMENTS} files were added.`);
+        }
+        addAttachments(assets.map(normalizePickedAsset));
       }
     } catch (err) {
       console.warn("Document Picker Error:", err);
     }
   };
 
-  const clearAttachment = () => {
-    setAttachment(null);
+  const addAttachments = (newFiles) => {
+    if (!newFiles?.length) return;
+    setAttachments((prev) => {
+      const merged = [...prev];
+      for (const file of newFiles) {
+        if (merged.length >= MAX_DOCUMENT_ATTACHMENTS) break;
+        if (!merged.some((f) => f.uri === file.uri && f.name === file.name)) {
+          merged.push(file);
+        }
+      }
+      return merged;
+    });
+  };
+
+  const removeAttachment = (index) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
   const playNextStreamChunk = async () => {
@@ -305,9 +325,11 @@ const ChatSection = () => {
         return;
       }
 
-      const activeAttachment = (overrideAttachment && overrideAttachment.uri) ? overrideAttachment : attachment;
+      const activeAttachments = (overrideAttachment && overrideAttachment.uri)
+        ? [overrideAttachment]
+        : attachments;
       const finalInput = isFromVoice ? localTranscript : input;
-      if (!finalInput.trim() && !activeAttachment) return;
+      if (!finalInput.trim() && activeAttachments.length === 0) return;
 
       const isEmailQuery =
         /\b(email|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash)\b/i.test(finalInput)
@@ -343,7 +365,7 @@ const ChatSection = () => {
         openclawChatEnabled &&
         bridgeUrl &&
         isHttpsBridgeUrl(bridgeUrl) &&
-        !activeAttachment &&
+        !activeAttachments.length &&
         !isVoiceMode;
 
       if (isEmailQuery && !useOpenClawBridge) {
@@ -354,14 +376,14 @@ const ChatSection = () => {
         return;
       }
 
-      const displayInput = isFromVoice ? finalInput : (input || (activeAttachment?.type?.startsWith('audio') ? "🎤 Processing..." : "User attached a file."));
-      const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachment: activeAttachment };
+      const displayInput = isFromVoice ? finalInput : (input || (activeAttachments.some((f) => f.type?.startsWith('audio')) ? "🎤 Processing..." : (activeAttachments.length ? `📎 ${activeAttachments.length} file(s) attached` : "")));
+      const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachments: activeAttachments };
 
       setMessages(prev => [...prev, userMsg]);
       incrementDailyCount();
       setInput('');
       setLocalTranscript('');
-      setAttachment(null);
+      setAttachments([]);
       dismissKeyboard();
       setIsTyping(true);
 
@@ -386,8 +408,10 @@ const ChatSection = () => {
         formData.append('synthesize_voice', 'True');
         formData.append('voice_model', selectedVoice);
       }
-      if (activeAttachment && !isFromVoice) {
-        formData.append('file', { uri: activeAttachment.uri, name: activeAttachment.name, type: activeAttachment.type });
+      if (activeAttachments.length && !isFromVoice) {
+        for (const file of activeAttachments) {
+          formData.append('file', { uri: file.uri, name: file.name, type: file.type });
+        }
       }
       if (location) {
         formData.append('lat', location.coords.latitude.toString());
@@ -527,7 +551,7 @@ const ChatSection = () => {
       stopRecording();
       return;
     }
-    if (input.trim() || attachment) {
+    if (input.trim() || attachments.length) {
       sendMessage();
     } else {
       startRecording();
@@ -633,24 +657,24 @@ const ChatSection = () => {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexShrink: 1 }}>
-            {item.attachment && (
-              <View style={{ marginBottom: 8 }}>
-                {item.attachment.type.startsWith('image/') ? (
+            {(item.attachments?.length ? item.attachments : (item.attachment ? [item.attachment] : [])).map((file, fileIdx) => (
+              <View key={`${item.id}-file-${fileIdx}`} style={{ marginBottom: 8 }}>
+                {file.type?.startsWith('image/') ? (
                   <Image 
-                    source={{ uri: item.attachment.uri }} 
+                    source={{ uri: file.uri }} 
                     style={{ width: 220, height: 220, borderRadius: 12, backgroundColor: theme.colors.light }} 
                     resizeMode="cover"
                   />
                 ) : (
                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.light, padding: 10, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: theme.colors.primary }}>
-                    <Ionicons name="document-attach" size={20} color={theme.colors.primary} />
+                    <Ionicons name={documentIconName(file.type, file.name)} size={20} color={theme.colors.primary} />
                     <Text style={{ marginLeft: 8, fontSize: 13, color: theme.colors.black, fontWeight: '600' }} numberOfLines={1}>
-                      {item.attachment.name}
+                      {file.name}
                     </Text>
                   </View>
                 )}
               </View>
-            )}
+            ))}
             <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>{item.content}</Text>
           </View>
           
@@ -820,15 +844,19 @@ const ChatSection = () => {
         </View>
       )}
 
-      {attachment && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8, backgroundColor: theme.colors.light, marginHorizontal: 16, padding: 8, borderRadius: 12 }}>
-          <Ionicons name={attachment.type.startsWith('image/') ? "image" : "document-text"} size={20} color={theme.colors.primary} />
-          <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: theme.colors.black }} numberOfLines={1}>
-            {attachment.name}
-          </Text>
-          <TouchableOpacity onPress={clearAttachment}>
-            <Ionicons name="close-circle" size={20} color={theme.colors.danger} />
-          </TouchableOpacity>
+      {attachments.length > 0 && (
+        <View style={{ paddingHorizontal: 16, marginBottom: 8 }}>
+          {attachments.map((file, index) => (
+            <View key={`${file.uri}-${index}`} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, backgroundColor: theme.colors.light, padding: 8, borderRadius: 12 }}>
+              <Ionicons name={documentIconName(file.type, file.name)} size={20} color={theme.colors.primary} />
+              <Text style={{ flex: 1, marginLeft: 8, fontSize: 12, color: theme.colors.black }} numberOfLines={1}>
+                {file.name}
+              </Text>
+              <TouchableOpacity onPress={() => removeAttachment(index)}>
+                <Ionicons name="close-circle" size={20} color={theme.colors.danger} />
+              </TouchableOpacity>
+            </View>
+          ))}
         </View>
       )}
 
@@ -859,7 +887,7 @@ const ChatSection = () => {
           onPress={() => {
             Alert.alert(
               "Attach Context",
-              "How would you like to provide intelligence?",
+              "Add photos or documents (PDF, Word, PowerPoint, text). You can select multiple files.",
               [
                 { text: "Cancel", style: "cancel" },
                 { text: "Photo Library", onPress: pickImage },
@@ -876,7 +904,7 @@ const ChatSection = () => {
           <TextInput
             ref={inputRef}
             style={styles.textInput}
-            placeholder={attachment ? "Describe this file..." : "Message..."}
+            placeholder={attachments.length ? `Describe ${attachments.length} file(s)...` : "Message..."}
             value={input}
             onChangeText={setInput}
             multiline
@@ -886,7 +914,7 @@ const ChatSection = () => {
             returnKeyType="send"
             blurOnSubmit={true}
             onSubmitEditing={() => {
-              if (input.trim() || attachment) onPressSend();
+              if (input.trim() || attachments.length) onPressSend();
             }}
           />
           <TouchableOpacity
@@ -895,7 +923,7 @@ const ChatSection = () => {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             activeOpacity={0.7}
           >
-            <Ionicons name={recording ? "stop" : (input.trim() || attachment ? "arrow-up" : "mic-outline")} size={20} color="white" />
+            <Ionicons name={recording ? "stop" : (input.trim() || attachments.length ? "arrow-up" : "mic-outline")} size={20} color="white" />
           </TouchableOpacity>
         </View>
       </View>

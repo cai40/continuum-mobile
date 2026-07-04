@@ -17,7 +17,13 @@ import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import * as Constants from "expo-constants";
 import { useAppContext } from "../context/AppContext";
-import { pulseFetch, ingestDocument } from "../services/apiService";
+import { pulseFetch, ingestDocuments } from "../services/apiService";
+import {
+  DOCUMENT_MIME_TYPES,
+  MAX_DOCUMENT_ATTACHMENTS,
+  documentTypeLabel,
+  normalizePickedAsset,
+} from "../utils/documentTypes";
 import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
@@ -81,6 +87,7 @@ const SettingsSection = (props) => {
 
   // Memory Sub-Tab States
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState("");
   const [isCloudChecking, setIsCloudChecking] = useState(false);
   const [newCoreMemory, setNewCoreMemory] = useState("");
   const [showAddCore, setShowAddCore] = useState(false);
@@ -166,43 +173,74 @@ const SettingsSection = (props) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'text/plain'],
-        copyToCacheDirectory: true
+        type: DOCUMENT_MIME_TYPES,
+        copyToCacheDirectory: true,
+        multiple: true,
       });
 
-      if (!result.canceled) {
-        const asset = result.assets[0];
+      if (result.canceled) return;
+
+      const assets = (result.assets || []).slice(0, MAX_DOCUMENT_ATTACHMENTS);
+      if (result.assets?.length > MAX_DOCUMENT_ATTACHMENTS) {
         Alert.alert(
-          "Intelligence Ingestion",
-          `Prepare to vectorize "${asset.name}"? This will populate Layer 5 in the cloud.`,
-          [
-            { text: "Cancel", style: "cancel" },
-            { 
-              text: "Begin Sync", 
-              onPress: async () => {
-                setIsSyncing(true);
-                try {
-                  await ingestDocument(
-                    asset.uri,
-                    asset.name,
-                    asset.mimeType || 'application/pdf',
-                    setCloudWakingUp,
-                    session?.access_token
-                  );
-                  Alert.alert(
-                    "Sync Successful", 
-                    "Document sent to the Render Indexer. It will appear in Layer 5 once processing is complete."
-                  );
-                } catch (e) {
-                  Alert.alert("Sync Fault", "The cloud brain was unable to receive the document. Ensure your subscription is active.");
-                } finally {
-                  setIsSyncing(false);
-                }
-              } 
-            }
-          ]
+          "File limit",
+          `Only the first ${MAX_DOCUMENT_ATTACHMENTS} files will be uploaded.`,
         );
       }
+
+      const files = assets.map(normalizePickedAsset);
+      const summary = files
+        .map((f) => `• ${f.name} (${documentTypeLabel(f.type, f.name)})`)
+        .join("\n");
+
+      Alert.alert(
+        "Intelligence Ingestion",
+        `Upload ${files.length} file(s) to Layer 5?\n\n${summary}`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Begin Sync",
+            onPress: async () => {
+              setIsSyncing(true);
+              setSyncProgress("");
+              try {
+                const { succeeded, failed } = await ingestDocuments(files, {
+                  authToken: session?.access_token,
+                  onStatusUpdate: setCloudWakingUp,
+                  onFileStart: (index, total, name) => {
+                    setSyncProgress(`Uploading ${index}/${total}: ${name}`);
+                  },
+                });
+
+                if (failed.length === 0) {
+                  Alert.alert(
+                    "Sync Successful",
+                    `${succeeded.length} document(s) sent to the Render indexer. They will appear in Layer 5 once processing completes.`,
+                  );
+                } else if (succeeded.length === 0) {
+                  Alert.alert(
+                    "Sync Failed",
+                    failed.map((f) => `${f.name}: ${f.error}`).join("\n").slice(0, 500),
+                  );
+                } else {
+                  Alert.alert(
+                    "Partial Sync",
+                    `Uploaded: ${succeeded.length}\nFailed: ${failed.length}\n\n${failed.map((f) => f.name).join(", ")}`,
+                  );
+                }
+              } catch (e) {
+                Alert.alert(
+                  "Sync Fault",
+                  "The cloud brain was unable to receive the document(s). Ensure your subscription is active.",
+                );
+              } finally {
+                setIsSyncing(false);
+                setSyncProgress("");
+              }
+            },
+          },
+        ],
+      );
     } catch (err) {
       console.warn("Document Picker Error:", err);
     }
@@ -1273,6 +1311,12 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 SYNC DOCUMENT INTELLIGENCE
               </Text>
             </TouchableOpacity>
+            <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 8, lineHeight: 16 }}>
+              PDF, Word (.doc/.docx), PowerPoint (.ppt/.pptx), and plain text. Select multiple files at once (up to {MAX_DOCUMENT_ATTACHMENTS}).
+            </Text>
+            {syncProgress ? (
+              <Text style={{ fontSize: 11, color: '#0ea5e9', marginBottom: 12 }}>{syncProgress}</Text>
+            ) : null}
 
             {knowledgeBase && knowledgeBase.length > 0 ? (
               knowledgeBase.map((item) => (

@@ -406,7 +406,7 @@ export const testOpenClawBridge = async (bridgeBaseUrl, bridgeSecret) => {
 
 /**
  * LAYER 5 INGESTION:
- * Uploads a document (PDF/Text) to be vectorized into the cloud knowledge base.
+ * Uploads document(s) (PDF, Word, PowerPoint, text) to be vectorized into the cloud knowledge base.
  */
 export const ingestDocument = async (
   fileUri,
@@ -441,6 +441,38 @@ export const ingestDocument = async (
     console.error("Ingestion Service Error:", err);
     throw err;
   }
+};
+
+/**
+ * Upload multiple documents sequentially to Layer 5.
+ * Returns { succeeded: [{name, result}], failed: [{name, error}] }
+ */
+export const ingestDocuments = async (
+  files,
+  { onStatusUpdate = null, authToken = null, onFileStart = null } = {},
+) => {
+  const succeeded = [];
+  const failed = [];
+  const list = Array.isArray(files) ? files : [];
+
+  for (let i = 0; i < list.length; i += 1) {
+    const file = list[i];
+    if (onFileStart) onFileStart(i + 1, list.length, file.name);
+    try {
+      const result = await ingestDocument(
+        file.uri,
+        file.name,
+        file.type,
+        onStatusUpdate,
+        authToken,
+      );
+      succeeded.push({ name: file.name, result });
+    } catch (err) {
+      failed.push({ name: file.name, error: err.message || String(err) });
+    }
+  }
+
+  return { succeeded, failed, total: list.length };
 };
 export const fetchSystemVersion = async () => {
   try {
