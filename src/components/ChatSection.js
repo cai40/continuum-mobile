@@ -6,7 +6,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
-import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
 import {
   ExpoSpeechRecognitionModule,

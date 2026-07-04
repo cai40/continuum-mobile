@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import * as XLSX from 'xlsx';
 import { resolveDocumentMimeType } from './documentTypes';
 
@@ -11,8 +11,8 @@ function truncate(text) {
 }
 
 async function readBase64(uri) {
-  return FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
+  return readAsStringAsync(uri, {
+    encoding: EncodingType.Base64,
   });
 }
 
@@ -31,7 +31,7 @@ async function extractExcelText(uri) {
 }
 
 async function extractPlainText(uri) {
-  const text = await FileSystem.readAsStringAsync(uri);
+  const text = await readAsStringAsync(uri);
   return truncate(text);
 }
 
