@@ -26,36 +26,55 @@ function findImapScript() {
   }) || null;
 }
 
+function stripHtml(value) {
+  return String(value || '')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function formatEmailMessages(rawStdout) {
   let parsed;
   try {
     parsed = JSON.parse(rawStdout);
   } catch {
-    return rawStdout.trim();
+    return rawStdout.trim().slice(0, 8000);
   }
-  if (!Array.isArray(parsed)) return rawStdout.trim();
+  if (!Array.isArray(parsed)) return rawStdout.trim().slice(0, 8000);
   if (parsed.length === 0) return 'No messages found in INBOX for the requested period.';
 
   return parsed.map((msg, idx) => {
     const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
     const subject = msg.subject || '(no subject)';
-    const date = msg.date || msg.receivedDate || '';
-    const preview = (msg.text || msg.snippet || msg.preview || '').replace(/\s+/g, ' ').trim().slice(0, 280);
+    const date = msg.date || msg.receivedDate || msg.headerDate || '';
+    const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
+    const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
+    const preview = stripHtml(previewSource).slice(0, 220);
     return [
-      `--- Email ${idx + 1} ---`,
+      `--- Email ${idx + 1}${unread ? ' (unread)' : ''} ---`,
       `From: ${from}`,
       `Subject: ${subject}`,
       `Date: ${date}`,
       preview ? `Preview: ${preview}` : null,
     ].filter(Boolean).join('\n');
-  }).join('\n\n');
+  }).join('\n\n').slice(0, 10000);
 }
 
-async function runImapCheck(imapScript) {
+function imapCheckArgs(message) {
+  const args = ['check', '--limit', '10', '--recent', '24h'];
+  if (/\b(unread|unseen)\b/i.test(message || '')) {
+    args.push('--unseen');
+  }
+  return args;
+}
+
+async function runImapCheck(imapScript, message) {
   const skillRoot = path.dirname(path.dirname(imapScript));
+  const args = [imapScript, ...imapCheckArgs(message)];
   const { stdout, stderr } = await execFileAsync(
     'node',
-    [imapScript, 'check', '--limit', '10', '--recent', '24h'],
+    args,
     {
       timeout: 90000,
       maxBuffer: 4 * 1024 * 1024,
@@ -105,7 +124,7 @@ async function fetchEmailContext(message) {
   }
 
   try {
-    const context = await runImapCheck(imapScript);
+    const context = await runImapCheck(imapScript, message);
     return { matched: true, context, error: null };
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
@@ -137,7 +156,7 @@ async function getEmailHealth() {
     return { ready: false, reason: 'mail config missing' };
   }
   try {
-    await runImapCheck(imapScript);
+    await runImapCheck(imapScript, 'check inbox');
     return { ready: true, config: configPath };
   } catch (err) {
     return { ready: false, reason: err.message || String(err) };
