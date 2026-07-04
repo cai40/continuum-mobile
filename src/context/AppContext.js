@@ -66,6 +66,7 @@ export const AppProvider = ({ children }) => {
 
   // 3-TIER SUBSCRIPTION ENGINE (v3.4.50 Refined)
   const [subscriptionTier, setSubscriptionTier] = useState("free"); // 'free', 'pro', 'elite'
+  const [trialStart, setTrialStart] = useState(null);
   const [dailyMessageCount, setDailyMessageCount] = useState(0);
   const [isSuperUser, setIsSuperUser] = useState(false);
   const [hasAcceptedLegal, setHasAcceptedLegal] = useState(true); // Default to true during check
