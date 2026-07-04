@@ -5,7 +5,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
-const { maybeDeleteEmails, wantsEmailDelete, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
@@ -216,9 +216,32 @@ async function fetchEmailContext(message, payloadOptions = {}) {
 
   try {
     const { context, messages, fetchOptions } = await runImapCheck(imapScript, message, payloadOptions);
-    const deleteResult = await maybeDeleteEmails(message, messages, imapScript, {
-      enabled: !!payloadOptions.email_delete_enabled,
-    });
+
+    let deleteResult = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
+
+    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled) {
+      deleteResult = await maybeAutoTrashJunk(messages, imapScript, {
+        enabled: true,
+        includeGithub: false,
+      });
+    }
+
+    if (deleteRequested) {
+      const manualResult = await maybeDeleteEmails(message, messages, imapScript, {
+        enabled: !!payloadOptions.email_delete_enabled,
+      });
+      if (manualResult.executed) {
+        deleteResult = deleteResult.executed
+          ? {
+              ...manualResult,
+              summary: [deleteResult.summary, manualResult.summary].filter(Boolean).join('\n\n'),
+              uids: [...new Set([...(deleteResult.uids || []), ...(manualResult.uids || [])])],
+            }
+          : manualResult;
+      } else if (manualResult.error && !deleteResult.executed) {
+        deleteResult = manualResult;
+      }
+    }
 
     let finalContext = context;
     if (triageRequested) {
@@ -234,7 +257,10 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       ].join('\n');
     }
     if (deleteResult.executed && deleteResult.summary) {
-      finalContext = [finalContext, '', '[Email delete executed]', deleteResult.summary].join('\n');
+      const label = deleteResult.auto && !deleteRequested
+        ? '[Email auto-trash executed]'
+        : '[Email delete executed]';
+      finalContext = [finalContext, '', label, deleteResult.summary].join('\n');
     } else if (deleteResult.error) {
       let errBlock = `[Email delete] ${deleteResult.error}`;
       if (CHURCH_COMMUNITY_INTENT.test(message)) {

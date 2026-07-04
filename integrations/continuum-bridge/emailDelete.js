@@ -313,6 +313,39 @@ function formatDeleteResult(result, emails, deletedUids, skippedUids = []) {
   return parts.join('\n');
 }
 
+async function maybeAutoTrashJunk(emails, imapScript, { enabled = false, includeGithub = false } = {}) {
+  if (!enabled || !imapScript || !Array.isArray(emails) || emails.length === 0) {
+    return { executed: false, summary: null, error: null, uids: [], skippedUids: [], auto: true };
+  }
+
+  const { uids } = selectJunkUids(emails, { includeGithub, max: MAX_DELETE_PER_REQUEST });
+  if (uids.length === 0) {
+    return { executed: false, summary: null, error: null, uids: [], skippedUids: [], auto: true };
+  }
+
+  try {
+    const result = await runImapDeleteBatched(imapScript, uids);
+    return {
+      executed: true,
+      summary: formatDeleteResult(result, emails, uids),
+      error: null,
+      uids,
+      skippedUids: [],
+      auto: true,
+    };
+  } catch (err) {
+    const detail = err.stderr?.toString?.() || err.message || String(err);
+    return {
+      executed: false,
+      summary: null,
+      error: `Auto-trash failed: ${detail}`,
+      uids,
+      skippedUids: [],
+      auto: true,
+    };
+  }
+}
+
 async function maybeDeleteEmails(message, emails, imapScript, { enabled = false } = {}) {
   if (!enabled || !wantsEmailDelete(message) || !imapScript) {
     return { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
@@ -371,5 +404,6 @@ module.exports = {
   resolveChurchCommunityUids,
   parseExplicitUids,
   maybeDeleteEmails,
+  maybeAutoTrashJunk,
   CHURCH_COMMUNITY_INTENT,
 };

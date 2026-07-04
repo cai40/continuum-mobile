@@ -132,6 +132,7 @@ async function handleChatStream(req, res, config) {
     email_limit: payload.email_limit,
     email_recent: payload.email_recent,
     email_delete_enabled: payload.email_delete_enabled,
+    email_auto_trash_junk: payload.email_auto_trash_junk,
   });
   const hasLiveInbox = emailContext && !emailContext.startsWith('[Yahoo email not available]');
 

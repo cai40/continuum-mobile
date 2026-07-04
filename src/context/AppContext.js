@@ -45,6 +45,7 @@ export const AppProvider = ({ children }) => {
   const [openclawEmailLimit, setOpenclawEmailLimit] = useState(String(DEFAULT_OPENCLAW_EMAIL_LIMIT));
   const [openclawEmailRecent, setOpenclawEmailRecent] = useState(DEFAULT_OPENCLAW_EMAIL_RECENT);
   const [openclawEmailDeleteEnabled, setOpenclawEmailDeleteEnabled] = useState(false);
+  const [openclawEmailAutoTrashJunk, setOpenclawEmailAutoTrashJunk] = useState(false);
 
   const [messages, setMessages] = useState([]);
   const [semanticProfile, setSemanticProfile] = useState([]);
@@ -225,6 +226,7 @@ export const AppProvider = ({ children }) => {
           "@openclaw_email_limit",
           "@openclaw_email_recent",
           "@openclaw_email_delete_enabled",
+          "@openclaw_email_auto_trash_junk",
         ]);
 
         keys.forEach(([key, value]) => {
@@ -244,6 +246,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@openclaw_email_limit") setOpenclawEmailLimit(value);
           if (key === "@openclaw_email_recent") setOpenclawEmailRecent(value);
           if (key === "@openclaw_email_delete_enabled") setOpenclawEmailDeleteEnabled(value === "true");
+          if (key === "@openclaw_email_auto_trash_junk") setOpenclawEmailAutoTrashJunk(value === "true");
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
@@ -371,6 +374,7 @@ export const AppProvider = ({ children }) => {
         ["@openclaw_email_limit", limit],
         ["@openclaw_email_recent", recent],
         ["@openclaw_email_delete_enabled", openclawEmailDeleteEnabled ? "true" : "false"],
+        ["@openclaw_email_auto_trash_junk", openclawEmailAutoTrashJunk ? "true" : "false"],
       ]);
     } catch (e) {
       console.warn("OpenClaw settings save failed:", e);
@@ -556,6 +560,8 @@ export const AppProvider = ({ children }) => {
         setOpenclawEmailRecent,
         openclawEmailDeleteEnabled,
         setOpenclawEmailDeleteEnabled,
+        openclawEmailAutoTrashJunk,
+        setOpenclawEmailAutoTrashJunk,
         saveOpenClawSettings,
         messages,
         setMessages,

@@ -39,6 +39,7 @@ const ChatSection = () => {
     openclawEmailLimit,
     openclawEmailRecent,
     openclawEmailDeleteEnabled,
+    openclawEmailAutoTrashJunk,
     dailyMessageCount,
     incrementDailyCount,
     getTierLimits,
@@ -498,6 +499,7 @@ const ChatSection = () => {
           client_time: clientTime,
           ...emailFetch,
           email_delete_enabled: openclawEmailDeleteEnabled,
+          email_auto_trash_junk: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled,
         };
         const xhr = openClawChatStream(
           bridgeUrl,

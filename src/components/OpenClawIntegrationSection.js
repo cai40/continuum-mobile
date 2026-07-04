@@ -105,6 +105,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     setOpenclawEmailRecent,
     openclawEmailDeleteEnabled,
     setOpenclawEmailDeleteEnabled,
+    openclawEmailAutoTrashJunk,
+    setOpenclawEmailAutoTrashJunk,
     saveOpenClawSettings,
   } = useAppContext();
 
@@ -188,6 +190,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       ["@openclaw_email_limit", String(clampEmailLimit(openclawEmailLimit))],
       ["@openclaw_email_recent", normalizeEmailRecent(openclawEmailRecent)],
       ["@openclaw_email_delete_enabled", openclawEmailDeleteEnabled ? "true" : "false"],
+      ["@openclaw_email_auto_trash_junk", openclawEmailAutoTrashJunk ? "true" : "false"],
     ]);
   };
 
@@ -368,7 +371,30 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         />
       </View>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Examples: “delete email 1”, “delete uid 12345”, “delete from noreply@…”, “delete all unread”.
+        Examples: “delete email 1”, “delete uid 12345”, “move category 6 to trash”.
+      </Text>
+
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>AUTO-TRASH NEWSLETTERS</Text>
+      <View style={[styles.groupedCard, { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", opacity: openclawEmailDeleteEnabled ? 1 : 0.5 }]}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: theme.colors.black }}>
+            Auto-trash promos & newsletters on fetch
+          </Text>
+          <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
+            When ON, every inbox fetch moves newsletter/promo/spam to Trash (max 100). Banks, DocuSign, OTP, and Cash App are never auto-deleted. Requires delete permission above.
+          </Text>
+        </View>
+        <Switch
+          value={openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled}
+          disabled={!openclawEmailDeleteEnabled}
+          onValueChange={async (value) => {
+            setOpenclawEmailAutoTrashJunk(value);
+            await AsyncStorage.setItem("@openclaw_email_auto_trash_junk", value ? "true" : "false");
+          }}
+        />
+      </View>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Triggers on “check inbox”, “summarize email”, or any mail chat. Say “check my Yahoo inbox” daily to purge junk.
       </Text>
 
       <View style={[styles.groupedCard, { marginTop: 24, padding: 16 }]}>
@@ -395,6 +421,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         </Text>
         <Text style={{ fontSize: 12, color: openclawEmailDeleteEnabled ? theme.colors.danger : theme.colors.gray, marginTop: 4 }}>
           Email delete: {openclawEmailDeleteEnabled ? "enabled" : "disabled"}
+        </Text>
+        <Text style={{ fontSize: 12, color: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled ? theme.colors.danger : theme.colors.gray, marginTop: 4 }}>
+          Auto-trash junk: {openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled ? "enabled" : "disabled"}
         </Text>
       </View>
 
