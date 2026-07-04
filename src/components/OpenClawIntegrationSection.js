@@ -18,6 +18,9 @@ import { testOpenClawBridge } from "../services/apiService";
 import {
   API_URL,
   DEFAULT_OPENCLAW_BRIDGE_SECRET,
+  DEFAULT_OPENCLAW_EMAIL_LIMIT,
+  DEFAULT_OPENCLAW_EMAIL_RECENT,
+  MAX_OPENCLAW_EMAIL_LIMIT,
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
 } from "../constants/Config";
@@ -26,6 +29,7 @@ import {
   resolveBridgeSecret,
   isHttpsBridgeUrl,
 } from "../utils/openclawBridge";
+import { clampEmailLimit, normalizeEmailRecent } from "../utils/openclawEmailOptions";
 import { styles, theme } from "../styles/theme";
 
 const DEFAULT_VPS_IP = "135.181.155.197";
@@ -94,8 +98,15 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     setOpenclawBridgeSecret,
     openclawChatEnabled,
     setOpenclawChatEnabled,
+    openclawEmailLimit,
+    setOpenclawEmailLimit,
+    openclawEmailRecent,
+    setOpenclawEmailRecent,
     saveOpenClawSettings,
   } = useAppContext();
+
+  const effectiveEmailLimit = clampEmailLimit(openclawEmailLimit);
+  const effectiveEmailRecent = normalizeEmailRecent(openclawEmailRecent);
 
   const [copied, setCopied] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -136,6 +147,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
   };
 
   const handleSave = async () => {
+    setOpenclawEmailLimit(String(clampEmailLimit(openclawEmailLimit)));
+    setOpenclawEmailRecent(normalizeEmailRecent(openclawEmailRecent));
     await saveOpenClawSettings();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Saved", "OpenClaw gateway settings stored on this device.");
@@ -169,6 +182,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       ["@openclaw_vps_ip", (openclawVpsIp || DEFAULT_VPS_IP).trim()],
       ["@openclaw_bridge_https_url", openclawBridgeHttpsUrl.trim()],
       ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
+      ["@openclaw_email_limit", String(clampEmailLimit(openclawEmailLimit))],
+      ["@openclaw_email_recent", normalizeEmailRecent(openclawEmailRecent)],
     ]);
   };
 
@@ -298,6 +313,38 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         Clear the field and type {DEFAULT_OPENCLAW_BRIDGE_SECRET} if unsure. Leave blank to use that default.
       </Text>
 
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>EMAIL FETCH LIMIT</Text>
+      <View style={styles.groupedCard}>
+        <TextInput
+          style={[styles.keyInput, { borderWidth: 0 }]}
+          value={openclawEmailLimit}
+          onChangeText={setOpenclawEmailLimit}
+          placeholder={String(DEFAULT_OPENCLAW_EMAIL_LIMIT)}
+          keyboardType="number-pad"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+        />
+      </View>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Max emails per inbox request (1–{MAX_OPENCLAW_EMAIL_LIMIT}). Default {DEFAULT_OPENCLAW_EMAIL_LIMIT}. Override in chat: “last 50 emails”.
+      </Text>
+
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>EMAIL LOOKBACK</Text>
+      <View style={styles.groupedCard}>
+        <TextInput
+          style={[styles.keyInput, { borderWidth: 0 }]}
+          value={openclawEmailRecent}
+          onChangeText={setOpenclawEmailRecent}
+          placeholder={DEFAULT_OPENCLAW_EMAIL_RECENT}
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+        />
+      </View>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        How far back to search: 24h, 7d, or 30d. Override in chat: “last 7 days”.
+      </Text>
+
       <View style={[styles.groupedCard, { marginTop: 24, padding: 16 }]}>
         <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black, marginBottom: 8 }}>
           Status checklist
@@ -316,6 +363,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           Bridge secret: {effectiveSecret}
+        </Text>
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+          Email fetch: {effectiveEmailLimit} messages / {effectiveEmailRecent}
         </Text>
       </View>
 

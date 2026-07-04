@@ -169,7 +169,7 @@ const TabItem = ({ icon, label, tab, activeTab, setActiveTab }) => {
   return (
     <TouchableOpacity 
       style={styles.tabItem} 
-      onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveTab(tab); }}
+      onPress={() => { Keyboard.dismiss(); Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setActiveTab(tab); }}
     >
       <Ionicons name={isActive ? icon : `${icon}-outline`} size={24} color={isActive ? theme.colors.primary : theme.colors.gray} />
       <Text style={[styles.tabLabel, {color: isActive ? theme.colors.primary : theme.colors.gray}]}>{label}</Text>

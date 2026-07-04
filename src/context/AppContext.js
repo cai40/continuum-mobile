@@ -16,7 +16,8 @@ import {
   pulseFetch,
   fetchSystemVersion
 } from "../services/apiService";
-import { API_URL } from "../constants/Config";
+import { API_URL, DEFAULT_OPENCLAW_EMAIL_LIMIT, DEFAULT_OPENCLAW_EMAIL_RECENT } from "../constants/Config";
+import { clampEmailLimit, normalizeEmailRecent } from "../utils/openclawEmailOptions";
 
 const AppContext = createContext();
 
@@ -41,6 +42,8 @@ export const AppProvider = ({ children }) => {
   const [openclawBridgeHttpsUrl, setOpenclawBridgeHttpsUrl] = useState("");
   const [openclawBridgeSecret, setOpenclawBridgeSecret] = useState("");
   const [openclawChatEnabled, setOpenclawChatEnabled] = useState(false);
+  const [openclawEmailLimit, setOpenclawEmailLimit] = useState(String(DEFAULT_OPENCLAW_EMAIL_LIMIT));
+  const [openclawEmailRecent, setOpenclawEmailRecent] = useState(DEFAULT_OPENCLAW_EMAIL_RECENT);
 
   const [messages, setMessages] = useState([]);
   const [semanticProfile, setSemanticProfile] = useState([]);
@@ -218,6 +221,8 @@ export const AppProvider = ({ children }) => {
           "@openclaw_bridge_https_url",
           "@openclaw_bridge_secret",
           "@openclaw_chat_enabled",
+          "@openclaw_email_limit",
+          "@openclaw_email_recent",
         ]);
 
         keys.forEach(([key, value]) => {
@@ -234,6 +239,8 @@ export const AppProvider = ({ children }) => {
           if (key === "@openclaw_bridge_https_url") setOpenclawBridgeHttpsUrl(value);
           if (key === "@openclaw_bridge_secret") setOpenclawBridgeSecret(value);
           if (key === "@openclaw_chat_enabled") setOpenclawChatEnabled(value === "true");
+          if (key === "@openclaw_email_limit") setOpenclawEmailLimit(value);
+          if (key === "@openclaw_email_recent") setOpenclawEmailRecent(value);
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
@@ -351,11 +358,15 @@ export const AppProvider = ({ children }) => {
 
   const saveOpenClawSettings = async () => {
     try {
+      const limit = String(clampEmailLimit(openclawEmailLimit));
+      const recent = normalizeEmailRecent(openclawEmailRecent);
       await AsyncStorage.multiSet([
         ["@openclaw_vps_ip", openclawVpsIp.trim()],
         ["@openclaw_bridge_https_url", openclawBridgeHttpsUrl.trim()],
         ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
         ["@openclaw_chat_enabled", openclawChatEnabled ? "true" : "false"],
+        ["@openclaw_email_limit", limit],
+        ["@openclaw_email_recent", recent],
       ]);
     } catch (e) {
       console.warn("OpenClaw settings save failed:", e);
@@ -535,6 +546,10 @@ export const AppProvider = ({ children }) => {
         setOpenclawBridgeSecret,
         openclawChatEnabled,
         setOpenclawChatEnabled,
+        openclawEmailLimit,
+        setOpenclawEmailLimit,
+        openclawEmailRecent,
+        setOpenclawEmailRecent,
         saveOpenClawSettings,
         messages,
         setMessages,

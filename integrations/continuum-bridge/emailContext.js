@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
 
 const execFileAsync = promisify(execFile);
 
@@ -34,17 +35,20 @@ function stripHtml(value) {
     .trim();
 }
 
-function formatEmailMessages(rawStdout) {
+function formatEmailMessages(rawStdout, limit) {
   let parsed;
   try {
     parsed = JSON.parse(rawStdout);
   } catch {
-    return rawStdout.trim().slice(0, 8000);
+    return rawStdout.trim().slice(0, 12000);
   }
-  if (!Array.isArray(parsed)) return rawStdout.trim().slice(0, 8000);
+  if (!Array.isArray(parsed)) return rawStdout.trim().slice(0, 12000);
   if (parsed.length === 0) return 'No messages found in INBOX for the requested period.';
 
-  return parsed.map((msg, idx) => {
+  const maxChars = Math.min(50000, Math.max(10000, limit * 450));
+  const header = `Fetched ${parsed.length} email(s) (limit ${limit}, max ${MAX_LIMIT} per request):\n\n`;
+
+  const body = parsed.map((msg, idx) => {
     const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
     const subject = msg.subject || '(no subject)';
     const date = msg.date || msg.receivedDate || msg.headerDate || '';
@@ -58,26 +62,31 @@ function formatEmailMessages(rawStdout) {
       `Date: ${date}`,
       preview ? `Preview: ${preview}` : null,
     ].filter(Boolean).join('\n');
-  }).join('\n\n').slice(0, 10000);
+  }).join('\n\n');
+
+  return (header + body).slice(0, maxChars);
 }
 
-function imapCheckArgs(message) {
-  const args = ['check', '--limit', '10', '--recent', '24h'];
-  if (/\b(unread|unseen)\b/i.test(message || '')) {
+function imapCheckArgs(fetchOptions) {
+  const args = ['check', '--limit', String(fetchOptions.limit), '--recent', fetchOptions.recent];
+  if (fetchOptions.unreadOnly) {
     args.push('--unseen');
   }
   return args;
 }
 
-async function runImapCheck(imapScript, message) {
+async function runImapCheck(imapScript, message, payloadOptions = {}) {
+  const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
   const skillRoot = path.dirname(path.dirname(imapScript));
-  const args = [imapScript, ...imapCheckArgs(message)];
+  const args = [imapScript, ...imapCheckArgs(fetchOptions)];
+  const timeoutMs = Math.min(180000, 60000 + fetchOptions.limit * 2500);
+
   const { stdout, stderr } = await execFileAsync(
     'node',
     args,
     {
-      timeout: 90000,
-      maxBuffer: 4 * 1024 * 1024,
+      timeout: timeoutMs,
+      maxBuffer: 8 * 1024 * 1024,
       cwd: skillRoot,
       env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
     },
@@ -85,12 +94,15 @@ async function runImapCheck(imapScript, message) {
   if (stderr?.trim()) {
     console.error('[continuum-bridge] imap stderr:', stderr.trim());
   }
-  return formatEmailMessages(stdout);
+  return {
+    context: formatEmailMessages(stdout, fetchOptions.limit),
+    fetchOptions,
+  };
 }
 
-async function fetchEmailContext(message) {
+async function fetchEmailContext(message, payloadOptions = {}) {
   if (!EMAIL_KEYWORDS.test(message || '')) {
-    return { matched: false, context: null, error: null };
+    return { matched: false, context: null, error: null, fetchOptions: null };
   }
 
   const imapScript = findImapScript();
@@ -99,6 +111,7 @@ async function fetchEmailContext(message) {
       matched: true,
       context: null,
       error: 'Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+      fetchOptions: null,
     };
   }
 
@@ -120,18 +133,20 @@ async function fetchEmailContext(message) {
       matched: true,
       context: null,
       error: 'Yahoo credentials missing. Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+      fetchOptions: null,
     };
   }
 
   try {
-    const context = await runImapCheck(imapScript, message);
-    return { matched: true, context, error: null };
+    const { context, fetchOptions } = await runImapCheck(imapScript, message, payloadOptions);
+    return { matched: true, context, error: null, fetchOptions };
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
     return {
       matched: true,
       context: null,
       error: `Yahoo IMAP failed: ${detail}. Check app password at ~/.config/mail-skills/.env`,
+      fetchOptions: null,
     };
   }
 }
@@ -156,8 +171,8 @@ async function getEmailHealth() {
     return { ready: false, reason: 'mail config missing' };
   }
   try {
-    await runImapCheck(imapScript, 'check inbox');
-    return { ready: true, config: configPath };
+    await runImapCheck(imapScript, 'check inbox', { email_limit: 3, email_recent: '24h' });
+    return { ready: true, config: configPath, max_limit: MAX_LIMIT };
   } catch (err) {
     return { ready: false, reason: err.message || String(err) };
   }

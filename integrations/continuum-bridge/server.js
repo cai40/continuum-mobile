@@ -63,8 +63,8 @@ function buildContinuumForm(payload) {
   return form;
 }
 
-async function maybeFetchEmailContext(message) {
-  const result = await fetchEmailContext(message);
+async function maybeFetchEmailContext(message, payloadOptions = {}) {
+  const result = await fetchEmailContext(message, payloadOptions);
   if (!result.matched) return null;
   if (result.context) return result.context;
   if (result.error) return `[Yahoo email not available]\n${result.error}`;
@@ -123,7 +123,10 @@ async function handleChatStream(req, res, config) {
     return json(res, 400, { success: false, error: 'message is required' });
   }
 
-  const emailContext = await maybeFetchEmailContext(message);
+  const emailContext = await maybeFetchEmailContext(message, {
+    email_limit: payload.email_limit,
+    email_recent: payload.email_recent,
+  });
   const hasLiveInbox = emailContext && !emailContext.startsWith('[Yahoo email not available]');
 
   if (emailContext) {

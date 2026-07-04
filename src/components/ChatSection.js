@@ -16,6 +16,7 @@ import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
+import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -34,6 +35,8 @@ const ChatSection = () => {
     openclawVpsIp,
     openclawBridgeHttpsUrl,
     openclawBridgeSecret,
+    openclawEmailLimit,
+    openclawEmailRecent,
     dailyMessageCount,
     incrementDailyCount,
     getTierLimits,
@@ -473,6 +476,10 @@ const ChatSection = () => {
       };
 
       if (useOpenClawBridge) {
+        const emailFetch = resolveEmailFetchPayload({
+          limit: openclawEmailLimit,
+          recent: openclawEmailRecent,
+        });
         const payload = {
           message: finalInput,
           provider,
@@ -484,6 +491,7 @@ const ChatSection = () => {
           lat: location?.coords?.latitude?.toString(),
           lon: location?.coords?.longitude?.toString(),
           client_time: clientTime,
+          ...emailFetch,
         };
         const xhr = openClawChatStream(
           bridgeUrl,
