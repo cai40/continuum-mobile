@@ -134,7 +134,11 @@ async function handleChatStream(req, res, config) {
     const deleteEnabled = !!payload.email_delete_enabled;
     message = [
       'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
-      'Summarize these emails directly. Do NOT say you cannot access email or external accounts.',
+      'Summarize ONLY the emails explicitly listed below with their UIDs.',
+      'NEVER invent, simulate, reconstruct, or guess any email, UID, sender, or subject.',
+      'If fewer emails were fetched than the user requested, say exactly how many were returned and stop — do not fill in gaps.',
+      'Do NOT reference emails from earlier chat turns unless they appear in the list below.',
+      'Do NOT say you cannot access email or external accounts.',
       deleteEnabled
         ? 'The user has enabled email deletion. If a delete was executed, confirm what was removed. Do not claim you cannot delete mail.'
         : 'Do NOT delete emails unless the user has enabled "Allow email delete" in app settings.',
@@ -146,12 +150,14 @@ async function handleChatStream(req, res, config) {
       message,
     ].join('\n');
     payload.message = message;
+    // Fresh email fetch: drop chat history so prior (possibly hallucinated) summaries cannot contaminate.
+    payload.history = [];
   }
 
   if (hasLiveInbox) {
     const bridgePersona = payload.email_delete_enabled
-      ? 'You have live Yahoo inbox content in this message (already fetched). Summarize it. Deletions may have already been executed by the bridge when requested. Never claim you lack email access.'
-      : 'You have live Yahoo inbox content in this message (already fetched). Summarize it. Never claim you lack email access.';
+      ? 'You have live Yahoo inbox content in this message (already fetched via IMAP). Use ONLY the UIDs and headers in this message. Never invent emails. Never claim you lack email access. Deletions may have already been executed by the bridge when requested.'
+      : 'You have live Yahoo inbox content in this message (already fetched via IMAP). Use ONLY the UIDs and headers in this message. Never invent, simulate, or reconstruct emails. If the user asked for more emails than were fetched, state the actual count. Never claim you lack email access.';
     payload.persona = payload.persona
       ? `${payload.persona}\n\n${bridgePersona}`
       : bridgePersona;

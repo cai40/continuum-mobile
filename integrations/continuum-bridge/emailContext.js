@@ -47,11 +47,24 @@ function formatEmailMessages(rawStdout, limit) {
     return { text: rawStdout.trim().slice(0, 12000), messages: [] };
   }
   if (parsed.length === 0) {
-    return { text: 'No messages found in INBOX for the requested period.', messages: [] };
+    return { text: 'No messages found in INBOX for the requested period.', messages: [], fetchedCount: 0 };
   }
 
-  const maxChars = Math.min(50000, Math.max(10000, limit * 450));
-  const header = `Fetched ${parsed.length} email(s) (limit ${limit}, max ${MAX_LIMIT} per request):\n\n`;
+  const maxChars = Math.min(80000, Math.max(10000, limit * 450));
+  const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
+  const uidList = uids.join(', ');
+  const fetchedCount = parsed.length;
+  const shortfall = limit > fetchedCount
+    ? `\nNOTE: Requested up to ${limit} emails but only ${fetchedCount} exist in INBOX for this lookback period. Do NOT invent the missing ${limit - fetchedCount}.`
+    : '';
+
+  const header = [
+    `Fetched ${fetchedCount} REAL email(s) from Yahoo IMAP (requested limit ${limit}, max ${MAX_LIMIT} per request).`,
+    uids.length ? `Valid UIDs ONLY: ${uidList}` : null,
+    'ANTI-HALLUCINATION: Summarize ONLY the emails listed below. NEVER invent, simulate, reconstruct, or guess emails, UIDs, senders, or subjects not in this list.',
+    shortfall || null,
+    '',
+  ].filter(Boolean).join('\n');
 
   const body = parsed.map((msg, idx) => {
     const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
@@ -71,7 +84,7 @@ function formatEmailMessages(rawStdout, limit) {
     ].filter(Boolean).join('\n');
   }).join('\n\n');
 
-  return { text: (header + body).slice(0, maxChars), messages: parsed };
+  return { text: (header + body).slice(0, maxChars), messages: parsed, fetchedCount };
 }
 
 function imapCheckArgs(fetchOptions) {

@@ -19,9 +19,25 @@ export function normalizeEmailRecent(value) {
   return DEFAULT_OPENCLAW_EMAIL_RECENT;
 }
 
-export function resolveEmailFetchPayload({ limit, recent }) {
+export function parseEmailLimitFromMessage(message) {
+  const text = message || '';
+  const patterns = [
+    /\b(?:last|top|read|fetch|get|show|list)\s+(\d{1,3})\s+emails?\b/i,
+    /\b(?:latest|recent|newest)\s+(\d{1,3})\s+emails?\b/i,
+    /\b(\d{1,3})\s+(?:recent|latest|newest)\s+emails?\b/i,
+    /\b(\d{1,3})\s+emails?\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) return clampEmailLimit(match[1]);
+  }
+  return null;
+}
+
+export function resolveEmailFetchPayload({ limit, recent, message }) {
+  const fromMessage = message ? parseEmailLimitFromMessage(message) : null;
   return {
-    email_limit: clampEmailLimit(limit),
+    email_limit: fromMessage ?? clampEmailLimit(limit),
     email_recent: normalizeEmailRecent(recent),
   };
 }

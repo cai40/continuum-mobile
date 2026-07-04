@@ -482,6 +482,7 @@ const ChatSection = () => {
         const emailFetch = resolveEmailFetchPayload({
           limit: openclawEmailLimit,
           recent: openclawEmailRecent,
+          message: finalInput,
         });
         const payload = {
           message: finalInput,
