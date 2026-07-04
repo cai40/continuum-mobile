@@ -14,6 +14,7 @@ const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these
 const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
 const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable)\b/i;
 const CATEGORY_DELETE = /\bcategor(?:y|ies)\s*#?\s*\d|github\s*\/?\s*cursor|cursor\[bot\]|automated\s+cursor|promotions?\s*(?:&|and)\s*newsletters?\b/i;
+const CHURCH_COMMUNITY_INTENT = /\b(church|grace chapel|grace\.org|community activit(?:ies|y)|men'?s breakfast|e-?news)\b/i;
 
 function wantsEmailDelete(message) {
   const text = message || '';
@@ -22,6 +23,7 @@ function wantsEmailDelete(message) {
   if (/\bmove\b/i.test(text) && /\b(trash|bin)\b/i.test(text)) return true;
   if (JUNK_INTENT.test(text) && /\b(trash|delete|remove|move|clear)\b/i.test(text)) return true;
   if (CATEGORY_DELETE.test(text) && /\b(trash|delete|remove|move)\b/i.test(text)) return true;
+  if (CHURCH_COMMUNITY_INTENT.test(text) && /\b(trash|delete|remove|move)\b/i.test(text)) return true;
   return false;
 }
 
@@ -113,6 +115,19 @@ function resolveCategoryDeleteUids(text, emails) {
   }
 
   return Array.from(uids);
+}
+
+function resolveChurchCommunityUids(emails) {
+  if (!Array.isArray(emails) || emails.length === 0) return [];
+
+  const uids = [];
+  for (const email of emails) {
+    const blob = `${email.from?.text || email.from || email.fromAddress || ''} ${email.subject || ''}`.toLowerCase();
+    if (/grace\.org|grace chapel|grace wilmington|men'?s breakfast|e-?news|blue village|community activit|cogswell\.doug@gmail/i.test(blob)) {
+      if (email.uid != null) uids.push(Number(email.uid));
+    }
+  }
+  return uids;
 }
 
 function filterToFetchedUids(candidateUids, emails) {
@@ -217,6 +232,10 @@ function resolveDeleteUids(message, emails) {
 
   if (CATEGORY_DELETE.test(text)) {
     for (const uid of resolveCategoryDeleteUids(text, emails)) uids.add(uid);
+  }
+
+  if (CHURCH_COMMUNITY_INTENT.test(text)) {
+    for (const uid of resolveChurchCommunityUids(emails)) uids.add(uid);
   }
 
   if (/\bdelete\s+(all|every)\b/i.test(text) && uids.size === 0) {
