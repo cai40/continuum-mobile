@@ -3,7 +3,7 @@
     "name": "Continuum 2.0",
     "slug": "continuum-2-0",
     "scheme": "continuum",
-    "version": "3.4.77",
+    "version": "3.4.78",
     "description": "Your autonomous AI memory advisor. Continuum builds a multi-layered semantic profile of your life to provide high-context advice and 24/7 memory retrieval.",
     "orientation": "portrait",
     "icon": "./assets/icon.jpg",

@@ -23,7 +23,8 @@ import {
   documentIconName,
   normalizePickedAsset,
 } from '../utils/documentTypes';
-import { appendGroundingPersona } from '../utils/groundingPrompt';
+import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND } from '../utils/groundingPrompt';
+import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -399,9 +400,39 @@ const ChatSection = () => {
       }
 
       const formData = new FormData();
-      formData.append('message', finalInput);
+      let chatMessage = finalInput;
+      let documentTextInjected = false;
+
+      if (activeAttachments.length && !isFromVoice) {
+        try {
+          const built = await buildMessageWithAttachments(finalInput, activeAttachments);
+          chatMessage = built.message;
+          documentTextInjected = built.documentTextInjected;
+          const hasDocAttachments = activeAttachments.some((f) => !f.type?.startsWith('image/'));
+          if (hasDocAttachments && !documentTextInjected) {
+            setIsTyping(false);
+            Alert.alert(
+              'Could not read file',
+              'Text could not be extracted. For Excel use .xlsx, or export to CSV and attach again.',
+            );
+            return;
+          }
+        } catch (err) {
+          setIsTyping(false);
+          Alert.alert(
+            'Could not read file',
+            err.message || 'Failed to extract text from the attachment. For Excel, use .xlsx or export to CSV.',
+          );
+          return;
+        }
+      }
+
+      formData.append('message', chatMessage);
       formData.append('provider', provider);
-      formData.append('persona', appendGroundingPersona(persona));
+      formData.append('persona', appendGroundingPersona(
+        persona,
+        documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : [],
+      ));
       formData.append('history', JSON.stringify(messages.slice(-20)));
       if (activeKey) formData.append('api_key', activeKey.trim());
       if (isVoiceMode) {
