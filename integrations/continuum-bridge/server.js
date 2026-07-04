@@ -10,14 +10,11 @@
 
 const http = require('http');
 const path = require('path');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
-
-const execFileAsync = promisify(execFile);
 
 const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
+const { fetchEmailContext, getEmailHealth } = require('./emailContext');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
 const HOST = process.env.CONTINUUM_BRIDGE_HOST || '127.0.0.1';
@@ -67,35 +64,11 @@ function buildContinuumForm(payload) {
 }
 
 async function maybeFetchEmailContext(message) {
-  if (!/\b(email|inbox|yahoo|mail|unread|smtp|imap)\b/i.test(message || '')) {
-    return null;
-  }
-
-  const home = process.env.HOME || '/root';
-  const candidates = [
-    path.join(home, '.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js'),
-    path.join(home, '.openclaw/workspace/skills/imap-smtp-email/scripts/imap.js'),
-  ];
-  const imapScript = candidates.find((p) => {
-    try {
-      require('fs').accessSync(p);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-  if (!imapScript) return null;
-
-  try {
-    const { stdout } = await execFileAsync(
-      'node',
-      [imapScript, 'check', '--limit', '8', '--recent', '24h'],
-      { timeout: 90000, maxBuffer: 2 * 1024 * 1024 },
-    );
-    return stdout.trim().slice(0, 12000);
-  } catch {
-    return null;
-  }
+  const result = await fetchEmailContext(message);
+  if (!result.matched) return null;
+  if (result.context) return result.context;
+  if (result.error) return `[Yahoo email not available]\n${result.error}`;
+  return '[Yahoo email] No messages returned.';
 }
 
 async function handleAsk(req, res, config) {
@@ -197,11 +170,13 @@ const server = http.createServer(async (req, res) => {
     const config = loadConfig();
 
     if (req.method === 'GET' && req.url === '/health') {
+      const emailHealth = await getEmailHealth();
       return json(res, 200, {
         success: true,
         service: 'continuum-bridge',
         continuum_api: config.apiUrl,
         openclaw: true,
+        email: emailHealth,
       });
     }
 

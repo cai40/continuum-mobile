@@ -34,6 +34,10 @@ const PROVIDERS = {
     smtp: { host: 'smtp.yeah.net', port: 465, secure: true, rejectUnauthorized: true },
     caldav: 'https://caldav.163.com/',
   },
+  'yahoo': {
+    imap: { host: 'imap.mail.yahoo.com', port: 993, tls: true, rejectUnauthorized: true },
+    smtp: { host: 'smtp.mail.yahoo.com', port: 465, secure: true, rejectUnauthorized: true },
+  },
   'gmail': {
     imap: { host: 'imap.gmail.com', port: 993, tls: true, rejectUnauthorized: true },
     smtp: { host: 'smtp.gmail.com', port: 587, secure: false, rejectUnauthorized: true },

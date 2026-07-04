@@ -57,6 +57,7 @@ export function buildOpenClawVpsCommands({
     "cd /tmp/continuum-mobile && git pull",
     "bash integrations/continuum-bridge/setup-bridge-service.sh",
     "bash integrations/continuum-bridge/setup-cloudflare-tunnel.sh",
+    "bash integrations/continuum-bridge/setup-yahoo-email.sh",
   ];
 
   return {
