@@ -15,11 +15,25 @@ const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter)\b/i;
 
 const JUNK_FROM = /noreply|no-reply|donotreply|do-not-reply|marketing|newsletter|promo@|promotions?@|mailer-daemon/i;
 const JUNK_SUBJECT = /unsubscribe|sale|deal|\d+\s*%\s*off|promo|free shipping|limited time|act now|clearance|coupon|discount/i;
+const PROTECTED_MAIL = /security@yahoo|account.?security|termius|schwab|estatement|invoice|verification|two-step|app password|hetzner/i;
+
+function isLikelyJunk(email) {
+  const from = String(email.from?.text || email.from || '');
+  const subject = String(email.subject || '');
+  const blob = `${from} ${subject}`.toLowerCase();
+  if (PROTECTED_MAIL.test(blob)) return false;
+  return JUNK_FROM.test(from) || JUNK_SUBJECT.test(subject);
+}
 
 function wantsEmailDelete(message) {
   const text = message || '';
   if (DELETE_BLOCKED.test(text)) return false;
   return DELETE_INTENT.test(text) || (JUNK_INTENT.test(text) && /\b(trash|delete|remove|move|clear)\b/i.test(text));
+}
+
+function filterToFetchedUids(candidateUids, emails) {
+  const fetched = new Set(emails.map((e) => Number(e.uid)).filter(Number.isFinite));
+  return candidateUids.filter((uid) => fetched.has(Number(uid)));
 }
 
 function parseIndexList(raw) {
@@ -59,17 +73,6 @@ function parseExplicitUids(message) {
   }
 
   return Array.from(uids);
-}
-
-function isLikelyJunk(email) {
-  const from = String(email.from?.text || email.from || '');
-  const subject = String(email.subject || '');
-  return JUNK_FROM.test(from) || JUNK_SUBJECT.test(subject);
-}
-
-function filterToFetchedUids(candidateUids, emails) {
-  const fetched = new Set(emails.map((e) => Number(e.uid)).filter(Number.isFinite));
-  return candidateUids.filter((uid) => fetched.has(Number(uid)));
 }
 
 function resolveDeleteUids(message, emails) {
@@ -173,7 +176,7 @@ async function runImapDeleteBatched(imapScript, uids) {
   return {
     success: results.every((r) => r.success !== false),
     uids,
-    action: 'deleted',
+    action: 'moved_to_trash',
     count: uids.length,
     batches: chunks.length,
   };
@@ -188,7 +191,8 @@ function formatDeleteResult(result, emails, deletedUids, skippedUids = []) {
     return `- UID ${uid}: "${subject}" from ${from}`;
   });
 
-  const parts = [`Deleted ${deletedUids.length} email(s) via Yahoo IMAP:`];
+  const action = result?.action === 'moved_to_trash' ? 'Moved to Trash' : 'Deleted';
+  const parts = [`${action} ${deletedUids.length} email(s) via Yahoo IMAP:`];
   if (lines.length) parts.push(...lines);
   if (skippedUids.length) {
     parts.push(`Skipped ${skippedUids.length} UID(s) not in the fetched inbox (may be invalid or already removed): ${skippedUids.slice(0, 10).join(', ')}${skippedUids.length > 10 ? '...' : ''}`);

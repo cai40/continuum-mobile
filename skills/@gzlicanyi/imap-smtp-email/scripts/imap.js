@@ -566,8 +566,38 @@ async function markAsUnread(uids, mailbox = DEFAULT_MAILBOX) {
   }
 }
 
-// Delete message(s) by UID (mark \\Deleted + expunge)
-async function deleteMessages(uids, mailbox = DEFAULT_MAILBOX) {
+// Resolve Trash mailbox name (Yahoo uses MOVE to Trash, not EXPUNGE-only)
+function findTrashMailboxName(boxes, prefix = '') {
+  for (const [name, info] of Object.entries(boxes)) {
+    const fullName = prefix ? `${prefix}${info.delimiter}${name}` : name;
+    const attribs = info.attribs || [];
+    if (attribs.includes('\\Trash') || /^Trash$/i.test(name)) {
+      return fullName;
+    }
+    if (info.children) {
+      const nested = findTrashMailboxName(info.children, fullName);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function getBoxesAsync(imap) {
+  return new Promise((resolve, reject) => {
+    imap.getBoxes((err, boxes) => {
+      if (err) reject(err);
+      else resolve(boxes);
+    });
+  });
+}
+
+async function resolveTrashMailbox(imap) {
+  const boxes = await getBoxesAsync(imap);
+  return findTrashMailboxName(boxes) || 'Trash';
+}
+
+// Move message(s) to Trash (Yahoo/Gmail standard) or permanently delete with permanent=true
+async function deleteMessages(uids, mailbox = DEFAULT_MAILBOX, options = {}) {
   if (!uids || uids.length === 0) {
     throw new Error('At least one UID is required');
   }
@@ -582,23 +612,43 @@ async function deleteMessages(uids, mailbox = DEFAULT_MAILBOX) {
   try {
     await openBox(imap, mailbox, false);
 
+    if (options.permanent) {
+      return new Promise((resolve, reject) => {
+        imap.addFlags(normalizedUids, '\\Deleted', (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          imap.expunge(normalizedUids, (expungeErr) => {
+            if (expungeErr) {
+              reject(expungeErr);
+              return;
+            }
+            resolve({
+              success: true,
+              uids: normalizedUids,
+              action: 'permanently_deleted',
+              count: normalizedUids.length,
+            });
+          });
+        });
+      });
+    }
+
+    const trashBox = await resolveTrashMailbox(imap);
+
     return new Promise((resolve, reject) => {
-      imap.addFlags(normalizedUids, '\\Deleted', (err) => {
+      imap.move(normalizedUids, trashBox, (err) => {
         if (err) {
           reject(err);
           return;
         }
-        imap.expunge((expungeErr) => {
-          if (expungeErr) {
-            reject(expungeErr);
-            return;
-          }
-          resolve({
-            success: true,
-            uids: normalizedUids,
-            action: 'deleted',
-            count: normalizedUids.length,
-          });
+        resolve({
+          success: true,
+          uids: normalizedUids,
+          action: 'moved_to_trash',
+          trash_mailbox: trashBox,
+          count: normalizedUids.length,
         });
       });
     });
@@ -741,9 +791,11 @@ async function main() {
 
       case 'delete':
         if (positional.length === 0) {
-          throw new Error('UID(s) required: node imap.js delete <uid> [uid2...]');
+          throw new Error('UID(s) required: node imap.js delete <uid> [uid2...]  (moves to Trash; add --permanent to expunge)');
         }
-        result = await deleteMessages(positional, options.mailbox);
+        result = await deleteMessages(positional, options.mailbox, {
+          permanent: !!options.permanent,
+        });
         break;
 
       case 'list-mailboxes':
