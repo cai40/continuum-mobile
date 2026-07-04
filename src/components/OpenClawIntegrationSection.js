@@ -236,11 +236,12 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       <View style={styles.groupedCard}>
         <TextInput
           style={[styles.keyInput, { borderWidth: 0 }]}
-          value={openclawBridgeSecret || bridgeSecret}
+          value={openclawBridgeSecret}
           onChangeText={setOpenclawBridgeSecret}
-          placeholder="Auto-generated"
+          placeholder={bridgeSecret || "openclaw2026"}
           autoCapitalize="none"
           autoCorrect={false}
+          clearButtonMode="while-editing"
         />
       </View>
 
