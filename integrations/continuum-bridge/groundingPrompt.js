@@ -13,6 +13,13 @@ const EMAIL_LIVE_INBOX_APPEND = [
   'Never claim you lack email access when inbox data is present below.',
 ].join(' ');
 
+const EMAIL_LIVE_INBOX_MEMORY_APPEND = [
+  EMAIL_LIVE_INBOX_APPEND,
+  'The user asked to feed sender-filtered email into Continuum memory.',
+  'Extract durable facts, commitments, dates, names, and project details from the REAL emails below.',
+  'Confirm what you captured; post-chat archiving will store episodic/semantic/temporal memory.',
+].join(' ');
+
 const EMAIL_LIVE_INBOX_DELETE_APPEND = [
   EMAIL_LIVE_INBOX_APPEND,
   'The OpenClaw VPS bridge executes Yahoo email delete/trash automatically in this turn when the user asks — you do NOT run commands.',
@@ -35,6 +42,7 @@ function appendGroundingPersona(persona, extraBlocks = []) {
 module.exports = {
   GLOBAL_GROUNDING_PROMPT: globalGroundingPrompt,
   EMAIL_LIVE_INBOX_APPEND,
+  EMAIL_LIVE_INBOX_MEMORY_APPEND,
   EMAIL_LIVE_INBOX_DELETE_APPEND,
   appendGroundingPersona,
 };

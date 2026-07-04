@@ -49,6 +49,35 @@ For email + memory:
 Check my Yahoo unread mail, send the list to Continuum brain for triage advice, don't delete anything.
 ```
 
+### Feed a sender's emails into Continuum memory (e.g. Min Zhang)
+
+**From Continuum app chat** (OpenClaw bridge ON):
+
+```
+Feed all Min Zhang emails to Continuum memory
+```
+
+Or: `Ingest emails from Min Zhang into memory — last 30 days, limit 100`
+
+The bridge IMAP-searches `FROM "Min Zhang"`, injects real mail into `/chat/stream`, and post-chat archiving stores L2–L4 facts.
+
+**From VPS (batch / cron):**
+
+```bash
+cd /tmp/continuum-mobile && git pull origin master
+bash integrations/continuum-bridge/ingest-min-zhang-emails.sh
+```
+
+Only **new** UIDs are ingested (tracked in `~/.config/continuum-openclaw/ingested-uids-min-zhang.json`).
+
+Daily cron:
+
+```bash
+0 8 * * * bash /tmp/continuum-mobile/integrations/continuum-bridge/ingest-min-zhang-emails.sh >> ~/.continuum-min-zhang.log 2>&1
+```
+
+**Historical archive (L5 knowledge base):** export Min Zhang threads to a `.txt` file and upload via Settings → Layer 5 → Sync Document Intelligence.
+
 ### Config file
 
 `~/.config/continuum-openclaw/.env`:

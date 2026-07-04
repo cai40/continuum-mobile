@@ -5,6 +5,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
+const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
@@ -38,7 +39,7 @@ async function probeImapDeleteCommand(imapScript) {
   }
 }
 
-const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify)\b/i;
+const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember)\b/i;
 
 function findImapScript() {
   const home = process.env.HOME || '/root';
@@ -138,8 +139,11 @@ function imapCheckArgs(fetchOptions) {
 
 async function runImapCheck(imapScript, message, payloadOptions = {}) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
+  const sender = parseSenderFromMessage(message);
   const skillRoot = path.dirname(path.dirname(imapScript));
-  const args = [imapScript, ...imapCheckArgs(fetchOptions)];
+  const args = sender
+    ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
+    : [imapScript, ...imapCheckArgs(fetchOptions)];
   const timeoutMs = Math.min(180000, 60000 + fetchOptions.limit * 2500);
 
   const { stdout, stderr } = await execFileAsync(
@@ -156,17 +160,29 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     console.error('[continuum-bridge] imap stderr:', stderr.trim());
   }
   const formatted = formatEmailMessages(stdout, fetchOptions.limit);
+  let context = formatted.text;
+  if (sender) {
+    context = [
+      `Sender filter: FROM "${sender}" (${fetchOptions.recent}, limit ${fetchOptions.limit}).`,
+      wantsEmailMemoryIngest(message)
+        ? 'MEMORY INGEST: User wants these emails fed into Continuum memory. Extract durable facts, commitments, dates, and relationship context. Confirm what you captured.'
+        : null,
+      '',
+      context,
+    ].filter(Boolean).join('\n');
+  }
   return {
-    context: formatted.text,
+    context,
     messages: formatted.messages,
-    fetchOptions,
+    fetchOptions: { ...fetchOptions, sender },
   };
 }
 
 async function fetchEmailContext(message, payloadOptions = {}) {
   const deleteRequested = wantsEmailDelete(message);
   const triageRequested = wantsTriage(message);
-  if (!EMAIL_KEYWORDS.test(message || '') && !deleteRequested && !triageRequested) {
+  const memoryIngestRequested = wantsEmailMemoryIngest(message);
+  if (!EMAIL_KEYWORDS.test(message || '') && !deleteRequested && !triageRequested && !memoryIngestRequested) {
     return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null };
   }
 
