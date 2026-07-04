@@ -5,7 +5,7 @@ const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
-const { maybeDeleteEmails, wantsEmailDelete } = require('./emailDelete');
+const { maybeDeleteEmails, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
@@ -236,7 +236,20 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     if (deleteResult.executed && deleteResult.summary) {
       finalContext = [finalContext, '', '[Email delete executed]', deleteResult.summary].join('\n');
     } else if (deleteResult.error) {
-      finalContext = [finalContext, '', `[Email delete] ${deleteResult.error}`].filter(Boolean).join('\n');
+      let errBlock = `[Email delete] ${deleteResult.error}`;
+      if (CHURCH_COMMUNITY_INTENT.test(message)) {
+        const churchUids = resolveChurchCommunityUids(messages);
+        if (churchUids.length) {
+          errBlock += [
+            '',
+            '[Church/community matches in fetched inbox]',
+            `UIDs: ${churchUids.join(', ')}`,
+            `Retry: delete uid ${churchUids.join(', ')}`,
+            'Or by list number: delete emails 4, 60, 67',
+          ].join('\n');
+        }
+      }
+      finalContext = [finalContext, '', errBlock].filter(Boolean).join('\n');
     }
 
     return {

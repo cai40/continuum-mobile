@@ -14,7 +14,7 @@ const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these
 const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
 const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable)\b/i;
 const CATEGORY_DELETE = /\bcategor(?:y|ies)\s*#?\s*\d|github\s*\/?\s*cursor|cursor\[bot\]|automated\s+cursor|promotions?\s*(?:&|and)\s*newsletters?\b/i;
-const CHURCH_COMMUNITY_INTENT = /\b(church|grace chapel|grace\.org|community activit(?:ies|y)|men'?s breakfast|e-?news)\b/i;
+const CHURCH_COMMUNITY_INTENT = /\b(church|grace chapel|grace\.org|@grace\.org|community|grace wilmington|wilmington campus|men'?s breakfast|e-?news|blue village|cogswell\.doug)\b/i;
 
 function wantsEmailDelete(message) {
   const text = message || '';
@@ -122,8 +122,11 @@ function resolveChurchCommunityUids(emails) {
 
   const uids = [];
   for (const email of emails) {
-    const blob = `${email.from?.text || email.from || email.fromAddress || ''} ${email.subject || ''}`.toLowerCase();
-    if (/grace\.org|grace chapel|grace wilmington|men'?s breakfast|e-?news|blue village|community activit|cogswell\.doug@gmail/i.test(blob)) {
+    const from = String(email.from?.text || email.from || email.fromAddress || '');
+    const subject = String(email.subject || '');
+    const preview = String(email.snippet || email.text || email.preview || '');
+    const blob = `${from} ${subject} ${preview}`.toLowerCase();
+    if (/grace\.org|@grace\.org|grace chapel|grace wilmington|wilmington campus|men'?s breakfast|e-?news|blue village|community activit|cogswell\.doug|wilmington men's breakfast/i.test(blob)) {
       if (email.uid != null) uids.push(Number(email.uid));
     }
   }
@@ -184,7 +187,7 @@ function resolveDeleteUids(message, emails) {
     uids.add(uid);
   }
 
-  for (const match of text.matchAll(/\b(?:email|message|mail)\s*#?\s*(\d+(?:\s*(?:,|and)\s*\d+|\s*-\s*\d+)*)/gi)) {
+  for (const match of text.matchAll(/\b(?:emails?|messages?|mail)\s*#?\s*(\d+(?:\s*(?:,|and)\s*\d+|\s*-\s*\d+)*)/gi)) {
     for (const idx of parseIndexList(match[1])) {
       const email = emails[idx - 1];
       if (email?.uid) uids.add(Number(email.uid));
@@ -323,7 +326,9 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false 
   if (uids.length === 0) {
     const hint = /\bcategor/i.test(message)
       ? 'Supported summary categories: 1=GitHub/Cursor bots, 4=SMTP self-tests only, 5=travel/auto/home promos, 6=newsletters/promos. Categories 2–3 (career/finance/real estate) and protected mail (banks, DocuSign, Hetzner OTP) are never auto-deleted. Try "move category 6 to trash" or list explicit UIDs.'
-      : JUNK_INTENT.test(message)
+      : CHURCH_COMMUNITY_INTENT.test(message)
+        ? 'Church/community mail was not matched in the fetched slice. Try "delete uid 962718, 962849, 962874", "delete emails 4, 60, 67", or widen Email Lookback to 7d/30d.'
+        : JUNK_INTENT.test(message)
         ? 'No junk/spam matches in the fetched inbox slice. Try a higher Email Fetch Limit or say "delete email 1, 2, 3".'
         : 'Use "delete email 1", "delete uid 12345" (must be in fetched list), "move category 6 to trash", or "delete junk to trash".';
     return {
@@ -363,6 +368,8 @@ module.exports = {
   MAX_DELETE_PER_REQUEST,
   wantsEmailDelete,
   resolveDeleteUids,
+  resolveChurchCommunityUids,
   parseExplicitUids,
   maybeDeleteEmails,
+  CHURCH_COMMUNITY_INTENT,
 };
