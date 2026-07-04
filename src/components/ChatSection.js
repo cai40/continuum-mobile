@@ -14,7 +14,8 @@ import {
 } from 'expo-speech-recognition';
 import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream } from '../services/apiService';
-import { API_URL, OPENCLAW_BRIDGE_PORT, DEFAULT_OPENCLAW_BRIDGE_SECRET, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
+import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
+import { resolveBridgeBaseUrl, resolveBridgeSecret } from '../utils/openclawBridge';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -31,6 +32,7 @@ const ChatSection = () => {
     isFeatureAvailable,
     openclawChatEnabled,
     openclawVpsIp,
+    openclawBridgeHttpsUrl,
     openclawBridgeSecret,
   } = useAppContext();
 
@@ -349,11 +351,16 @@ const ChatSection = () => {
       return;
     }
 
-    const bridgeSecret = openclawBridgeSecret?.trim() || DEFAULT_OPENCLAW_BRIDGE_SECRET;
+    const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
+    const bridgeUrl = resolveBridgeBaseUrl({
+      httpsUrl: openclawBridgeHttpsUrl,
+      vpsIp: openclawVpsIp,
+      defaultVpsIp: "135.181.155.197",
+    });
 
     const useOpenClawBridge =
       openclawChatEnabled &&
-      openclawVpsIp?.trim() &&
+      bridgeUrl &&
       !activeAttachment &&
       !isVoiceMode;
 
@@ -408,7 +415,6 @@ const ChatSection = () => {
 
     let xhr;
     if (useOpenClawBridge) {
-      const bridgeUrl = `http://${openclawVpsIp.trim()}:${OPENCLAW_BRIDGE_PORT}`;
       const payload = {
         message: finalInput,
         provider,

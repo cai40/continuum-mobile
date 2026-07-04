@@ -18,18 +18,17 @@ import { testOpenClawBridge } from "../services/apiService";
 import {
   API_URL,
   DEFAULT_OPENCLAW_BRIDGE_SECRET,
-  OPENCLAW_BRIDGE_PORT,
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
 } from "../constants/Config";
+import {
+  resolveBridgeBaseUrl,
+  resolveBridgeSecret,
+  isHttpsBridgeUrl,
+} from "../utils/openclawBridge";
 import { styles, theme } from "../styles/theme";
 
 const DEFAULT_VPS_IP = "135.181.155.197";
-
-function resolveBridgeSecret(storedSecret) {
-  const trimmed = storedSecret?.trim();
-  return trimmed || DEFAULT_OPENCLAW_BRIDGE_SECRET;
-}
 
 export function buildOpenClawVpsCommands({
   vpsIp,
@@ -57,6 +56,7 @@ export function buildOpenClawVpsCommands({
     "openclaw gateway restart",
     "cd /tmp/continuum-mobile && git pull",
     "bash integrations/continuum-bridge/setup-bridge-service.sh",
+    "bash integrations/continuum-bridge/setup-cloudflare-tunnel.sh",
   ];
 
   return {
@@ -66,14 +66,15 @@ export function buildOpenClawVpsCommands({
   };
 }
 
-function bridgeTestErrorHint(message) {
+function bridgeTestErrorHint(message, hasHttpsUrl) {
   const msg = message || "";
+  if (hasHttpsUrl) return msg;
   if (/network request failed|failed to fetch|could not connect|timed out/i.test(msg)) {
     return (
-      "The VPS bridge is running, but your iPhone could not reach it over HTTP.\n\n" +
-      "1. Clear Bridge Secret, type: openclaw2026, tap Save\n" +
-      "2. Install the latest iOS build from TestFlight/App Store (OTA alone cannot allow HTTP to your VPS)\n" +
-      "3. Or verify on VPS: curl http://127.0.0.1:8787/health"
+      "iPhone blocks HTTP to your VPS IP. The bridge is running — you need HTTPS.\n\n" +
+      "On VPS (Termius), run:\n" +
+      "bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-cloudflare-tunnel.sh\n\n" +
+      "Copy the https://....trycloudflare.com URL into HTTPS Bridge URL above, Save, and test again."
     );
   }
   return msg;
@@ -86,6 +87,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     geminiKey,
     openclawVpsIp,
     setOpenclawVpsIp,
+    openclawBridgeHttpsUrl,
+    setOpenclawBridgeHttpsUrl,
     openclawBridgeSecret,
     setOpenclawBridgeSecret,
     openclawChatEnabled,
@@ -98,6 +101,11 @@ const OpenClawIntegrationSection = ({ onBack }) => {
 
   const refreshToken = session?.refresh_token || "";
   const effectiveSecret = resolveBridgeSecret(openclawBridgeSecret);
+  const bridgeBaseUrl = resolveBridgeBaseUrl({
+    httpsUrl: openclawBridgeHttpsUrl,
+    vpsIp: openclawVpsIp,
+    defaultVpsIp: DEFAULT_VPS_IP,
+  });
 
   const setupBundle = useMemo(
     () =>
@@ -133,15 +141,21 @@ const OpenClawIntegrationSection = ({ onBack }) => {
   };
 
   const handleTestBridge = async () => {
-    const ip = openclawVpsIp?.trim() || DEFAULT_VPS_IP;
+    if (!bridgeBaseUrl) {
+      Alert.alert("Bridge URL required", "Enter VPS IP or HTTPS Bridge URL.");
+      return;
+    }
     const secret = effectiveSecret;
     setTesting(true);
     try {
-      const url = `http://${ip}:${OPENCLAW_BRIDGE_PORT}`;
-      const health = await testOpenClawBridge(url, secret);
-      Alert.alert("Bridge OK", `Connected to ${health.service || "continuum-bridge"} on ${ip}`);
+      const health = await testOpenClawBridge(bridgeBaseUrl, secret);
+      const via = isHttpsBridgeUrl(bridgeBaseUrl) ? "HTTPS tunnel" : bridgeBaseUrl;
+      Alert.alert("Bridge OK", `Connected to ${health.service || "continuum-bridge"} via ${via}`);
     } catch (e) {
-      Alert.alert("Bridge unreachable", bridgeTestErrorHint(e.message || String(e)));
+      Alert.alert(
+        "Bridge unreachable",
+        bridgeTestErrorHint(e.message || String(e), !!openclawBridgeHttpsUrl?.trim()),
+      );
     } finally {
       setTesting(false);
     }
@@ -152,8 +166,20 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     await AsyncStorage.multiSet([
       ["@openclaw_chat_enabled", value ? "true" : "false"],
       ["@openclaw_vps_ip", (openclawVpsIp || DEFAULT_VPS_IP).trim()],
+      ["@openclaw_bridge_https_url", openclawBridgeHttpsUrl.trim()],
       ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
     ]);
+  };
+
+  const handleCopyTunnelCommand = async () => {
+    await Clipboard.setStringAsync(
+      "bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-cloudflare-tunnel.sh",
+    );
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert(
+      "Copied",
+      "Paste in Termius on your VPS. When done, copy the https://....trycloudflare.com URL into HTTPS Bridge URL.",
+    );
   };
 
   const handleCopyCommands = async () => {
@@ -223,6 +249,38 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         />
       </View>
 
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>HTTPS BRIDGE URL</Text>
+      <View style={styles.groupedCard}>
+        <TextInput
+          style={[styles.keyInput, { borderWidth: 0 }]}
+          value={openclawBridgeHttpsUrl}
+          onChangeText={setOpenclawBridgeHttpsUrl}
+          placeholder="https://....trycloudflare.com"
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          keyboardType="url"
+        />
+      </View>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Required on iPhone — iOS blocks HTTP to the VPS IP. Run the Cloudflare tunnel on VPS and paste the HTTPS URL here.
+      </Text>
+
+      <TouchableOpacity
+        onPress={handleCopyTunnelCommand}
+        style={{
+          backgroundColor: theme.colors.light,
+          paddingVertical: 12,
+          borderRadius: 12,
+          marginTop: 10,
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ color: theme.colors.primary, fontWeight: "700", fontSize: 13 }}>
+          Copy VPS command: setup HTTPS tunnel
+        </Text>
+      </TouchableOpacity>
+
       <Text style={[styles.categoryTitle, { marginTop: 24 }]}>BRIDGE SECRET</Text>
       <View style={styles.groupedCard}>
         <TextInput
@@ -251,6 +309,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           VPS IP: {openclawVpsIp || DEFAULT_VPS_IP}
+        </Text>
+        <Text style={{ fontSize: 12, color: openclawBridgeHttpsUrl?.trim() ? theme.colors.success : theme.colors.danger, marginTop: 4 }}>
+          {openclawBridgeHttpsUrl?.trim() ? "✓" : "✗"} HTTPS bridge URL {openclawBridgeHttpsUrl?.trim() ? "set" : "(required on iPhone)"}
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           Bridge secret: {effectiveSecret}
@@ -311,10 +372,10 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       </TouchableOpacity>
 
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 28, lineHeight: 18 }}>
-        1. Copy VPS setup commands and run on server{"\n"}
-        2. Run: bash integrations/continuum-bridge/setup-bridge-service.sh{"\n"}
-        3. Enable "Route chat through OpenClaw" above{"\n"}
-        4. Chat normally — ask about email: "check my Yahoo inbox"
+        1. Run setup-bridge-service.sh on VPS{"\n"}
+        2. Run setup-cloudflare-tunnel.sh → copy HTTPS URL into app{"\n"}
+        3. Enable "Route chat through OpenClaw"{"\n"}
+        4. Chat — ask: "check my Yahoo inbox"
       </Text>
     </ScrollView>
   );
