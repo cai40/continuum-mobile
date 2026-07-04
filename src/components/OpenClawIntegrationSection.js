@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -15,18 +15,20 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "../context/AppContext";
 import { testOpenClawBridge } from "../services/apiService";
-import { API_URL, OPENCLAW_BRIDGE_PORT, SUPABASE_URL, SUPABASE_ANON_KEY } from "../constants/Config";
+import {
+  API_URL,
+  DEFAULT_OPENCLAW_BRIDGE_SECRET,
+  OPENCLAW_BRIDGE_PORT,
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+} from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 
 const DEFAULT_VPS_IP = "135.181.155.197";
 
-function generateSecret() {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let out = "";
-  for (let i = 0; i < 24; i += 1) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return out;
+function resolveBridgeSecret(storedSecret) {
+  const trimmed = storedSecret?.trim();
+  return trimmed || DEFAULT_OPENCLAW_BRIDGE_SECRET;
 }
 
 export function buildOpenClawVpsCommands({
@@ -64,6 +66,19 @@ export function buildOpenClawVpsCommands({
   };
 }
 
+function bridgeTestErrorHint(message) {
+  const msg = message || "";
+  if (/network request failed|failed to fetch|could not connect|timed out/i.test(msg)) {
+    return (
+      "The VPS bridge is running, but your iPhone could not reach it over HTTP.\n\n" +
+      "1. Clear Bridge Secret, type: openclaw2026, tap Save\n" +
+      "2. Install the latest iOS build from TestFlight/App Store (OTA alone cannot allow HTTP to your VPS)\n" +
+      "3. Or verify on VPS: curl http://127.0.0.1:8787/health"
+    );
+  }
+  return msg;
+}
+
 const OpenClawIntegrationSection = ({ onBack }) => {
   const {
     session,
@@ -79,28 +94,21 @@ const OpenClawIntegrationSection = ({ onBack }) => {
   } = useAppContext();
 
   const [copied, setCopied] = useState(false);
-  const [localSecret, setLocalSecret] = useState("");
   const [testing, setTesting] = useState(false);
 
-  useEffect(() => {
-    if (!openclawBridgeSecret && !localSecret) {
-      setLocalSecret(generateSecret());
-    }
-  }, [openclawBridgeSecret, localSecret]);
-
   const refreshToken = session?.refresh_token || "";
-  const bridgeSecret = openclawBridgeSecret || localSecret;
+  const effectiveSecret = resolveBridgeSecret(openclawBridgeSecret);
 
   const setupBundle = useMemo(
     () =>
       buildOpenClawVpsCommands({
         vpsIp: openclawVpsIp || DEFAULT_VPS_IP,
-        bridgeSecret,
+        bridgeSecret: effectiveSecret,
         refreshToken,
         geminiKey,
         provider,
       }),
-    [openclawVpsIp, bridgeSecret, refreshToken, geminiKey, provider],
+    [openclawVpsIp, effectiveSecret, refreshToken, geminiKey, provider],
   );
 
   const ensureReady = () => {
@@ -119,9 +127,6 @@ const OpenClawIntegrationSection = ({ onBack }) => {
   };
 
   const handleSave = async () => {
-    if (!openclawBridgeSecret) {
-      setOpenclawBridgeSecret(bridgeSecret);
-    }
     await saveOpenClawSettings();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Saved", "OpenClaw gateway settings stored on this device.");
@@ -129,21 +134,14 @@ const OpenClawIntegrationSection = ({ onBack }) => {
 
   const handleTestBridge = async () => {
     const ip = openclawVpsIp?.trim() || DEFAULT_VPS_IP;
-    const secret = openclawBridgeSecret || bridgeSecret;
-    if (!secret) {
-      Alert.alert("Bridge secret required", "Save a bridge secret first.");
-      return;
-    }
+    const secret = effectiveSecret;
     setTesting(true);
     try {
       const url = `http://${ip}:${OPENCLAW_BRIDGE_PORT}`;
       const health = await testOpenClawBridge(url, secret);
       Alert.alert("Bridge OK", `Connected to ${health.service || "continuum-bridge"} on ${ip}`);
     } catch (e) {
-      Alert.alert(
-        "Bridge unreachable",
-        "Run setup-bridge-service.sh on your VPS first.\n\n" + (e.message || String(e)),
-      );
+      Alert.alert("Bridge unreachable", bridgeTestErrorHint(e.message || String(e)));
     } finally {
       setTesting(false);
     }
@@ -151,23 +149,16 @@ const OpenClawIntegrationSection = ({ onBack }) => {
 
   const handleToggleChat = async (value) => {
     setOpenclawChatEnabled(value);
-    const secret = openclawBridgeSecret || bridgeSecret;
-    if (!openclawBridgeSecret) {
-      setOpenclawBridgeSecret(secret);
-    }
     await AsyncStorage.multiSet([
       ["@openclaw_chat_enabled", value ? "true" : "false"],
       ["@openclaw_vps_ip", (openclawVpsIp || DEFAULT_VPS_IP).trim()],
-      ["@openclaw_bridge_secret", secret.trim()],
+      ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
     ]);
   };
 
   const handleCopyCommands = async () => {
     if (!ensureReady()) return;
-    if (!openclawBridgeSecret) {
-      setOpenclawBridgeSecret(bridgeSecret);
-      await saveOpenClawSettings();
-    }
+    await saveOpenClawSettings();
     await Clipboard.setStringAsync(setupBundle.commandBlock);
     setCopied(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -238,12 +229,15 @@ const OpenClawIntegrationSection = ({ onBack }) => {
           style={[styles.keyInput, { borderWidth: 0 }]}
           value={openclawBridgeSecret}
           onChangeText={setOpenclawBridgeSecret}
-          placeholder={bridgeSecret || "openclaw2026"}
+          placeholder={DEFAULT_OPENCLAW_BRIDGE_SECRET}
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
         />
       </View>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Clear the field and type {DEFAULT_OPENCLAW_BRIDGE_SECRET} if unsure. Leave blank to use that default.
+      </Text>
 
       <View style={[styles.groupedCard, { marginTop: 24, padding: 16 }]}>
         <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black, marginBottom: 8 }}>
@@ -257,6 +251,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           VPS IP: {openclawVpsIp || DEFAULT_VPS_IP}
+        </Text>
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+          Bridge secret: {effectiveSecret}
         </Text>
       </View>
 

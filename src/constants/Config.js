@@ -1,5 +1,6 @@
 export const API_URL = "https://continuum-backend-0q9j.onrender.com";
 export const OPENCLAW_BRIDGE_PORT = 8787;
+export const DEFAULT_OPENCLAW_BRIDGE_SECRET = 'openclaw2026';
 export const SUPABASE_URL = 'https://yybojfgjhtrwqhtavorg.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_o9AuvayIw6vnMtnqhdTpNg__V7pA5i5';
 export const SENTRY_DSN = 'https://f2d74237bcb38ceb544825358e7972f4@o4511229827088384.ingest.us.sentry.io/4511229855006720'; 

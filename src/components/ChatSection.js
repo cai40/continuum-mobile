@@ -14,7 +14,7 @@ import {
 } from 'expo-speech-recognition';
 import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream } from '../services/apiService';
-import { API_URL, OPENCLAW_BRIDGE_PORT, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
+import { API_URL, OPENCLAW_BRIDGE_PORT, DEFAULT_OPENCLAW_BRIDGE_SECRET, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -349,10 +349,11 @@ const ChatSection = () => {
       return;
     }
 
+    const bridgeSecret = openclawBridgeSecret?.trim() || DEFAULT_OPENCLAW_BRIDGE_SECRET;
+
     const useOpenClawBridge =
       openclawChatEnabled &&
       openclawVpsIp?.trim() &&
-      openclawBridgeSecret?.trim() &&
       !activeAttachment &&
       !isVoiceMode;
 
@@ -422,7 +423,7 @@ const ChatSection = () => {
       };
       xhr = openClawChatStream(
         bridgeUrl,
-        openclawBridgeSecret.trim(),
+        bridgeSecret,
         payload,
         streamCallbacks.onUpdate,
         streamCallbacks.onDone,

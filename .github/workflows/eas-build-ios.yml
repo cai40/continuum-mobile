@@ -1,0 +1,26 @@
+name: EAS iOS Build
+
+# Native rebuild required for NSAppTransportSecurity (HTTP to VPS IP).
+# OTA updates alone cannot apply Info.plist changes.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: EAS Build iOS (production)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli build --platform ios --profile production --non-interactive
