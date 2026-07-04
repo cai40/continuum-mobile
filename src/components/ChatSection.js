@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Image, Alert, RefreshControl } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Image, Alert, RefreshControl, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -55,6 +55,7 @@ const ChatSection = () => {
   const [location, setLocation] = useState(null);
 
   const chatListRef = useRef();
+  const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
   const soundRef = useRef(null);
   const soundQueueRef = useRef([]);
@@ -62,6 +63,17 @@ const ChatSection = () => {
   const silenceTimerRef = useRef(null);
   const longSilenceTimerRef = useRef(null);
   const stopRecordingRef = useRef(null);
+
+  const dismissKeyboard = useCallback(() => {
+    inputRef.current?.blur();
+    Keyboard.dismiss();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'chat') {
+      dismissKeyboard();
+    }
+  }, [activeTab, dismissKeyboard]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -342,6 +354,7 @@ const ChatSection = () => {
       setInput('');
       setLocalTranscript('');
       setAttachment(null);
+      dismissKeyboard();
       setIsTyping(true);
 
       if (isVoiceMode) {
@@ -745,8 +758,9 @@ const ChatSection = () => {
         ref={chatListRef}
         inverted={true}
         style={{ flex: 1 }}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
+        keyboardShouldPersistTaps="never"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={dismissKeyboard}
         data={
           streamingContent.trim() 
             ? [{ id: 'stream', role: 'assistant', content: streamingContent }, ...[...messages].reverse()] 
@@ -844,6 +858,7 @@ const ChatSection = () => {
 
         <View style={[styles.capsuleInput, { flex: 1 }]}>
           <TextInput
+            ref={inputRef}
             style={styles.textInput}
             placeholder={attachment ? "Describe this file..." : "Message..."}
             value={input}
@@ -853,7 +868,7 @@ const ChatSection = () => {
             spellCheck={true}
             autoCapitalize="sentences"
             returnKeyType="send"
-            blurOnSubmit={false}
+            blurOnSubmit={true}
             onSubmitEditing={() => {
               if (input.trim() || attachment) onPressSend();
             }}
