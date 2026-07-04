@@ -36,6 +36,7 @@ Continuum uses a multi-tier cognitive architecture based on the **ACT-R (Adaptiv
 | **L3+** | **Identity** | Subconscious | `semantic_profile` |
 | **L4** | **Temporal** | History / Trends | `temporal_events` |
 | **L5** | **Document** | External Brain | `document_chunks` |
+| **L6** | **Procedural** | Reusable Workflows *(planned)* | `procedural_skills` *(planned — see §2.11)* |
 
 ### 2.3 Neural Retrieval Strategy (Token Budget)
 To maintain high-speed conversational intelligence, Continuum uses a surgical retrieval strategy rather than full-brain scanning. Every chat turn injects a specific "Context Budget" into the LLM:
@@ -122,6 +123,74 @@ Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to
 *   **Neural STT**: Instant transcription with multilingual cycling (EN, ZH, ES).
 *   **Neural Voice**: Six high-fidelity neural voices for AI response.
 
+### 2.11 Procedural Learning Layer (L6 — "Neural Skills") [PLANNED]
+Continuum today excels at **declarative learning** (what the user knows: facts, identity, episodic history via L1–L5). It does **not** yet support **procedural learning** (how to execute multi-step workflows). This section defines the future L6 layer to close that gap and match — then exceed — agent frameworks that auto-create reusable skills (e.g., Hermes Agent).
+
+#### 2.11.1 Design Rationale
+| Learning Type | Current Continuum (L1–L5) | L6 Target |
+| :--- | :--- | :--- |
+| **Declarative** ("what you know") | ✅ Facts, identity, documents, temporal events | Extend existing layers |
+| **Procedural** ("how you do things") | ❌ Not implemented | ✅ Auto-created, reusable workflows |
+
+L6 integrates with — not replaces — the existing memory stack. Declarative memory (L3/L3+) tells the agent *who the user is*; procedural memory (L6) tells the agent *how to serve them efficiently* on recurring tasks.
+
+#### 2.11.2 L6 Memory Layer Specification
+| Layer | Functional Module | Purpose | Database Table |
+| :--- | :--- | :--- | :--- |
+| **L6** | **Procedural** | Reusable Workflows & Action Sequences | `procedural_skills` |
+
+**Schema (proposed)**:
+*   `id`, `user_id`, `name`, `description` — skill identity and one-line trigger summary
+*   `procedure` — structured steps (JSON: ordered actions, tool calls, verification checks, known pitfalls)
+*   `embedding` — `halfvec(768)` for semantic skill retrieval (same quantization as L2–L5)
+*   `source_session_id` — originating chat session for audit trail
+*   `use_count`, `success_count`, `last_used_at` — usage telemetry for ACT-R activation
+*   `confidence_score` — MBTD-weighted reliability (0.0–1.0)
+*   `status` — `active` \| `stale` \| `archived` (mirrors Curator-style lifecycle)
+*   `created_at`, `updated_at`
+
+#### 2.11.3 Closed Learning Loop (Observe → Distill → Reuse → Refine)
+1.  **Observe**: Post-chat background task inspects completed sessions for procedural patterns — multi-step tool use (≥5 steps), error recovery, user corrections ("No, do X instead"), or repeated similar task shapes across sessions.
+2.  **Distill**: LLM synthesizes a structured `procedural_skills` record — not a raw log — capturing steps, preconditions, verification, and anti-patterns. Stored with vector embedding for retrieval.
+3.  **Reuse**: On new chat turns, L6 skills are retrieved via the existing hybrid reranking pipeline (semantic similarity + ACT-R activation + importance). Only matching skills are injected into context (progressive disclosure: name + description in system prompt; full procedure loaded when relevance score exceeds threshold).
+4.  **Refine**: When a loaded skill fails or the user corrects execution, the background fork patches the skill (targeted delta, not full rewrite). Successful re-runs increment `success_count` and boost activation stability.
+
+#### 2.11.4 Skill Curator (Autonomic Maintenance)
+Extends the existing Autonomic Hygiene engine (§2.3.5) with procedural-specific rules:
+*   **Stale transition**: Skills unused for 30 days → `stale`; 90 days → `archived` (same thresholds as Hermes Curator baseline).
+*   **Consolidation**: Periodic cron job merges near-duplicate skills (cosine similarity > 0.90) into umbrella skills with merged procedures.
+*   **Capacity guard**: L6 counts toward Neural Storage caps (§2.9) or a dedicated skill cap (TBD at implementation).
+*   **Human review surface**: Settings UI lists active/stale/archived skills; user can pin, edit, or delete any skill.
+
+#### 2.11.5 Neural Retrieval Budget (Updated)
+When L6 is enabled, extend the per-message context budget:
+*   **Procedural Skills (L6)**: Top 2 relevant skills (~400 tokens).
+*   **Revised Total Context Per Message**: **~3,050 Tokens** (current ~2,650 + L6 allocation).
+
+#### 2.11.6 Action Tokens & External Integrations [PLANNED]
+L6 lays the foundation for the Agentic Roadmap (Action Tokens / Function Calling):
+*   **Phase A (L6 Core)**: Skill creation, retrieval, and in-chat procedural guidance (no external tool execution).
+*   **Phase B (Action Tokens)**: Skills reference callable functions (API endpoints, webhooks, MCP tools). Requires approval gates for destructive actions.
+*   **Phase C (Channel Gateway)**: External messaging (WeChat, SMS, Yahoo email) routes inbound messages to Continuum backend via a thin gateway (e.g., OpenClaw as channel router only). Continuum remains the single brain — L1–L6 memory, LLM, and identity — across mobile app and all channels.
+
+**Channel integration constraints** (documented for future implementation):
+*   Gateway is a **message router**, not a second memory system.
+*   Requires `POST /integrations/channel` endpoint with service-token auth and sender-ID → `user_id` mapping.
+*   Backend must run always-on (Render upgrade or VPS proxy) to avoid cold-start latency on real-time channels.
+*   Channel messages count against Daily Heartbeat quotas (§2.9).
+
+#### 2.11.7 Competitive Positioning
+| Capability | Hermes Agent | Continuum (L1–L5 today) | Continuum (L1–L6 target) |
+| :--- | :--- | :--- | :--- |
+| Auto-create workflow skills | ✅ | ❌ | ✅ |
+| Identity & archetype modeling | ⚠️ Basic | ✅ L3+ vault | ✅ |
+| Probabilistic fact conflict resolution | ❌ | ✅ MBTD | ✅ |
+| Biological memory decay | ⚠️ Skill-only | ✅ Ebbinghaus | ✅ Facts + Skills |
+| Document RAG | ⚠️ Via tools | ✅ L5 | ✅ |
+| Multi-channel inbox | ✅ Built-in | ❌ | ✅ Via gateway (Phase C) |
+
+**Target outcome**: Continuum becomes the only personal AI with both **deep declarative memory** (identity, facts, documents) and **autonomous procedural learning** (skills), unified in one Supabase-backed brain.
+
 ---
 
 ## 3. Commercialization & Subscription Model
@@ -140,3 +209,11 @@ Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to
 *   **Auth Infrastructure**: ✅ Complete. Deep-link verification bridge active.
 *   **Data Sovereignty**: ✅ Complete. RLS-hardened Multi-Tenancy active.
 *   **App Store Submission**: In progress. Metadata and screenshots finalized.
+
+### 4.1 Future Roadmap (Planned)
+*   **L6 Procedural Skills (Neural Skills Layer)**: 📋 Planned. Auto-create, retrieve, patch, and curate reusable workflow skills. See §2.11.
+    - **L6 Phase A**: Skill extraction post-chat, `procedural_skills` table, retrieval injection, Settings UI for skill management.
+    - **L6 Phase B**: Action Tokens — skills invoke external functions with user approval gates.
+    - **L6 Phase C**: Channel Gateway — WeChat, SMS (Twilio), and email (IMAP/SMTP) routed to Continuum backend; gateway is router-only, Continuum owns all memory.
+*   **Action Tokens (Function Calling)**: 📋 Planned. Depends on L6 Phase A. See §2.11.6.
+*   **Always-On Backend / Channel Latency**: 📋 Planned. Render tier upgrade or VPS warm-proxy required before Phase C go-live.
