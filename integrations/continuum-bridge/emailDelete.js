@@ -13,7 +13,7 @@ const DELETE_BATCH_SIZE = 25;
 const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
 const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
 const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable)\b/i;
-const CATEGORY_DELETE = /\bcategory\s*[13]\b|github\s*\/?\s*cursor|cursor\[bot\]|automated\s+cursor|promotions?\s*(?:&|and)\s*newsletters?\b/i;
+const CATEGORY_DELETE = /\bcategor(?:y|ies)\s*#?\s*\d|github\s*\/?\s*cursor|cursor\[bot\]|automated\s+cursor|promotions?\s*(?:&|and)\s*newsletters?\b/i;
 
 function wantsEmailDelete(message) {
   const text = message || '';
@@ -29,28 +29,86 @@ function isGithubCursorRow(row) {
   return /github|cursor\[bot\]|cursor\s*bot/i.test(`${row.from} ${row.subject}`);
 }
 
+function parseRequestedCategoryNumbers(text) {
+  const cats = new Set();
+  const raw = String(text || '');
+
+  const listMatch = raw.match(/\bcategor(?:y|ies)\s*(?:#?\s*)?([\d\s,and&–\-]+(?:\d+\s*(?:-|–|to|through)\s*\d+)?[\d\s,and&]*)/i);
+  if (listMatch) {
+    const chunk = listMatch[1];
+    const range = chunk.match(/(\d+)\s*(?:-|–|to|through)\s*(\d+)/i);
+    if (range) {
+      const lo = Math.min(parseInt(range[1], 10), parseInt(range[2], 10));
+      const hi = Math.max(parseInt(range[1], 10), parseInt(range[2], 10));
+      for (let i = lo; i <= hi; i += 1) {
+        if (i >= 1 && i <= 6) cats.add(i);
+      }
+    }
+    for (const num of chunk.match(/\d+/g) || []) {
+      const n = parseInt(num, 10);
+      if (n >= 1 && n <= 6) cats.add(n);
+    }
+  }
+
+  if (cats.size === 0) {
+    if (/github\s*\/?\s*cursor|cursor\[bot\]|cursor\s*bot|automated\s+cursor|github\s+notifications?/i.test(raw)) {
+      cats.add(1);
+    }
+    if (/promotions?\s*(?:&|and)\s*newsletters?|\bnewsletters?\s*(?:&|and)\s*promotions?/i.test(raw)) {
+      cats.add(6);
+    }
+  }
+
+  return cats;
+}
+
+function rowBlob(row) {
+  return `${row.from} ${row.subject}`.toLowerCase();
+}
+
+function matchesSummaryCategory(row, catNum) {
+  if (row.uid == null) return false;
+  if (row.category === 'protected') return false;
+
+  const blob = rowBlob(row);
+
+  switch (catNum) {
+    case 1:
+      return isGithubCursorRow(row) && row.selectable_as_junk;
+    case 2:
+      return false;
+    case 3:
+      return row.selectable_as_junk
+        && (row.category === 'newsletter' || row.category === 'spam')
+        && !isGithubCursorRow(row);
+    case 4:
+      return /smtp|connection test|test email from the imap|imap\/smtp email skill/i.test(blob);
+    case 5:
+      if (/hertz.*reservation|reservation confirmation|national grid|ezdrive|peak demand|account statement|direct deposit|e-?statement|one.?time passcode|verification code/i.test(blob)) {
+        return false;
+      }
+      return /sixt|promotional rental|auto insurance promotion|\$29\/month|reprocessed quote|home insurance options|nucar|service reminder|trugreen|renewal by andersen|flybussen|password reset|email verification link|automotive insurance info/i.test(blob)
+        && (row.selectable_as_junk || /promo|promotion|deal|sale|offer/i.test(blob));
+    case 6:
+      return row.selectable_as_junk && (row.category === 'newsletter' || row.category === 'spam');
+    default:
+      return false;
+  }
+}
+
 function resolveCategoryDeleteUids(text, emails) {
   if (!Array.isArray(emails) || emails.length === 0) return [];
 
   const uids = new Set();
   const triaged = triageMessages(emails);
-  const wantsCat1 = /\bcategory\s*1\b|github\s*\/?\s*cursor|cursor\[bot\]|cursor\s*bot|automated\s+cursor|github\s+notifications?/i.test(text);
-  const wantsCat3 = /\bcategory\s*3\b|promo(?:tional)?s?\s*(?:&|and)\s*newsletters?|\bnewsletters?\b|\bmarketing\b/i.test(text);
+  const requested = parseRequestedCategoryNumbers(text);
 
-  if (wantsCat1) {
-    for (const row of triaged) {
-      if (isGithubCursorRow(row) && row.selectable_as_junk && row.uid != null) {
+  for (const row of triaged) {
+    for (const cat of requested) {
+      if (matchesSummaryCategory(row, cat)) {
         uids.add(Number(row.uid));
+        break;
       }
-    }
-  }
-
-  if (wantsCat3) {
-    for (const row of triaged) {
-      if (!row.selectable_as_junk || row.uid == null) continue;
-      if (row.category !== 'newsletter' && row.category !== 'spam') continue;
-      if (isGithubCursorRow(row)) continue;
-      uids.add(Number(row.uid));
     }
   }
 
@@ -244,9 +302,11 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false 
   const skippedUids = requestedUids.filter((uid) => !fetchedSet.has(uid));
 
   if (uids.length === 0) {
-    const hint = JUNK_INTENT.test(message)
-      ? 'No junk/spam matches in the fetched inbox slice. Try a higher Email Fetch Limit or say "delete email 1, 2, 3".'
-      : 'Use "delete email 1", "delete uid 12345" (must be in fetched list), "delete junk to trash", or "delete from spam@...".';
+    const hint = /\bcategor/i.test(message)
+      ? 'Supported summary categories: 1=GitHub/Cursor bots, 4=SMTP self-tests only, 5=travel/auto/home promos, 6=newsletters/promos. Categories 2–3 (career/finance/real estate) and protected mail (banks, DocuSign, Hetzner OTP) are never auto-deleted. Try "move category 6 to trash" or list explicit UIDs.'
+      : JUNK_INTENT.test(message)
+        ? 'No junk/spam matches in the fetched inbox slice. Try a higher Email Fetch Limit or say "delete email 1, 2, 3".'
+        : 'Use "delete email 1", "delete uid 12345" (must be in fetched list), "move category 6 to trash", or "delete junk to trash".';
     return {
       executed: false,
       summary: null,
