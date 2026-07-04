@@ -17,6 +17,7 @@ import { chatStream, openClawChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
+import { appendGroundingPersona } from '../utils/groundingPrompt';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -377,7 +378,7 @@ const ChatSection = () => {
       const formData = new FormData();
       formData.append('message', finalInput);
       formData.append('provider', provider);
-      formData.append('persona', persona);
+      formData.append('persona', appendGroundingPersona(persona));
       formData.append('history', JSON.stringify(messages.slice(-20)));
       if (activeKey) formData.append('api_key', activeKey.trim());
       if (isVoiceMode) {
@@ -487,7 +488,7 @@ const ChatSection = () => {
         const payload = {
           message: finalInput,
           provider,
-          persona,
+          persona: appendGroundingPersona(persona),
           history: messages.slice(-20),
           gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
           groq_key: provider === 'groq' ? (groqKey || '').trim() : '',

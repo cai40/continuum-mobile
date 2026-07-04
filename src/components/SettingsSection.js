@@ -1698,6 +1698,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
     return (
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         {renderHeader("Persona & Style")}
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginBottom: 16, lineHeight: 18, paddingHorizontal: 4 }}>
+          Factual grounding rules are always applied on every message (separate from your style preset below).
+        </Text>
         <Text style={categoryTitleStyle}>PRESET LIBRARIES</Text>
         <View style={styles.groupedCard}>
           {personaPresets.map((p, idx) => (

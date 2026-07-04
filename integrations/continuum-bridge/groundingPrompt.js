@@ -1,0 +1,35 @@
+'use strict';
+
+const path = require('path');
+const fs = require('fs');
+
+const promptPath = path.join(__dirname, '../../shared/grounding-prompt.json');
+const { globalGroundingPrompt } = JSON.parse(fs.readFileSync(promptPath, 'utf8'));
+
+const EMAIL_LIVE_INBOX_APPEND = [
+  'EMAIL CONTEXT: Live Yahoo inbox content was fetched via IMAP in this turn.',
+  'Use ONLY the UIDs and headers in this message. Never invent, simulate, or reconstruct emails.',
+  'If the user asked for more emails than were fetched, state the actual count and stop.',
+  'Never claim you lack email access when inbox data is present below.',
+].join(' ');
+
+const EMAIL_LIVE_INBOX_DELETE_APPEND = [
+  EMAIL_LIVE_INBOX_APPEND,
+  'Email deletion may already have been executed by the bridge when the user requested it — confirm only what the context states was removed.',
+].join(' ');
+
+function appendGroundingPersona(persona, extraBlocks = []) {
+  const base = persona || '';
+  const extras = extraBlocks.filter(Boolean);
+  if (base.includes('GROUNDING RULES (always follow')) {
+    return [base, ...extras].filter(Boolean).join('\n\n');
+  }
+  return [base, globalGroundingPrompt, ...extras].filter(Boolean).join('\n\n');
+}
+
+module.exports = {
+  GLOBAL_GROUNDING_PROMPT: globalGroundingPrompt,
+  EMAIL_LIVE_INBOX_APPEND,
+  EMAIL_LIVE_INBOX_DELETE_APPEND,
+  appendGroundingPersona,
+};

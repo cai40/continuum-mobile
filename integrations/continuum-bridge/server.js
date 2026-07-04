@@ -15,6 +15,11 @@ const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
+const {
+  appendGroundingPersona,
+  EMAIL_LIVE_INBOX_APPEND,
+  EMAIL_LIVE_INBOX_DELETE_APPEND,
+} = require('./groundingPrompt');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
 const HOST = process.env.CONTINUUM_BRIDGE_HOST || '127.0.0.1';
@@ -155,12 +160,11 @@ async function handleChatStream(req, res, config) {
   }
 
   if (hasLiveInbox) {
-    const bridgePersona = payload.email_delete_enabled
-      ? 'You have live Yahoo inbox content in this message (already fetched via IMAP). Use ONLY the UIDs and headers in this message. Never invent emails. Never claim you lack email access. Deletions may have already been executed by the bridge when requested.'
-      : 'You have live Yahoo inbox content in this message (already fetched via IMAP). Use ONLY the UIDs and headers in this message. Never invent, simulate, or reconstruct emails. If the user asked for more emails than were fetched, state the actual count. Never claim you lack email access.';
-    payload.persona = payload.persona
-      ? `${payload.persona}\n\n${bridgePersona}`
-      : bridgePersona;
+    payload.persona = appendGroundingPersona(payload.persona || '', [
+      payload.email_delete_enabled ? EMAIL_LIVE_INBOX_DELETE_APPEND : EMAIL_LIVE_INBOX_APPEND,
+    ]);
+  } else {
+    payload.persona = appendGroundingPersona(payload.persona || '');
   }
 
   const form = buildContinuumForm(payload);

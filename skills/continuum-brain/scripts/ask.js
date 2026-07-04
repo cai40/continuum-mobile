@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
+const path = require('path');
 const { loadConfig, saveAccessToken } = require('./config');
+const { appendGroundingPersona } = require(path.join(
+  __dirname,
+  '../../../integrations/continuum-bridge/groundingPrompt.js',
+));
 
 async function refreshAccessToken(config) {
   if (!config.refreshToken || !config.supabaseAnonKey) {
@@ -62,7 +67,8 @@ function buildFormData(message, config, options = {}) {
       .filter(Boolean)
       .join('\n');
   }
-  if (persona) form.append('persona', persona);
+  if (persona) form.append('persona', appendGroundingPersona(persona));
+  else form.append('persona', appendGroundingPersona(''));
   if (options.clientTime) form.append('client_time', options.clientTime);
 
   return form;
