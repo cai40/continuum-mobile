@@ -232,16 +232,6 @@ function buildDateRangeScanUids(allUids, sinceUids, maxScan) {
   return ordered.slice(0, maxScan);
 }
 
-async function fetchRowsInChunks(imap, uids, lite, chunkSize = 100) {
-  let rows = [];
-  for (let i = 0; i < uids.length; i += chunkSize) {
-    const chunk = uids.slice(i, i + chunkSize);
-    const batch = await fetchCheckRowsByUids(imap, chunk, lite);
-    rows = mergeRowsByUid(rows.concat(batch));
-  }
-  return rows;
-}
-
 // Search for messages
 function searchMessages(imap, criteria, fetchOptions) {
   return new Promise((resolve, reject) => {
@@ -622,23 +612,6 @@ function mergeRowsByUid(rows) {
     if (row?.uid != null) byUid.set(row.uid, row);
   }
   return [...byUid.values()];
-}
-
-function planDateRangeUidBatches(allUids, sinceUids, fetchCap) {
-  const cap = Math.max(1, fetchCap);
-  if (allUids.length <= cap) return [allUids];
-
-  if (sinceUids.length > 0) {
-    if (sinceUids.length <= cap) return [sinceUids];
-    const low = sinceUids.slice(0, cap);
-    const high = sinceUids.slice(-cap);
-    return low[0] === high[0] ? [low] : [high, low];
-  }
-
-  // Yahoo SINCE failed — scan both ends of the full mailbox.
-  const low = allUids.slice(0, cap);
-  const high = allUids.slice(-cap);
-  return low[0] === high[0] ? [low] : [high, low];
 }
 
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
