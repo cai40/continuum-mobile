@@ -50,7 +50,31 @@ function addDays(isoDate, days) {
 
 const RANGE_SEP = String.raw`\s*,?\s*`;
 
+function parseYearRangeFromMessage(message) {
+  const text = message || '';
+  const patterns = [
+    /\b(?:for|in|during)\s+(?:the\s+)?(?:year\s+)?(20\d{2})\b/i,
+    /\b(?:clean\s*up|cleanup)(?:\s+(?:my|the)\s+inbox)?\s+(?:for\s+)?(20\d{2})\b/i,
+    /\b(?:fetch|get|show|list|trash|delete|remove|move)\s+(?:emails?\s+)?(?:for|in)\s+(20\d{2})\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const year = parseInt(match[1], 10);
+    if (year < 1970 || year > 2100) continue;
+    return {
+      since: `${year}-01-01`,
+      before: `${year + 1}-01-01`,
+      label: `${year} (full year)`,
+    };
+  }
+  return null;
+}
+
 function parseDateRangeFromMessage(message) {
+  const yearRange = parseYearRangeFromMessage(message);
+  if (yearRange) return yearRange;
+
   const text = message || '';
   const dateToken = String.raw`(?:[a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})`;
   const patterns = [
@@ -86,6 +110,7 @@ module.exports = {
   parseDateToken,
   parseNamedDateToken,
   parseAnyDateToken,
+  parseYearRangeFromMessage,
   parseDateRangeFromMessage,
   addDays,
 };
