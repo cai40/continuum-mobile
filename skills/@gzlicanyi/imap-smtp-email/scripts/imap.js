@@ -628,15 +628,20 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
   }
 
+  let recentUids = await searchUids(imap, buildSearchCriteria({ unreadOnly, recentTime: `${days}d` }));
+  if (recentUids.length === 0 && unreadOnly) {
+    recentUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, recentTime: `${days}d` }));
+  }
+
   const FETCH_CHUNK = 100;
-  const MAX_SCAN = 10000;
-  const uidsToScan = buildDateRangeScanUids(allUids, sinceUids, MAX_SCAN);
+  const MAX_SCAN = 25000;
+  const uidsToScan = buildDateRangeScanUids(allUids, sinceUids, recentUids).slice(0, MAX_SCAN);
 
   let results = [];
   let scannedUids = 0;
   for (let i = 0; i < uidsToScan.length; i += FETCH_CHUNK) {
     const chunk = uidsToScan.slice(i, i + FETCH_CHUNK);
-    const batchResults = await fetchCheckRowsByUids(imap, chunk, lite);
+    const batchResults = await fetchCheckRowsByUids(imap, chunk, false);
     results = mergeRowsByUid(results.concat(batchResults));
     scannedUids += chunk.length;
     const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
