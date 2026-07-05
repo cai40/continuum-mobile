@@ -667,16 +667,49 @@ function mergeRowsByUid(rows) {
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
-  console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset}`);
-  let allUids = await searchUids(imap, buildSearchCriteria({ unreadOnly }));
-  if (allUids.length === 0 && unreadOnly) {
-    allUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false }));
+  console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset} lookback=${days}d`);
+
+  // NEVER search ALL on Yahoo — hangs on large mailboxes. Use relative SINCE like "fetch last 100".
+  let recentUids = await searchUidsLogged(
+    imap,
+    buildSearchCriteria({ unreadOnly, recentTime: `${days}d` }),
+    `recent-${days}d`,
+  );
+  if (recentUids.length === 0 && unreadOnly) {
+    recentUids = await searchUidsLogged(
+      imap,
+      buildSearchCriteria({ unreadOnly: false, recentTime: `${days}d` }),
+      `recent-${days}d-no-unread`,
+    );
   }
 
-  if (allUids.length === 0) {
+  let sinceUids = await searchUidsLogged(
+    imap,
+    buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false }),
+    `since-${sinceStr}`,
+  );
+  if (sinceUids.length === 0 && unreadOnly) {
+    sinceUids = await searchUidsLogged(
+      imap,
+      buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }),
+      `since-${sinceStr}-no-unread`,
+    );
+  }
+
+  const FETCH_CHUNK = 100;
+  const MAX_SCAN = 25000;
+  const uidsToScan = buildDateRangeScanUids(sinceUids, recentUids).slice(0, MAX_SCAN);
+  console.error(
+    `[imap] date-range uids: since=${sinceUids.length} recent=${recentUids.length}`
+    + ` scanning=${uidsToScan.length}`,
+  );
+
+  if (uidsToScan.length === 0) {
     console.error(`SCAN_META:${JSON.stringify({
       scanned: 0,
       totalUids: 0,
+      sinceWindow: sinceUids.length,
+      recentWindow: recentUids.length,
       span: null,
       matched: 0,
       wanted: { since: sinceStr, before: beforeStr },
@@ -684,25 +717,6 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     })}`);
     return [];
   }
-
-  const sinceCriteria = buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false });
-  let sinceUids = await searchUids(imap, sinceCriteria);
-  if (sinceUids.length === 0 && unreadOnly) {
-    sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
-  }
-
-  let recentUids = await searchUids(imap, buildSearchCriteria({ unreadOnly, recentTime: `${days}d` }));
-  if (recentUids.length === 0 && unreadOnly) {
-    recentUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, recentTime: `${days}d` }));
-  }
-
-  const FETCH_CHUNK = 100;
-  const MAX_SCAN = 25000;
-  const uidsToScan = buildDateRangeScanUids(allUids, sinceUids, recentUids).slice(0, MAX_SCAN);
-  console.error(
-    `[imap] date-range uids: all=${allUids.length} since=${sinceUids.length}`
-    + ` recent=${recentUids.length} scanning=${uidsToScan.length}`,
-  );
 
   let results = [];
   let scannedUids = 0;
@@ -730,17 +744,17 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     : [];
 
   console.error(
-    `[imap] date-range lookback ${days}d: scanned ${scannedUids}/${allUids.length} uid(s),`
-    + ` recent-window ${recentUids.length}, since-window ${sinceUids.length},`
+    `[imap] date-range lookback ${days}d: scanned ${scannedUids} uid(s),`
+    + ` since-window ${sinceUids.length}, recent-window ${recentUids.length},`
     + ` parsed ${results.length} row(s),`
     + ` dates ${span ? `${span.oldest}..${span.newest}` : 'none'},`
     + ` matched ${filtered.length} for ${usedSince}..${usedBefore}`,
   );
   console.error(`SCAN_META:${JSON.stringify({
     scanned: scannedUids,
-    totalUids: allUids.length,
-    recentWindow: recentUids.length,
+    totalUids: uidsToScan.length,
     sinceWindow: sinceUids.length,
+    recentWindow: recentUids.length,
     parsed: results.length,
     span,
     matched: filtered.length,
