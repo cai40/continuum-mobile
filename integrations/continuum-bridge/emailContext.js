@@ -75,7 +75,17 @@ function stripHtml(value) {
     .trim();
 }
 
-function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null) {
+function parseScanMeta(stderr) {
+  const match = String(stderr || '').match(/SCAN_META:(\{.*\})/);
+  if (!match) return null;
+  try {
+    return JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null, scanMeta = null) {
   let parsed;
   try {
     parsed = JSON.parse(rawStdout);
@@ -86,8 +96,11 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     return { text: rawStdout.trim().slice(0, 12000), messages: [] };
   }
   if (parsed.length === 0) {
+    const spanNote = scanMeta?.span
+      ? ` Scanned ${scanMeta.scanned} message(s); their dates ran ${scanMeta.span.oldest} through ${scanMeta.span.newest}.`
+      : '';
     const hint = dateRangeLabel
-      ? `No messages found in INBOX for ${dateRangeLabel}. Scanned recent mail but none matched those dates — check the year (2025 vs 2026), try fetch last 100 emails to see actual dates, or widen the range.`
+      ? `No messages found in INBOX for ${dateRangeLabel}.${spanNote} Try fetch last 100 emails — list date and subject only — to see actual dates. If the scanned span shows a different year, retry with that year (e.g. 2025 instead of 2026).`
       : 'No messages found in INBOX for the requested period.';
     return { text: hint, messages: [], fetchedCount: 0 };
   }
@@ -117,7 +130,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   const body = parsed.map((msg, idx) => {
     const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
     const subject = msg.subject || '(no subject)';
-    const date = msg.date || msg.receivedDate || msg.headerDate || '';
+    const date = msg.headerDate || msg.date || msg.receivedDate || '';
     const uid = msg.uid != null ? String(msg.uid) : '';
     const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
     const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
@@ -179,11 +192,13 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
   if (stderr?.trim()) {
     console.error('[continuum-bridge] imap stderr:', stderr.trim());
   }
+  const scanMeta = parseScanMeta(stderr);
   const formatted = formatEmailMessages(
     stdout,
     fetchOptions.limit,
     fetchOptions.offset || 0,
     fetchOptions.dateRangeLabel || null,
+    scanMeta,
   );
   let context = formatted.text;
   if (sender) {
