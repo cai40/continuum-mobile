@@ -76,13 +76,42 @@ function stripHtml(value) {
 }
 
 function parseScanMeta(stderr) {
-  const match = String(stderr || '').match(/SCAN_META:(\{.*\})/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
+  const text = String(stderr || '');
+  const idx = text.indexOf('SCAN_META:');
+  if (idx >= 0) {
+    const jsonStart = text.indexOf('{', idx);
+    if (jsonStart >= 0) {
+      let depth = 0;
+      for (let i = jsonStart; i < text.length; i += 1) {
+        if (text[i] === '{') depth += 1;
+        if (text[i] === '}') depth -= 1;
+        if (depth === 0) {
+          try {
+            return JSON.parse(text.slice(jsonStart, i + 1));
+          } catch {
+            break;
+          }
+        }
+      }
+    }
   }
+  const log = text.match(
+    /fetched (\d+)\/(\d+) uid\(s\),\s*scanned ([^,]+),\s*matched (\d+) for (\S+)\.\.(\S+)/,
+  );
+  if (!log) return null;
+  const [, scanned, totalUids, spanRaw, matched, usedSince, usedBefore] = log;
+  let span = null;
+  if (spanRaw && spanRaw !== 'no dates' && spanRaw.includes('..')) {
+    const [oldest, newest] = spanRaw.split('..');
+    span = { oldest, newest };
+  }
+  return {
+    scanned: parseInt(scanned, 10),
+    totalUids: parseInt(totalUids, 10),
+    span,
+    matched: parseInt(matched, 10),
+    used: { since: usedSince, before: usedBefore },
+  };
 }
 
 function formatScanDiagnostic(scanMeta, dateRangeLabel) {
@@ -90,15 +119,26 @@ function formatScanDiagnostic(scanMeta, dateRangeLabel) {
   const span = scanMeta.span
     ? `dates in scanned mail: ${scanMeta.span.oldest} through ${scanMeta.span.newest}`
     : 'no parseable dates in scanned mail';
+  const samples = Array.isArray(scanMeta.sampleDates) && scanMeta.sampleDates.length
+    ? ` Sample newest dates: ${scanMeta.sampleDates.join(', ')}.`
+    : '';
   const used = scanMeta.used?.since && scanMeta.used?.before
     && (scanMeta.used.since !== scanMeta.wanted?.since || scanMeta.used.before !== scanMeta.wanted?.before)
-    ? ` (matched using ${scanMeta.used.since} .. ${scanMeta.used.before} after year adjustment)`
+    ? ` (year-adjusted filter: ${scanMeta.used.since} .. ${scanMeta.used.before})`
     : '';
   return [
-    'MAILBOX SCAN (quote this verbatim in your reply):',
-    `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.`,
+    'MAILBOX SCAN (you MUST include all lines below in your reply):',
+    `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.${samples}`,
     `- Requested range: ${dateRangeLabel || 'unknown'}. Matched: ${scanMeta.matched}${used}.`,
   ].join('\n');
+}
+
+function inlineScanSummary(scanMeta) {
+  if (!scanMeta) return '';
+  const span = scanMeta.span
+    ? ` Inbox dates scanned: ${scanMeta.span.oldest} to ${scanMeta.span.newest}.`
+    : ' No parseable dates in scanned mail.';
+  return `Scanned ${scanMeta.scanned}/${scanMeta.totalUids} INBOX messages.${span} Matched: ${scanMeta.matched ?? 0}.`;
 }
 
 function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null, scanMeta = null) {
@@ -113,10 +153,11 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   }
   if (parsed.length === 0) {
     const scanBlock = formatScanDiagnostic(scanMeta, dateRangeLabel);
+    const inline = inlineScanSummary(scanMeta);
     const hint = dateRangeLabel
-      ? `No messages found in INBOX for ${dateRangeLabel}.`
-      : 'No messages found in INBOX for the requested period.';
-    const footer = 'Try: fetch last 100 emails — list date and subject only — to see actual inbox dates. If the MAILBOX SCAN span shows a different year, retry with that year.';
+      ? `No messages found in INBOX for ${dateRangeLabel}.${inline ? ` ${inline}` : ''}`
+      : `No messages found in INBOX for the requested period.${inline ? ` ${inline}` : ''}`;
+    const footer = 'Next step: fetch last 100 emails — list date and subject only — to see actual inbox dates. If scanned dates show a different year, retry with that year (e.g. 4/1/2025 to 6/15/2025).';
     const text = [hint, scanBlock, footer].filter(Boolean).join('\n\n');
     return { text, messages: [], fetchedCount: 0 };
   }

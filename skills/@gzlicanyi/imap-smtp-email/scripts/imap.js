@@ -576,7 +576,17 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     allUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false }));
   }
 
-  if (allUids.length === 0) return [];
+  if (allUids.length === 0) {
+    console.error(`SCAN_META:${JSON.stringify({
+      scanned: 0,
+      totalUids: 0,
+      span: null,
+      matched: 0,
+      wanted: { since: sinceStr, before: beforeStr },
+      used: { since: sinceStr, before: beforeStr },
+    })}`);
+    return [];
+  }
 
   const fetchCap = 15000;
   const uidsToFetch = selectUidsForDateRange(allUids, fetchCap, sinceStr, beforeStr);
@@ -584,6 +594,13 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
   const results = await fetchRowsByUids(imap, uidsToFetch, { lite, compactNow: false });
   const span = scanDateSpan(results);
   const { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
+
+  const sampleDates = filtered.length === 0
+    ? sortRowsNewestFirst([...results]).slice(0, 5).map((row) => {
+      const t = emailTimestampMs(row);
+      return t > 0 ? new Date(t).toISOString().slice(0, 10) : null;
+    }).filter(Boolean)
+    : [];
 
   console.error(
     `[imap] date-range lookback ${days}d: fetched ${uidsToFetch.length}/${allUids.length} uid(s),`
@@ -595,6 +612,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     totalUids: allUids.length,
     span,
     matched: filtered.length,
+    sampleDates,
     wanted: { since: sinceStr, before: beforeStr },
     used: { since: usedSince, before: usedBefore },
   })}`);

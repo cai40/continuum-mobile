@@ -147,6 +147,7 @@ async function handleChatStream(req, res, config) {
     message = [
       'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
       'Summarize ONLY the emails explicitly listed below with their UIDs.',
+      'If a MAILBOX SCAN block appears below, copy its Scanned/ dates / Matched lines into your reply — never omit them.',
       'NEVER invent, simulate, reconstruct, or guess any email, UID, sender, or subject.',
       'If fewer emails were fetched than the user requested, say exactly how many were returned and stop — do not fill in gaps.',
       'Do NOT reference emails from earlier chat turns unless they appear in the list below.',
