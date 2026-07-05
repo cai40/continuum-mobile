@@ -31,14 +31,13 @@ function imapSearchArgs(fetchOptions, sender) {
     'search',
     '--from', sender,
     '--limit', String(fetchOptions.limit),
-    '--recent', fetchOptions.recent,
     '--sort', 'date',
   ];
   if (fetchOptions.since) {
     args.push('--since', fetchOptions.since);
     if (fetchOptions.before) args.push('--before', fetchOptions.before);
   } else {
-    args.push('--recent', fetchOptions.recent);
+    args.push('--recent', fetchOptions.recent || '7d');
   }
   if (fetchOptions.offset) args.push('--offset', String(fetchOptions.offset));
   args.push('--lite');

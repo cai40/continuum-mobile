@@ -60,9 +60,13 @@ function parseArgs() {
     const arg = args[i];
     if (arg.startsWith('--')) {
       const key = arg.slice(2);
-      const value = args[i + 1];
-      options[key] = value || true;
-      if (value && !value.startsWith('--')) i++;
+      const next = args[i + 1];
+      if (next && !next.startsWith('--')) {
+        options[key] = next;
+        i++;
+      } else {
+        options[key] = true;
+      }
     } else {
       positional.push(arg);
     }

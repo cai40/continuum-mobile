@@ -15,6 +15,7 @@ const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
+const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
 const {
   appendGroundingPersona,
@@ -215,6 +216,8 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         success: true,
         service: 'continuum-bridge',
+        bridge_version: bridgeVersion.version,
+        features: bridgeVersion.features,
         continuum_api: config.apiUrl,
         openclaw: true,
         email: emailHealth,

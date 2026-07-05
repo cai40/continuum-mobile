@@ -134,7 +134,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
 }
 
 function imapCheckArgs(fetchOptions) {
-  const args = ['check', '--limit', String(fetchOptions.limit), '--lite'];
+  const args = ['check', '--limit', String(fetchOptions.limit)];
   if (fetchOptions.since) {
     args.push('--since', fetchOptions.since);
     if (fetchOptions.before) args.push('--before', fetchOptions.before);
@@ -147,6 +147,7 @@ function imapCheckArgs(fetchOptions) {
   if (fetchOptions.unreadOnly) {
     args.push('--unseen');
   }
+  args.push('--lite');
   return args;
 }
 
