@@ -87,7 +87,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   }
   if (parsed.length === 0) {
     const hint = dateRangeLabel
-      ? `No messages found in INBOX for ${dateRangeLabel} after scanning recent mail. Confirm mail exists in INBOX (not Archive), raise Email Fetch Limit, or try: fetch last 500 emails.`
+      ? `No messages found in INBOX for ${dateRangeLabel}. Scanned recent mail but none matched those dates — check the year (2025 vs 2026), try fetch last 100 emails to see actual dates, or widen the range.`
       : 'No messages found in INBOX for the requested period.';
     return { text: hint, messages: [], fetchedCount: 0 };
   }

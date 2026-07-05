@@ -516,6 +516,14 @@ async function fetchRowsByUids(imap, uids, lite) {
   return results;
 }
 
+function selectUidsForDateRange(allUids, fetchCap, beforeStr) {
+  if (allUids.length <= fetchCap) return allUids;
+  const beforeMs = imapDateFromIso(beforeStr).getTime();
+  // Past ranges (e.g. Apr–Jun when today is Jul): mail sits at the OLD end of the UID list.
+  const rangeEndIsPast = beforeMs < Date.now() - 3 * 24 * 60 * 60 * 1000;
+  return rangeEndIsPast ? allUids.slice(0, fetchCap) : allUids.slice(-fetchCap);
+}
+
 // Yahoo IMAP SINCE/BEFORE is unreliable — fetch a recent UID window and filter dates in JS.
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
@@ -534,13 +542,35 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
 
   if (allUids.length === 0) return [];
 
-  const fetchCap = Math.min(allUids.length, 5000);
-  const cappedUids = allUids.slice(-fetchCap);
-  let results = await fetchRowsByUids(imap, cappedUids, lite);
-  results = filterByDateRange(results, sinceStr, beforeStr);
-  results = sortRowsNewestFirst(results);
-  console.error(`[imap] date-range lookback ${days}d: scanned ${cappedUids.length} uid(s), matched ${results.length} in range`);
-  return results.slice(offset, offset + limit);
+  const fetchCap = Math.min(allUids.length, 10000);
+  const uidWindows = [
+    selectUidsForDateRange(allUids, fetchCap, beforeStr),
+  ];
+  if (allUids.length > fetchCap) {
+    const alt = uidWindows[0][0] === allUids[0]
+      ? allUids.slice(-fetchCap)
+      : allUids.slice(0, fetchCap);
+    uidWindows.push(alt);
+  }
+
+  let filtered = [];
+  for (const cappedUids of uidWindows) {
+    const results = await fetchRowsByUids(imap, cappedUids, lite);
+    filtered = filterByDateRange(results, sinceStr, beforeStr);
+    console.error(
+      `[imap] date-range lookback ${days}d: scanned ${cappedUids.length}/${allUids.length} uid(s), matched ${filtered.length} in range`,
+    );
+    if (filtered.length > 0) break;
+    if (results.length > 0) {
+      const sample = sortRowsNewestFirst([...results]);
+      const oldest = sample[sample.length - 1]?.date;
+      const newest = sample[0]?.date;
+      console.error(`[imap] date-range: scanned ${oldest} .. ${newest}, wanted ${sinceStr} .. ${beforeStr}`);
+    }
+  }
+
+  filtered = sortRowsNewestFirst(filtered);
+  return filtered.slice(offset, offset + limit);
 }
 
 function filterByBeforeDate(rows, beforeStr) {
