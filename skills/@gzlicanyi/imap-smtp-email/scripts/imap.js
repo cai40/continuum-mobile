@@ -295,16 +295,20 @@ function selectUidsByOffsetLimit(allUids, limit, offset = 0) {
 }
 
 // Check for new/unread emails
-async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0, lite = false) {
+async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0, lite = false, sinceStr = null, beforeStr = null) {
   const imap = await connect();
 
   try {
     await openBox(imap, mailbox);
 
-    // Build search criteria
     const searchCriteria = unreadOnly ? ['UNSEEN'] : ['ALL'];
 
-    if (recentTime) {
+    if (sinceStr) {
+      searchCriteria.push(['SINCE', new Date(sinceStr)]);
+    }
+    if (beforeStr) {
+      searchCriteria.push(['BEFORE', new Date(beforeStr)]);
+    } else if (recentTime) {
       const sinceDate = parseRelativeTime(recentTime);
       searchCriteria.push(['SINCE', sinceDate]);
     }
@@ -800,6 +804,8 @@ async function main() {
           !!options.unseen,
           parseInt(options.offset) || 0,
           !!options.lite,
+          options.since || null,
+          options.before || null,
         );
         break;
 

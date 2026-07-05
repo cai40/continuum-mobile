@@ -75,7 +75,7 @@ function stripHtml(value) {
     .trim();
 }
 
-function formatEmailMessages(rawStdout, limit, offset = 0) {
+function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null) {
   let parsed;
   try {
     parsed = JSON.parse(rawStdout);
@@ -100,8 +100,10 @@ function formatEmailMessages(rawStdout, limit, offset = 0) {
   const offsetNote = offset > 0
     ? `Skipped newest ${offset} email(s); showing the next batch.`
     : null;
+  const dateNote = dateRangeLabel ? `Date filter: ${dateRangeLabel} (inclusive).` : null;
   const header = [
     `Fetched ${fetchedCount} REAL email(s) from Yahoo IMAP (offset ${offset}, limit ${limit}, max ${MAX_LIMIT} per request).`,
+    dateNote,
     offsetNote,
     uids.length ? `Valid UIDs ONLY: ${uidList}` : null,
     'ANTI-HALLUCINATION: Summarize ONLY the emails listed below. NEVER invent, simulate, reconstruct, or guess emails, UIDs, senders, or subjects not in this list.',
@@ -132,7 +134,13 @@ function formatEmailMessages(rawStdout, limit, offset = 0) {
 }
 
 function imapCheckArgs(fetchOptions) {
-  const args = ['check', '--limit', String(fetchOptions.limit), '--recent', fetchOptions.recent, '--lite'];
+  const args = ['check', '--limit', String(fetchOptions.limit), '--lite'];
+  if (fetchOptions.since) {
+    args.push('--since', fetchOptions.since);
+    if (fetchOptions.before) args.push('--before', fetchOptions.before);
+  } else {
+    args.push('--recent', fetchOptions.recent || '7d');
+  }
   if (fetchOptions.offset > 0) {
     args.push('--offset', String(fetchOptions.offset));
   }
@@ -165,7 +173,12 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
   if (stderr?.trim()) {
     console.error('[continuum-bridge] imap stderr:', stderr.trim());
   }
-  const formatted = formatEmailMessages(stdout, fetchOptions.limit, fetchOptions.offset || 0);
+  const formatted = formatEmailMessages(
+    stdout,
+    fetchOptions.limit,
+    fetchOptions.offset || 0,
+    fetchOptions.dateRangeLabel || null,
+  );
   let context = formatted.text;
   if (sender) {
     context = [

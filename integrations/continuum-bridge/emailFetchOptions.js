@@ -1,10 +1,12 @@
 'use strict';
 
+const { parseDateRangeFromMessage, addDays } = require('./emailDateRange');
+
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 1000;
 const DEFAULT_RECENT = '7d';
 
-const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary)\b/i;
+const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary|clean|clean(?:up|ing)?)\b/i;
 
 function clampLimit(value, fallback = DEFAULT_LIMIT) {
   const n = parseInt(value, 10);
@@ -60,7 +62,7 @@ function parseOffsetFromMessage(message) {
 
   const patterns = [
     /\bnext\s+\d{1,4}\s+emails?\s+(?:after|past|beyond|from|starting(?:\s+after)?)\s+(?:the\s+)?(?:first\s+)?(\d{1,4})\b/i,
-    /\bskipp?(?:ing|ed)?\s+(?:the\s+)?(?:first\s+)?(\d{1,4})(?:\s+emails?)?\b/i,
+    /\bskip(?:ping|ped)?\s+(?:the\s+)?(?:first\s+)?(\d{1,4})(?:\s+emails?)?\b/i,
     /\b(?:skip|offset)\s+(?:the\s+)?(?:first\s+)?(\d{1,4})(?:\s+emails?)?\b/i,
     /\b(?:after|beyond)\s+(?:the\s+)?(?:first|top)\s+(\d{1,4})\s+emails?\b/i,
   ];
@@ -107,17 +109,28 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
     const page = parseInt(pageMatch[1], 10);
     if (page > 1) offset = clampOffset((page - 1) * limit);
   }
-  const recent = parseRecentFromMessage(message)
-    || payloadOptions.email_recent
-    || DEFAULT_RECENT;
+  const dateRangeFromMessage = parseDateRangeFromMessage(message);
+  const recent = dateRangeFromMessage
+    ? null
+    : (parseRecentFromMessage(message) || payloadOptions.email_recent || DEFAULT_RECENT);
+  const since = dateRangeFromMessage?.since
+    || payloadOptions.email_since
+    || null;
+  const before = dateRangeFromMessage?.before
+    || payloadOptions.email_before
+    || null;
+  const dateRangeLabel = dateRangeFromMessage?.label
+    || (since && before ? `${since} through ${addDays(before, -1)}` : null);
   const unreadOnly = /\b(unread|unseen)\b/i.test(message || '');
-  return { limit, offset, recent, unreadOnly };
+  return {
+    limit, offset, recent, unreadOnly, since, before, dateRangeLabel,
+  };
 }
 
 function wantsEmailFetch(message, payloadOptions = {}) {
   const text = message || '';
   if (EMAIL_TRIGGER.test(text)) return true;
-  if (parseRangeFromMessage(text)) return true;
+  if (parseDateRangeFromMessage(text)) return true;
   if (parseOffsetFromMessage(text) != null) return true;
   if (parseLimitFromMessage(text) != null && /\bemails?\b/i.test(text)) return true;
   if (/\b(?:page|batch)\s+\d/i.test(text)) return true;
@@ -134,6 +147,7 @@ module.exports = {
   parseOffsetFromMessage,
   parseRangeFromMessage,
   parseRecentFromMessage,
+  parseDateRangeFromMessage,
   resolveEmailFetchOptions,
   wantsEmailFetch,
 };
