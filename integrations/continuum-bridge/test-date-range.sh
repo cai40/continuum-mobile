@@ -9,8 +9,11 @@ LIMIT="${3:-5}"
 SKILL_ROOT="$(dirname "$(dirname "$IMAP")")"
 echo "=== IMAP date-range test: ${SINCE} .. ${BEFORE} (limit ${LIMIT}) ==="
 echo "Skill: $IMAP"
-timeout 180 node "$IMAP" check --since "$SINCE" --before "$BEFORE" --limit "$LIMIT" --lite > /tmp/imap-date-out.json 2>/tmp/imap-date-err.log
+set +e
+timeout 180 node "$IMAP" check --since "$SINCE" --before "$BEFORE" --limit "$LIMIT" --lite \
+  > /tmp/imap-date-out.json 2> >(tee /tmp/imap-date-err.log >&2)
 EXIT=$?
+set -e
 echo "--- exit code: $EXIT ---"
 if [ "$EXIT" -ne 0 ]; then
   echo "Command failed or timed out (exit $EXIT)"

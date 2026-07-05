@@ -396,6 +396,7 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
     await openBox(imap, mailbox);
 
     if (sinceStr && beforeStr) {
+      console.error(`[imap] date-range check ${sinceStr}..${beforeStr} limit=${limit} offset=${offset}`);
       return fetchDateRangeViaRecentLookback(imap, {
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
@@ -683,16 +684,30 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     );
   }
 
-  let sinceUids = await searchUidsLogged(
-    imap,
-    buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false }),
-    `since-${sinceStr}`,
-  );
-  if (sinceUids.length === 0 && unreadOnly) {
-    sinceUids = await searchUidsLogged(
-      imap,
-      buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }),
-      `since-${sinceStr}-no-unread`,
+  // Absolute SINCE on Yahoo often hangs; recent lookback + JS date filter is enough when it returns UIDs.
+  let sinceUids = [];
+  if (recentUids.length === 0) {
+    try {
+      sinceUids = await searchUidsLogged(
+        imap,
+        buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false }),
+        `since-${sinceStr}`,
+        30000,
+      );
+      if (sinceUids.length === 0 && unreadOnly) {
+        sinceUids = await searchUidsLogged(
+          imap,
+          buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }),
+          `since-${sinceStr}-no-unread`,
+          30000,
+        );
+      }
+    } catch (err) {
+      console.error(`[imap] date-range: since search failed (${err.message}); continuing with recent window only`);
+    }
+  } else {
+    console.error(
+      `[imap] date-range: skip since-${sinceStr} search (${recentUids.length} recent uid(s); Yahoo-safe path)`,
     );
   }
 
