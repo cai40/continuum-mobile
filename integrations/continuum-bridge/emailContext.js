@@ -87,7 +87,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   }
   if (parsed.length === 0) {
     const hint = dateRangeLabel
-      ? `No messages found in INBOX for ${dateRangeLabel}. If mail exists in this window, try numeric dates (4/1/2026 to 6/19/2026), raise Email Fetch Limit, or paginate with skip/page.`
+      ? `No messages found in INBOX for ${dateRangeLabel} after scanning recent mail. Confirm mail exists in INBOX (not Archive), raise Email Fetch Limit, or try: fetch last 500 emails.`
       : 'No messages found in INBOX for the requested period.';
     return { text: hint, messages: [], fetchedCount: 0 };
   }
@@ -161,7 +161,9 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
   const args = sender
     ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
     : [imapScript, ...imapCheckArgs(fetchOptions)];
-  const timeoutMs = Math.min(180000, 60000 + fetchOptions.limit * 2500);
+  const timeoutMs = fetchOptions.since && fetchOptions.before
+    ? Math.min(300000, 120000 + fetchOptions.limit * 3000)
+    : Math.min(180000, 60000 + fetchOptions.limit * 2500);
   const maxBuffer = Math.min(128 * 1024 * 1024, 16 * 1024 * 1024 + fetchOptions.limit * 256 * 1024);
 
   const { stdout, stderr } = await execFileAsync(

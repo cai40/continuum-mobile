@@ -301,52 +301,21 @@ function selectUidsByOffsetLimit(allUids, limit, offset = 0) {
 // Check for new/unread emails
 async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0, lite = false, sinceStr = null, beforeStr = null) {
   const imap = await connect();
-  const dateRangeMode = !!(sinceStr && beforeStr);
 
   try {
     await openBox(imap, mailbox);
 
-    let clientFilterBefore = null;
-    let searchCriteria = buildSearchCriteria({
-      unreadOnly, sinceStr, beforeStr, recentTime, useImapBefore: !dateRangeMode,
-    });
-
-    let allUids = await searchUids(imap, searchCriteria);
-
-    // Yahoo often returns 0 for SINCE+BEFORE — retry SINCE-only and filter by INTERNALDATE in JS.
-    if (allUids.length === 0 && dateRangeMode) {
-      searchCriteria = buildSearchCriteria({ unreadOnly, sinceStr, beforeStr: null, recentTime });
-      allUids = await searchUids(imap, searchCriteria);
-      clientFilterBefore = beforeStr;
+    if (sinceStr && beforeStr) {
+      return fetchDateRangeViaRecentLookback(imap, {
+        sinceStr, beforeStr, limit, offset, lite, unreadOnly,
+      });
     }
 
+    const searchCriteria = buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime });
+    const allUids = await searchUids(imap, searchCriteria);
     if (allUids.length === 0) return [];
 
-    const fetchCap = dateRangeMode ? Math.min(allUids.length, Math.max(limit + offset, 500) + 500) : allUids.length;
-    const cappedUids = dateRangeMode && allUids.length > fetchCap
-      ? allUids.slice(-fetchCap)
-      : allUids;
-
     const fetchOptions = { bodies: [''], markSeen: false };
-
-    if (dateRangeMode || clientFilterBefore) {
-      const messages = (await fetchByUids(imap, cappedUids, fetchOptions));
-      let results = [];
-      for (const item of messages) {
-        const parsed = await parseEmail(item.body);
-        const row = {
-          uid: item.attributes.uid,
-          ...parsed,
-          date: item.attributes.date,
-          flags: item.attributes.flags,
-        };
-        results.push(lite ? compactCheckRow(row) : row);
-      }
-      results = filterByBeforeDate(results, clientFilterBefore || beforeStr);
-      results = sortRowsNewestFirst(results);
-      return results.slice(offset, offset + limit);
-    }
-
     const fetchUids = selectUidsByOffsetLimit(allUids, limit, offset);
     if (fetchUids.length === 0) return [];
 
@@ -366,7 +335,7 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
       }) : {
         uid: item.attributes.uid,
         ...parsed,
-        date: item.attributes.date, // INTERNALDATE, matches what users expect "newest" to mean
+        date: item.attributes.date,
         flags: item.attributes.flags,
       });
     }
@@ -503,6 +472,75 @@ function buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime, useI
   else if (recentTime) criteria.push(['SINCE', parseRelativeTime(recentTime)]);
   if (criteria.length === 0) criteria.push('ALL');
   return criteria;
+}
+
+function filterByDateRange(rows, sinceStr, beforeStr) {
+  if (!sinceStr || !beforeStr) return rows;
+  const sinceMs = imapDateFromIso(sinceStr).getTime();
+  const beforeMs = imapDateFromIso(beforeStr).getTime();
+  return rows.filter((row) => {
+    const t = emailTimestampMs(row);
+    return t >= sinceMs && t < beforeMs;
+  });
+}
+
+function emailTimestampMs(row) {
+  for (const v of [row.date, row.headerDate]) {
+    const t = new Date(v).getTime();
+    if (Number.isFinite(t) && t > 0) return t;
+  }
+  return 0;
+}
+
+function recentDaysForRange(sinceStr) {
+  const sinceMs = imapDateFromIso(sinceStr).getTime();
+  const days = Math.ceil((Date.now() - sinceMs) / (24 * 60 * 60 * 1000)) + 14;
+  return Math.min(365, Math.max(7, days));
+}
+
+async function fetchRowsByUids(imap, uids, lite) {
+  if (!uids.length) return [];
+  const fetchOptions = { bodies: [''], markSeen: false };
+  const messages = await fetchByUids(imap, uids, fetchOptions);
+  const results = [];
+  for (const item of messages) {
+    const parsed = await parseEmail(item.body);
+    const row = {
+      uid: item.attributes.uid,
+      ...parsed,
+      date: item.attributes.date,
+      flags: item.attributes.flags,
+    };
+    results.push(lite ? compactCheckRow(row) : row);
+  }
+  return results;
+}
+
+// Yahoo IMAP SINCE/BEFORE is unreliable — fetch a recent UID window and filter dates in JS.
+async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
+  const days = recentDaysForRange(sinceStr);
+  const attempts = [
+    buildSearchCriteria({ unreadOnly, recentTime: `${days}d` }),
+    buildSearchCriteria({ unreadOnly, recentTime: '30d' }),
+    buildSearchCriteria({ unreadOnly, recentTime: '7d' }),
+    buildSearchCriteria({ unreadOnly }),
+  ];
+
+  let allUids = [];
+  for (const criteria of attempts) {
+    allUids = await searchUids(imap, criteria);
+    if (allUids.length > 0) break;
+  }
+
+  if (allUids.length === 0) return [];
+
+  const fetchCap = Math.min(allUids.length, 5000);
+  const cappedUids = allUids.slice(-fetchCap);
+  let results = await fetchRowsByUids(imap, cappedUids, lite);
+  results = filterByDateRange(results, sinceStr, beforeStr);
+  results = sortRowsNewestFirst(results);
+  console.error(`[imap] date-range lookback ${days}d: scanned ${cappedUids.length} uid(s), matched ${results.length} in range`);
+  return results.slice(offset, offset + limit);
 }
 
 function filterByBeforeDate(rows, beforeStr) {
