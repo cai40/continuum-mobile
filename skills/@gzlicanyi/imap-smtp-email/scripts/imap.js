@@ -589,18 +589,6 @@ function planDateRangeUidBatches(allUids, sinceUids, fetchCap) {
   return low[0] === high[0] ? [low] : [high, low];
 }
 
-async function selectUidsForDateRangeFetch(imap, allUids, fetchCap, sinceStr, unreadOnly) {
-  if (allUids.length <= fetchCap) return allUids;
-
-  const sinceCriteria = buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false });
-  let sinceUids = await searchUids(imap, sinceCriteria);
-  if (sinceUids.length === 0 && unreadOnly) {
-    sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
-  }
-  const batches = planDateRangeUidBatches(allUids, sinceUids, fetchCap);
-  return batches[0];
-}
-
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
