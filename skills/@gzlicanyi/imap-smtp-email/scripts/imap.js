@@ -245,6 +245,22 @@ function searchMessages(imap, criteria, fetchOptions) {
   });
 }
 
+// Strip full bodies for bulk inbox checks (bridge/triage only needs headers + snippet).
+function compactCheckRow(row) {
+  const previewSource = row.snippet || row.text || row.html || '';
+  const snippet = previewSource
+    ? String(previewSource).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 220)
+    : '';
+  return {
+    uid: row.uid,
+    from: row.from,
+    subject: row.subject,
+    date: row.date,
+    flags: row.flags,
+    snippet,
+  };
+}
+
 // Parse email from raw buffer
 async function parseEmail(bodyStr, includeAttachments = false) {
   const parsed = await simpleParser(bodyStr);
@@ -279,7 +295,7 @@ function selectUidsByOffsetLimit(allUids, limit, offset = 0) {
 }
 
 // Check for new/unread emails
-async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0) {
+async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0, lite = false) {
   const imap = await connect();
 
   try {
@@ -316,7 +332,12 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
       const bodyStr = item.body;
       const parsed = await parseEmail(bodyStr);
 
-      results.push({
+      results.push(lite ? compactCheckRow({
+        uid: item.attributes.uid,
+        ...parsed,
+        date: item.attributes.date,
+        flags: item.attributes.flags,
+      }) : {
         uid: item.attributes.uid,
         ...parsed,
         date: item.attributes.date, // INTERNALDATE, matches what users expect "newest" to mean
@@ -493,6 +514,7 @@ async function searchEmails(options) {
 
     const limit = parseInt(options.limit) || 20;
     const offset = parseInt(options.offset) || 0;
+    const lite = !!options.lite;
     const fetchOptions = { bodies: [''], markSeen: false };
 
     // Default UID-slice: fast, correct when UID order matches INTERNALDATE
@@ -508,7 +530,12 @@ async function searchEmails(options) {
       const results = [];
       for (const item of messages) {
         const parsed = await parseEmail(item.body);
-        results.push({
+        results.push(lite ? compactCheckRow({
+          uid: item.attributes.uid,
+          ...parsed,
+          date: item.attributes.date,
+          flags: item.attributes.flags,
+        }) : {
           uid: item.attributes.uid,
           ...parsed,
           date: item.attributes.date,
@@ -529,7 +556,12 @@ async function searchEmails(options) {
     const results = [];
     for (const item of sortedMessages) {
       const parsed = await parseEmail(item.body);
-      results.push({
+      results.push(lite ? compactCheckRow({
+        uid: item.attributes.uid,
+        ...parsed,
+        date: item.attributes.date,
+        flags: item.attributes.flags,
+      }) : {
         uid: item.attributes.uid,
         ...parsed,
         date: item.attributes.date,
@@ -767,6 +799,7 @@ async function main() {
           options.recent || null,
           !!options.unseen,
           parseInt(options.offset) || 0,
+          !!options.lite,
         );
         break;
 

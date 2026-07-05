@@ -132,7 +132,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0) {
 }
 
 function imapCheckArgs(fetchOptions) {
-  const args = ['check', '--limit', String(fetchOptions.limit), '--recent', fetchOptions.recent];
+  const args = ['check', '--limit', String(fetchOptions.limit), '--recent', fetchOptions.recent, '--lite'];
   if (fetchOptions.offset > 0) {
     args.push('--offset', String(fetchOptions.offset));
   }
@@ -150,13 +150,14 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
     : [imapScript, ...imapCheckArgs(fetchOptions)];
   const timeoutMs = Math.min(180000, 60000 + fetchOptions.limit * 2500);
+  const maxBuffer = Math.min(128 * 1024 * 1024, 16 * 1024 * 1024 + fetchOptions.limit * 256 * 1024);
 
   const { stdout, stderr } = await execFileAsync(
     'node',
     args,
     {
       timeout: timeoutMs,
-      maxBuffer: 8 * 1024 * 1024,
+      maxBuffer,
       cwd: skillRoot,
       env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
     },
@@ -181,6 +182,18 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     messages: formatted.messages,
     fetchOptions: { ...fetchOptions, sender },
   };
+}
+
+function formatImapError(err, fetchOptions = {}) {
+  const detail = err.stderr?.toString?.() || err.message || String(err);
+  if (/maxBuffer|stdout maxBuffer/i.test(detail)) {
+    const limit = fetchOptions.limit || '?';
+    return `Yahoo IMAP failed: inbox response too large (${limit} emails). The bridge now uses lite mode; run git pull and restart continuum-bridge. If it persists, try limit 100.`;
+  }
+  if (/auth|login|invalid credentials|authentication failed|password/i.test(detail)) {
+    return `Yahoo IMAP failed: ${detail}. Check app password at ~/.config/mail-skills/.env`;
+  }
+  return `Yahoo IMAP failed: ${detail}`;
 }
 
 async function fetchEmailContext(message, payloadOptions = {}) {
@@ -234,6 +247,8 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       deleteResult: null,
     };
   }
+
+  const resolvedFetchOptions = resolveEmailFetchOptions(message, payloadOptions);
 
   try {
     const { context, messages, fetchOptions } = await runImapCheck(imapScript, message, payloadOptions);
@@ -308,11 +323,10 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       deleteResult,
     };
   } catch (err) {
-    const detail = err.stderr?.toString?.() || err.message || String(err);
     return {
       matched: true,
       context: null,
-      error: `Yahoo IMAP failed: ${detail}. Check app password at ~/.config/mail-skills/.env`,
+      error: formatImapError(err, resolvedFetchOptions),
       fetchOptions: null,
       deleteResult: null,
     };
