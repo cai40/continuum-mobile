@@ -7,6 +7,7 @@ const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
+const { evaluateOverLimitPermission, formatPermissionBlock } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
@@ -279,6 +280,7 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     context,
     messages: formatted.messages,
     fetchOptions: { ...fetchOptions, sender },
+    scanMeta,
   };
 }
 
@@ -349,18 +351,26 @@ async function fetchEmailContext(message, payloadOptions = {}) {
   const resolvedFetchOptions = resolveEmailFetchOptions(message, payloadOptions);
 
   try {
-    const { context, messages, fetchOptions } = await runImapCheck(imapScript, message, payloadOptions);
+    const { context, messages, fetchOptions, scanMeta } = await runImapCheck(imapScript, message, payloadOptions);
 
     let deleteResult = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
 
-    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled) {
+    const permission = evaluateOverLimitPermission({
+      message,
+      fetchOptions,
+      scanMeta,
+      messages,
+      deleteRequested,
+    });
+
+    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission) {
       deleteResult = await maybeAutoTrashJunk(messages, imapScript, {
         enabled: true,
         includeGithub: false,
       });
     }
 
-    if (deleteRequested) {
+    if (deleteRequested && !permission) {
       const manualResult = await maybeDeleteEmails(message, messages, imapScript, {
         enabled: !!payloadOptions.email_delete_enabled,
         listOffset: fetchOptions.offset || 0,
@@ -379,6 +389,13 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     }
 
     let finalContext = context;
+    if (permission) {
+      finalContext = [
+        context,
+        '',
+        formatPermissionBlock(permission),
+      ].join('\n');
+    }
     if (triageRequested) {
       const triage = buildTriageContext(messages, message);
       finalContext = [

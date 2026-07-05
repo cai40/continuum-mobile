@@ -48,7 +48,48 @@ function addDays(isoDate, days) {
   return d.toISOString().slice(0, 10);
 }
 
-const RANGE_SEP = String.raw`\s*,?\s*`;
+function monthNamePattern() {
+  return Object.keys(MONTHS).sort((a, b) => b.length - a.length).join('|');
+}
+
+function parseMonthToken(monthRaw, yearRaw) {
+  const year = parseInt(yearRaw, 10);
+  if (year < 1970 || year > 2100) return null;
+  let month;
+  if (/^\d{1,2}$/.test(String(monthRaw))) {
+    month = parseInt(monthRaw, 10);
+  } else {
+    month = MONTHS[String(monthRaw).toLowerCase()];
+  }
+  if (!month || month < 1 || month > 12) return null;
+  const since = `${year}-${String(month).padStart(2, '0')}-01`;
+  const next = month === 12
+    ? { y: year + 1, m: 1 }
+    : { y: year, m: month + 1 };
+  const before = `${next.y}-${String(next.m).padStart(2, '0')}-01`;
+  const monthLabel = String(monthRaw).match(/^\d/)
+    ? since.slice(0, 7)
+    : `${String(monthRaw).charAt(0).toUpperCase()}${String(monthRaw).slice(1).toLowerCase()} ${year}`;
+  return { since, before, label: monthLabel };
+}
+
+function parseMonthRangeFromMessage(message) {
+  const text = message || '';
+  const monthPat = monthNamePattern();
+  const patterns = [
+    new RegExp(String.raw`\b(?:for|in|during)\s+(?:the\s+)?(?:month\s+of\s+)?(${monthPat})\s+(20\d{2})\b`, 'i'),
+    new RegExp(String.raw`\b(?:clean\s*up|cleanup|fetch|get|show|list|trash|delete|remove|move)(?:\s+(?:my|the)\s+inbox)?\s+(?:for\s+)?(${monthPat})\s+(20\d{2})\b`, 'i'),
+    /\b(?:for|in|during|clean\s*up|cleanup)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i,
+    new RegExp(String.raw`\b(${monthPat})\s+(20\d{2})\b`, 'i'),
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const parsed = parseMonthToken(match[1], match[2]);
+    if (parsed) return parsed;
+  }
+  return null;
+}
 
 function parseYearRangeFromMessage(message) {
   const text = message || '';
@@ -75,7 +116,11 @@ function parseDateRangeFromMessage(message) {
   const yearRange = parseYearRangeFromMessage(message);
   if (yearRange) return yearRange;
 
+  const monthRange = parseMonthRangeFromMessage(message);
+  if (monthRange) return monthRange;
+
   const text = message || '';
+  const RANGE_SEP = String.raw`\s*,?\s*`;
   const dateToken = String.raw`(?:[a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})`;
   const patterns = [
     new RegExp(String.raw`\bfrom\s+(${dateToken})${RANGE_SEP}(?:back\s+to|to)\s+(${dateToken})\b`, 'i'),
@@ -111,6 +156,7 @@ module.exports = {
   parseNamedDateToken,
   parseAnyDateToken,
   parseYearRangeFromMessage,
+  parseMonthRangeFromMessage,
   parseDateRangeFromMessage,
   addDays,
 };

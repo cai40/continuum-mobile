@@ -34,6 +34,39 @@ function addDays(isoDate, days) {
   return d.toISOString().slice(0, 10);
 }
 
+const MONTHS = {
+  january: 1, jan: 1, february: 2, feb: 2, march: 3, mar: 3, april: 4, apr: 4,
+  may: 5, june: 6, jun: 6, july: 7, jul: 7, august: 8, aug: 8,
+  september: 9, sep: 9, sept: 9, october: 10, oct: 10, november: 11, nov: 11,
+  december: 12, dec: 12,
+};
+
+function parseMonthRangeFromMessage(message) {
+  const text = message || '';
+  const monthPat = Object.keys(MONTHS).sort((a, b) => b.length - a.length).join('|');
+  const patterns = [
+    new RegExp(`\\b(?:for|in|during)\\s+(?:the\\s+)?(?:month\\s+of\\s+)?(${monthPat})\\s+(20\\d{2})\\b`, 'i'),
+    new RegExp(`\\b(?:clean\\s*up|cleanup|fetch|get|show|list|trash|delete|remove|move)(?:\\s+(?:my|the)\\s+inbox)?\\s+(?:for\\s+)?(${monthPat})\\s+(20\\d{2})\\b`, 'i'),
+    /\b(?:for|in|during|clean\s*up|cleanup)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i,
+    new RegExp(`\\b(${monthPat})\\s+(20\\d{2})\\b`, 'i'),
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const year = parseInt(match[2], 10);
+    if (year < 1970 || year > 2100) continue;
+    let month;
+    if (/^\d{1,2}$/.test(match[1])) month = parseInt(match[1], 10);
+    else month = MONTHS[match[1].toLowerCase()];
+    if (!month || month < 1 || month > 12) continue;
+    const since = `${year}-${String(month).padStart(2, '0')}-01`;
+    const next = month === 12 ? { y: year + 1, m: 1 } : { y: year, m: month + 1 };
+    const before = `${next.y}-${String(next.m).padStart(2, '0')}-01`;
+    return { since, before };
+  }
+  return null;
+}
+
 function parseYearRangeFromMessage(message) {
   const text = message || '';
   const patterns = [
@@ -57,6 +90,9 @@ function parseYearRangeFromMessage(message) {
 export function parseEmailDateRangeFromMessage(message) {
   const yearRange = parseYearRangeFromMessage(message);
   if (yearRange) return yearRange;
+
+  const monthRange = parseMonthRangeFromMessage(message);
+  if (monthRange) return monthRange;
 
   const text = message || '';
   const patterns = [
