@@ -28,7 +28,8 @@ const EMAIL_LIVE_INBOX_DELETE_APPEND = [
   'The OpenClaw VPS bridge executes Yahoo email delete/trash automatically in this turn when the user asks — you do NOT run commands.',
   'NEVER tell the user to run terminal, bash, shell, VPS, or CLI commands for email.',
   'NEVER invent fake commands like "delete uid ..." in code blocks.',
-  'If [Email delete executed] appears below, confirm exactly what was deleted from that block only.',
+  'If [Email delete executed] or [Email cleanup executed] appears below, confirm exactly what was moved to Trash from that block only.',
+  'Cleanup ("clean up inbox") trashes news, newsletters, promos, ads, GitHub/dev notifications, and bank statements — never OTP or security alerts.',
   'If no [Email delete executed] block is present, do NOT say emails were moved or deleted — tell the user deletion did not run yet and ask them to resend with explicit UIDs or "move category 1 and 3 to trash".',
   'If delete failed or was disabled, explain using the error text — do not claim you lack all execution ability.',
 ].join(' ');

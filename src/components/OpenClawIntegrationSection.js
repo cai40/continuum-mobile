@@ -396,6 +396,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
         Triggers on “check inbox”, “summarize email”, or any mail chat. Say “check my Yahoo inbox” daily to purge junk.
       </Text>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Say “clean up inbox” to trash news, newsletters, promos, ads, GitHub/dev mail, and bank statements (not OTP/security). Requires delete permission above.
+      </Text>
 
       <View style={[styles.groupedCard, { marginTop: 24, padding: 16 }]}>
         <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black, marginBottom: 8 }}>

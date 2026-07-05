@@ -12,13 +12,19 @@ const DELETE_BATCH_SIZE = 25;
 
 const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
 const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
-const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable)\b/i;
+const CLEANUP_INTENT = /\b(clean\s+up|cleanup|cleaning\s+up|clean\s+(?:my|the)\s+inbox|declutter|tidy\s+(?:up\s+)?(?:my\s+)?inbox)\b/i;
+const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable|news\b|advertis(?:e|ing|ement)?s?)\b/i;
 const CATEGORY_DELETE = /\bcategor(?:y|ies)\s*#?\s*\d|github\s*\/?\s*cursor|cursor\[bot\]|automated\s+cursor|promotions?\s*(?:&|and)\s*newsletters?\b/i;
 const CHURCH_COMMUNITY_INTENT = /\b(church|grace chapel|grace\.org|@grace\.org|community|grace wilmington|wilmington campus|men'?s breakfast|e-?news|blue village|cogswell\.doug)\b/i;
+
+function wantsEmailCleanup(message) {
+  return CLEANUP_INTENT.test(message || '');
+}
 
 function wantsEmailDelete(message) {
   const text = message || '';
   if (DELETE_BLOCKED.test(text)) return false;
+  if (wantsEmailCleanup(text)) return true;
   if (DELETE_INTENT.test(text)) return true;
   if (/\bmove\b/i.test(text) && /\b(trash|bin)\b/i.test(text)) return true;
   if (JUNK_INTENT.test(text) && /\b(trash|delete|remove|move|clear)\b/i.test(text)) return true;
@@ -66,6 +72,49 @@ function parseRequestedCategoryNumbers(text) {
 
 function rowBlob(row) {
   return `${row.from} ${row.subject}`.toLowerCase();
+}
+
+function emailFullBlob(row, email) {
+  const preview = String(email?.snippet || email?.text || email?.preview || '');
+  return `${row.from} ${row.subject} ${preview}`.toLowerCase();
+}
+
+const CLEANUP_SECURITY_BLOCK = /\b(verification code|one.?time passcode|otp|security alert|fraud alert|password reset|sign.?in attempt|unauthorized|verify your identity|two.?step|app password)\b/i;
+const CLEANUP_STATEMENT = /\b(e-?statement|account statement|monthly statement|statement ready|statement available|your statement|credit card statement|bank statement)\b/i;
+const CLEANUP_BANK = /\b(bank of america|fidelity|greenwood credit|peoplesbank|charles schwab|chase|wells fargo|capital one|citi card|american express|credit union)\b/i;
+const CLEANUP_NEWS = /\b(breaking news|news digest|news alert|daily briefing|top stories|news update|news@|@news\.|nytimes|cnn\.com|bbc\.|reuters|apnews|substack)\b/i;
+const CLEANUP_DEV = /\b(github|gitlab|bitbucket|cursor\[bot\]|dependabot|circleci|travis.?ci|vercel|netlify|npmjs|docker\.com|pull request|workflow run|build failed|build passed|code review|stackoverflow|sentry\.io|heroku|render\.com|actions run|ci\/cd|jenkins)\b/i;
+const CLEANUP_ADS = /\b(advertisement|sponsored|promo(?:tion|tional)?|marketing blast|%\s*off|deal of the day|limited.?time offer|shop now|buy now|free shipping)\b/i;
+
+function matchesCleanupTarget(row, email) {
+  if (row.uid == null) return false;
+
+  const fullBlob = emailFullBlob(row, email);
+  if (CLEANUP_SECURITY_BLOCK.test(fullBlob)) return false;
+
+  if (CLEANUP_STATEMENT.test(fullBlob)) return true;
+  if (CLEANUP_BANK.test(fullBlob) && /\bstatement|estatement\b/i.test(fullBlob)) return true;
+
+  if (row.selectable_as_junk) return true;
+  if (CLEANUP_NEWS.test(fullBlob)) return true;
+  if (CLEANUP_DEV.test(fullBlob)) return true;
+  if (CLEANUP_ADS.test(fullBlob)) return true;
+  if (/\bnewsletter\b/i.test(fullBlob)) return true;
+
+  return false;
+}
+
+function resolveCleanupUids(emails) {
+  if (!Array.isArray(emails) || emails.length === 0) return [];
+
+  const triaged = triageMessages(emails);
+  const uids = [];
+  for (let i = 0; i < triaged.length; i += 1) {
+    const row = triaged[i];
+    const email = emails[i];
+    if (matchesCleanupTarget(row, email)) uids.push(Number(row.uid));
+  }
+  return uids.slice(0, MAX_DELETE_PER_REQUEST);
 }
 
 function matchesSummaryCategory(row, catNum) {
@@ -227,6 +276,10 @@ function resolveDeleteUids(message, emails, listOffset = 0) {
     }
   }
 
+  if (wantsEmailCleanup(text)) {
+    for (const uid of resolveCleanupUids(emails)) uids.add(uid);
+  }
+
   if (JUNK_INTENT.test(text) && (DELETE_INTENT.test(text) || /\b(trash|move)\b/i.test(text))) {
     const includeGithub = !/\b(keep|exclude|without|no)\s+github\b/i.test(text);
     const { uids: junkUids } = selectJunkUids(emails, { includeGithub });
@@ -357,7 +410,9 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false,
   const skippedUids = requestedUids.filter((uid) => !fetchedSet.has(uid));
 
   if (uids.length === 0) {
-    const hint = /\bcategor/i.test(message)
+    const hint = wantsEmailCleanup(message)
+      ? 'No cleanup targets in the fetched slice. Clean up trashes: news, newsletters, promos, ads, GitHub/dev notifications, and bank statements (never OTP/security). Raise Email Fetch Limit or set Lookback to 30d.'
+      : /\bcategor/i.test(message)
       ? 'Supported summary categories: 1=GitHub/Cursor bots, 4=SMTP self-tests only, 5=travel/auto/home promos, 6=newsletters/promos. Categories 2–3 (career/finance/real estate) and protected mail (banks, DocuSign, Hetzner OTP) are never auto-deleted. Try "move category 6 to trash" or list explicit UIDs.'
       : CHURCH_COMMUNITY_INTENT.test(message)
         ? 'Church/community mail was not matched in the fetched slice. Try "delete uid 962718, 962849, 962874", "delete emails 4, 60, 67", or widen Email Lookback to 7d/30d.'
@@ -400,10 +455,13 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false,
 module.exports = {
   MAX_DELETE_PER_REQUEST,
   wantsEmailDelete,
+  wantsEmailCleanup,
   resolveDeleteUids,
+  resolveCleanupUids,
   resolveChurchCommunityUids,
   parseExplicitUids,
   maybeDeleteEmails,
   maybeAutoTrashJunk,
   CHURCH_COMMUNITY_INTENT,
+  CLEANUP_INTENT,
 };

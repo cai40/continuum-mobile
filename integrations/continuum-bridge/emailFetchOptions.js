@@ -1,6 +1,7 @@
 'use strict';
 
 const { parseDateRangeFromMessage, addDays } = require('./emailDateRange');
+const { wantsEmailCleanup } = require('./emailDelete');
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 1000;
@@ -97,7 +98,8 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const limitFromMessage = parseLimitFromMessage(message);
   const offsetFromMessage = parseOffsetFromMessage(message);
   const dateRangeFromMessage = parseDateRangeFromMessage(message);
-  const defaultLimit = dateRangeFromMessage ? 250 : DEFAULT_LIMIT;
+  const cleanup = wantsEmailCleanup(message);
+  const defaultLimit = dateRangeFromMessage ? 250 : (cleanup ? 100 : DEFAULT_LIMIT);
   const limit = clampLimit(
     limitFromMessage ?? payloadOptions.email_limit,
     defaultLimit,
@@ -113,7 +115,10 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   }
   const recent = dateRangeFromMessage
     ? null
-    : (parseRecentFromMessage(message) || payloadOptions.email_recent || DEFAULT_RECENT);
+    : (parseRecentFromMessage(message)
+      || (cleanup ? '30d' : null)
+      || payloadOptions.email_recent
+      || DEFAULT_RECENT);
   const since = dateRangeFromMessage?.since
     || payloadOptions.email_since
     || null;

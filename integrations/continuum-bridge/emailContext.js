@@ -6,7 +6,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
-const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
@@ -394,7 +394,9 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     if (deleteResult.executed && deleteResult.summary) {
       const label = deleteResult.auto && !deleteRequested
         ? '[Email auto-trash executed]'
-        : '[Email delete executed]';
+        : wantsEmailCleanup(message)
+          ? '[Email cleanup executed]'
+          : '[Email delete executed]';
       finalContext = [finalContext, '', label, deleteResult.summary].join('\n');
     } else if (deleteResult.error) {
       let errBlock = `[Email delete] ${deleteResult.error}`;

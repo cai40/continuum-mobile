@@ -36,15 +36,22 @@ const SPAM_KEYWORDS = [
   'work from home', 'guaranteed income', 'wire transfer', '100% free', 'risk free',
 ];
 
-const GITHUB_BOT = /\bcursor\[bot\]|github\.com|pull request|pr run failed|workflow run|dependabot/i;
+const GITHUB_BOT = /\bcursor\[bot\]|github\.com|pull request|pr run failed|workflow run|dependabot|gitlab|bitbucket|circleci|travis.?ci|vercel|netlify|npmjs|docker\.com|build failed|build passed|code review|stackoverflow|sentry\.io|heroku|render\.com|actions run|ci\/cd|jenkins/i;
+
+const NEWS_PATTERNS = /\b(breaking news|news digest|news alert|daily briefing|top stories|news update|news@|@news\.|nytimes|cnn\.com|bbc\.|reuters|apnews|substack|medium\.com\/@)\b/i;
+
+const ADVERTISEMENT_PATTERNS = /\b(advertisement|sponsored|promo(?:tion|tional)?|marketing blast|%\s*off|deal of the day|limited.?time offer|shop now|buy now|free shipping)\b/i;
 
 const PROTECTED_PATTERNS = [
   /security@yahoo|account.?security|yahoo.*security/i,
-  /cash app|bank of america|fidelity|greenwood credit|peoplesbank|charles schwab|estatement|invoice/i,
+  /cash app/i,
   /docu sign|docusign|jc realty|property management/i,
   /hetzner|termius|render services|stripe/i,
-  /verification code|one.?time passcode|otp/i,
+  /verification code|one.?time passcode|otp|fraud alert|unauthorized/i,
 ];
+
+const PROTECTED_BANK_NON_STATEMENT = /\b(bank of america|fidelity|greenwood credit|peoplesbank|charles schwab|chase|wells fargo|capital one|citi|american express)\b/i;
+const STATEMENT_PATTERNS = /\b(e-?statement|account statement|monthly statement|statement ready|statement available|your statement|credit card statement|bank statement)\b/i;
 
 const TRUSTED_SENDERS = [
   /security@/i, /billing@/i, /support@/i, /alert@/i, /notifications@/i,
@@ -73,7 +80,11 @@ function emailBlob(email) {
 
 function isProtected(email) {
   const blob = emailBlob(email);
-  return PROTECTED_PATTERNS.some((re) => re.test(blob));
+  if (PROTECTED_PATTERNS.some((re) => re.test(blob))) return true;
+  // Bank mail that is not a routine statement stays protected (OTP, alerts, invoices).
+  if (PROTECTED_BANK_NON_STATEMENT.test(blob) && !STATEMENT_PATTERNS.test(blob)) return true;
+  if (/\binvoice\b/i.test(blob) && !STATEMENT_PATTERNS.test(blob)) return true;
+  return false;
 }
 
 function classifyEmail(email) {
@@ -98,8 +109,23 @@ function classifyEmail(email) {
   }
 
   if (GITHUB_BOT.test(text)) {
-    reasons.push('automated GitHub/Cursor notification');
+    reasons.push('automated dev/code notification');
     return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
+  }
+
+  if (NEWS_PATTERNS.test(text)) {
+    reasons.push('news / digest sender or subject');
+    return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
+  }
+
+  if (ADVERTISEMENT_PATTERNS.test(text)) {
+    reasons.push('advertisement / promotional offer');
+    return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
+  }
+
+  if (STATEMENT_PATTERNS.test(text) && PROTECTED_BANK_NON_STATEMENT.test(text)) {
+    reasons.push('bank/financial institution statement');
+    return { category: 'informational', score: CATEGORY_SCORE.informational, reasons, selectable_as_junk: true };
   }
 
   const newsletterHits = NEWSLETTER_KEYWORDS.filter((kw) => text.includes(kw));
