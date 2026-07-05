@@ -256,10 +256,30 @@ async function fetchCheckRowsByUids(imap, uids, lite) {
   return results;
 }
 
-function buildDateRangeScanUids(allUids, sinceUids, recentUids) {
-  if (sinceUids.length > 0) return sinceUids;
-  if (recentUids.length > 0) return recentUids;
-  return allUids;
+function buildDateRangeScanUids(sinceUids, recentUids) {
+  const seen = new Set();
+  const out = [];
+  const add = (uid) => {
+    if (uid != null && !seen.has(uid)) {
+      seen.add(uid);
+      out.push(uid);
+    }
+  };
+  for (const uid of sinceUids) add(uid);
+  for (const uid of recentUids) add(uid);
+  return out;
+}
+
+async function searchUidsLogged(imap, criteria, label, timeoutMs = 90000) {
+  console.error(`[imap] search ${label}...`);
+  const uids = await Promise.race([
+    searchUids(imap, criteria),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`IMAP search timed out (${label})`)), timeoutMs);
+    }),
+  ]);
+  console.error(`[imap] search ${label}: ${uids.length} uid(s)`);
+  return uids;
 }
 
 // Search for messages
