@@ -214,22 +214,10 @@ async function fetchCheckRowsByUids(imap, uids, lite) {
   return results;
 }
 
-function buildDateRangeScanUids(allUids, sinceUids, maxScan) {
-  if (allUids.length <= maxScan) return [...allUids];
-  const seen = new Set();
-  const ordered = [];
-  const add = (uid) => {
-    if (uid != null && !seen.has(uid)) {
-      seen.add(uid);
-      ordered.push(uid);
-    }
-  };
-  // Newest mail first (July burst) — same UIDs as working "fetch last 100".
-  for (const uid of allUids.slice(-2000)) add(uid);
-  const sinceList = sinceUids.length > 0 ? sinceUids : allUids;
-  for (const uid of sinceList.slice(0, Math.max(0, maxScan - ordered.length))) add(uid);
-  for (const uid of sinceList.slice(-Math.max(0, maxScan - ordered.length))) add(uid);
-  return ordered.slice(0, maxScan);
+function buildDateRangeScanUids(allUids, sinceUids, recentUids) {
+  if (sinceUids.length > 0) return sinceUids;
+  if (recentUids.length > 0) return recentUids;
+  return allUids;
 }
 
 // Search for messages
@@ -671,7 +659,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
 
   console.error(
     `[imap] date-range lookback ${days}d: scanned ${scannedUids}/${allUids.length} uid(s),`
-    + ` since-window ${sinceUids.length},`
+    + ` recent-window ${recentUids.length}, since-window ${sinceUids.length},`
     + ` parsed ${results.length} row(s),`
     + ` dates ${span ? `${span.oldest}..${span.newest}` : 'none'},`
     + ` matched ${filtered.length} for ${usedSince}..${usedBefore}`,
@@ -679,6 +667,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
   console.error(`SCAN_META:${JSON.stringify({
     scanned: scannedUids,
     totalUids: allUids.length,
+    recentWindow: recentUids.length,
     sinceWindow: sinceUids.length,
     parsed: results.length,
     span,
