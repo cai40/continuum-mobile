@@ -1,7 +1,7 @@
 # Continuum 2.0: Product Requirements Document (PRD)
 
-**Version**: 3.4.67 (Legal Fortress)
-**Date**: April 26, 2026
+**Version**: 3.4.68 (OpenClaw Email Bridge)
+**Date**: July 5, 2026
 **Platform**: iOS (Primary) / Android (Compatible)
 
 ---
@@ -122,6 +122,27 @@ Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to
 *   **Neural STT**: Instant transcription with multilingual cycling (EN, ZH, ES).
 *   **Neural Voice**: Six high-fidelity neural voices for AI response.
 
+### 2.11 OpenClaw VPS Bridge & Yahoo Email [NEW]
+Continuum chat can route through a user-hosted **OpenClaw bridge** on a VPS (HTTPS via Cloudflare tunnel) for live Yahoo IMAP access and Continuum memory, without SSH from the phone.
+
+*   **Bridge service**: Node HTTP server (`continuum-bridge`) on port 8787 — `GET /health`, `POST /chat/stream`.
+*   **Email fetch**: Lite IMAP check (headers + snippet) with pagination (`offset`, `limit` up to 1000).
+*   **Date-range fetch**: Natural-language ranges parsed server-side (`emailDateRange.js`) and filtered in JS after Yahoo-safe UID scans (no hanging `SEARCH ALL` / absolute `SINCE` on large mailboxes).
+    - Day ranges: `Fetch emails from 4/1/2026 to 6/15/2026`
+    - Month ranges: `Clean up June 2026`, `Clean up 6/2026`
+    - Year ranges: `Clean up for 2026`
+*   **Clean up inbox**: User says `clean up` / `clean up inbox` to move matching mail to Trash (requires **Allow email delete** in app Settings):
+    - News & newsletters
+    - Promotional / advertising mail
+    - GitHub & dev/code notifications (GitLab, CI/CD, Dependabot, etc.)
+    - Bank & financial **statements** (e-statements)
+    - **Never** trashes OTP, security alerts, fraud warnings, DocuSign, or Cash App alerts
+*   **Over-limit permission**: If matches exceed the default fetch limit (250 for date/month/year ranges; 100 for plain cleanup), the bridge **does not trash** until the user replies `yes proceed` / `confirm cleanup`, or raises the limit (e.g. `limit 500`).
+*   **Auto-trash (optional)**: Settings toggle to move newsletter/promo/spam on every inbox fetch (max 100; banks/OTP protected).
+*   **Anti-hallucination**: Live inbox UIDs injected into the LLM prompt; fresh fetch drops chat history for email turns; grounding rules forbid inventing messages.
+*   **Resilience**: SSE opened immediately with keepalive pings during slow IMAP so Cloudflare tunnels do not idle-timeout; HTML error pages sanitized in the app.
+*   **Bridge version**: Tracked in `/health` as `bridge_version` (e.g. `2026.07.27`) — VPS must `git pull origin master` + restart after changes.
+
 ---
 
 ## 3. Commercialization & Subscription Model
@@ -139,4 +160,5 @@ Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to
 *   **Biometric Vault**: ✅ Complete. Smart Autofill operational in v3.4.47.
 *   **Auth Infrastructure**: ✅ Complete. Deep-link verification bridge active.
 *   **Data Sovereignty**: ✅ Complete. RLS-hardened Multi-Tenancy active.
+*   **OpenClaw Yahoo Email Bridge**: ✅ Complete. Date-range fetch, clean-up trash rules, month/year phrases, over-limit permission (`bridge_version` 2026.07.27).
 *   **App Store Submission**: In progress. Metadata and screenshots finalized.

@@ -83,6 +83,9 @@ If `bridge_version` is **missing**, the VPS is still on old code — do not debu
 | Max emails per batch | `MAX_LIMIT` / `MAX_OPENCLAW_EMAIL_LIMIT` (1000) |
 | Pagination offset | `emailFetchOptions.js`, `--offset` on IMAP |
 | Date range fetch | `emailDateRange.js`, `--since` / `--before` on IMAP |
+| Month / year ranges | `parseMonthRangeFromMessage`, `parseYearRangeFromMessage` in `emailDateRange.js` |
+| Clean up inbox | `emailDelete.js` (`CLEANUP_INTENT`, `resolveCleanupUids`) + `email-triage` classifier |
+| Over-limit permission | `emailPermission.js` — blocks trash until `yes proceed` / `confirm cleanup` |
 | Lite fetch (large batches) | `--lite` on IMAP check (headers + snippet only) |
 | Lookback window | Settings **Email Lookback** (`7d`, `30d`) — **ignored** when user gives explicit dates |
 
@@ -90,6 +93,9 @@ Chat examples that must work:
 
 - `Skip 100, fetch next 250 emails`
 - `Fetch emails from 6/20/2026 back to 4/1/2026`
+- `Clean up inbox from 4/1/2026 to 6/15/2026`
+- `Clean up June 2026` / `Clean up for 2026`
+- Over limit → user replies `yes proceed` before trash runs
 
 ---
 
