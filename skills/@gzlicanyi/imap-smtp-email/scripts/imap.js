@@ -157,6 +157,7 @@ function fetchByUids(imap, uids, fetchOptions) {
 
     fetch.on('message', (msg) => {
       const parts = [];
+      let attrs = null;
 
       msg.on('body', (stream, info) => {
         let buffer = '';
@@ -170,14 +171,16 @@ function fetchByUids(imap, uids, fetchOptions) {
         });
       });
 
-      msg.once('attributes', (attrs) => {
+      msg.once('attributes', (a) => {
+        attrs = a;
         parts.forEach((part) => {
-          part.attributes = attrs;
+          part.attributes = a;
         });
       });
 
       msg.once('end', () => {
         if (parts.length > 0) {
+          parts[0].attributes = attrs || parts[0].attributes;
           messages.push(parts[0]);
         }
       });
@@ -191,6 +194,52 @@ function fetchByUids(imap, uids, fetchOptions) {
       resolve(messages);
     });
   });
+}
+
+function decodeHeaderValue(raw) {
+  return String(raw || '')
+    .replace(/\r?\n[ \t]+/g, ' ')
+    .trim();
+}
+
+function parseHeaderFieldsBody(body) {
+  const text = String(body || '');
+  const subject = decodeHeaderValue((text.match(/^Subject:\s*(.*)$/im) || [])[1]);
+  const from = decodeHeaderValue((text.match(/^From:\s*(.*)$/im) || [])[1]);
+  const dateRaw = decodeHeaderValue((text.match(/^Date:\s*(.*)$/im) || [])[1]);
+  let headerDate;
+  if (dateRaw) {
+    const parsed = new Date(dateRaw);
+    if (Number.isFinite(parsed.getTime())) headerDate = parsed;
+  }
+  return {
+    from: from || 'Unknown',
+    subject: subject || '(no subject)',
+    headerDate,
+  };
+}
+
+async function fetchHeaderRowsByUids(imap, uids) {
+  if (!uids.length) return [];
+  const fetchOptions = {
+    bodies: ['HEADER.FIELDS (DATE FROM SUBJECT)'],
+    markSeen: false,
+  };
+  const messages = await fetchByUids(imap, uids, fetchOptions);
+  const results = [];
+  for (const item of messages) {
+    const parsed = parseHeaderFieldsBody(item.body);
+    results.push({
+      uid: item.attributes?.uid,
+      from: parsed.from,
+      subject: parsed.subject,
+      headerDate: parsed.headerDate,
+      date: item.attributes?.date,
+      flags: item.attributes?.flags || [],
+      snippet: '',
+    });
+  }
+  return results;
 }
 
 // Search for messages
@@ -479,20 +528,23 @@ function filterByDateRange(rows, sinceStr, beforeStr) {
   if (!sinceStr || !beforeStr) return rows;
   const sinceMs = imapDateFromIso(sinceStr).getTime();
   const beforeMs = imapDateFromIso(beforeStr).getTime();
-  return rows.filter((row) => {
-    const t = emailTimestampMs(row);
-    return t >= sinceMs && t < beforeMs;
-  });
+  return rows.filter((row) => rowInDateRange(row, sinceMs, beforeMs));
+}
+
+function rowInDateRange(row, sinceMs, beforeMs) {
+  for (const v of [row.date, row.headerDate]) {
+    const t = new Date(v).getTime();
+    if (Number.isFinite(t) && t > 0 && t >= sinceMs && t < beforeMs) return true;
+  }
+  return false;
 }
 
 function filterTimestampMs(row) {
-  // INTERNALDATE (when Yahoo received the message) is reliable for range filters.
-  // Date: headers are often wrong on marketing mail.
-  for (const v of [row.date, row.headerDate]) {
-    const t = new Date(v).getTime();
-    if (Number.isFinite(t) && t > 0) return t;
-  }
-  return 0;
+  const times = [row.date, row.headerDate]
+    .map((v) => new Date(v).getTime())
+    .filter((t) => Number.isFinite(t) && t > 0);
+  if (!times.length) return 0;
+  return Math.max(...times);
 }
 
 function emailTimestampMs(row) {
@@ -621,7 +673,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
   let results = [];
   let scannedUids = 0;
   for (const batch of uidBatches) {
-    const batchResults = await fetchRowsByUids(imap, batch, { lite, compactNow: false });
+    const batchResults = await fetchHeaderRowsByUids(imap, batch);
     results = mergeRowsByUid(results.concat(batchResults));
     scannedUids += batch.length;
     const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
@@ -636,7 +688,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     for (let start = fetchCap; start < sinceUids.length; start += fetchCap) {
       const chunk = sinceUids.slice(start, start + fetchCap);
       if (!chunk.length) break;
-      const chunkResults = await fetchRowsByUids(imap, chunk, { lite, compactNow: false });
+      const chunkResults = await fetchHeaderRowsByUids(imap, chunk);
       results = mergeRowsByUid(results.concat(chunkResults));
       scannedUids += chunk.length;
       span = scanDateSpan(results);

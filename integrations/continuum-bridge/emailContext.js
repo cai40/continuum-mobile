@@ -259,6 +259,11 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     fetchOptions.dateRangeLabel || null,
     scanMeta,
   );
+  console.error(
+    '[continuum-bridge] email fetch result:',
+    `count=${formatted.fetchedCount ?? formatted.messages?.length ?? 0}`,
+    fetchOptions.dateRangeLabel || fetchOptions.recent || '',
+  );
   let context = formatted.text;
   if (sender) {
     context = [
