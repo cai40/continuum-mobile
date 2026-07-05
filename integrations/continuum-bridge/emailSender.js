@@ -1,11 +1,26 @@
 'use strict';
 
+const { parseAnyDateToken } = require('./emailDateRange');
+
+function looksLikeDateToken(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return false;
+  if (parseAnyDateToken(trimmed)) return true;
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(trimmed)) return true;
+  if (/^[a-z]+\s+\d{1,2},?\s+\d{4}/i.test(trimmed)) return true;
+  return false;
+}
+
 function parseSenderFromMessage(message) {
   const text = String(message || '');
+  // "emails from 4/1/2026 to 6/15/2026" is a date range, not a sender filter.
+  if (/\b(?:from|between)\s+\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/i.test(text)) return null;
+  if (/\b(?:from|between)\s+[a-z]+\s+\d{1,2},?\s+\d{4}/i.test(text)) return null;
+
   const patterns = [
     /\bfeed\s+(?:all\s+)?(?:emails?\s+from\s+)?["']?([^"'\n,]+?)["']?\s+(?:emails?\s+)?to\s+(?:continuum|memory)/i,
     /\b(?:ingest|import|save|remember|store)\s+(?:all\s+)?(?:emails?\s+from\s+)?["']?([^"'\n,]+?)["']?(?:\s+emails?)?\s+(?:to|into)\s+(?:continuum|memory)/i,
-    /\bemails?\s+from\s+["']?([^"'\n,]+?)["']?(?:\s|$|,|\.)/i,
+    /\bemails?\s+from\s+["']?([^"'\n,]+?)["']?(?:\s|$|,)/i,
     /\b(?:from|by)\s+["']?([A-Za-z0-9@.\s+'-]{2,60}?)["']?(?:\s+'s|\s+emails?|\s+mail)/i,
   ];
 
@@ -13,7 +28,7 @@ function parseSenderFromMessage(message) {
     const match = text.match(pattern);
     if (match?.[1]) {
       const sender = match[1].trim().replace(/\s+(to|into|for)\s+.*$/i, '').trim();
-      if (sender.length >= 2) return sender;
+      if (sender.length >= 2 && !looksLikeDateToken(sender)) return sender;
     }
   }
   return null;

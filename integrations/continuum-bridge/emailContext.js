@@ -226,7 +226,8 @@ function imapCheckArgs(fetchOptions) {
 
 async function runImapCheck(imapScript, message, payloadOptions = {}) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
-  const sender = parseSenderFromMessage(message);
+  const isDateRange = !!(fetchOptions.since && fetchOptions.before);
+  const sender = isDateRange ? null : parseSenderFromMessage(message);
   const skillRoot = path.dirname(path.dirname(imapScript));
   const args = sender
     ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
