@@ -196,6 +196,48 @@ function fetchByUids(imap, uids, fetchOptions) {
   });
 }
 
+function decodeHeaderValue(raw) {
+  return String(raw || '').replace(/\r?\n[ \t]+/g, ' ').trim();
+}
+
+function parseHeaderFieldsBody(body) {
+  const text = String(body || '');
+  const subject = decodeHeaderValue((text.match(/^Subject:\s*(.*)$/im) || [])[1]);
+  const from = decodeHeaderValue((text.match(/^From:\s*(.*)$/im) || [])[1]);
+  const dateRaw = decodeHeaderValue((text.match(/^Date:\s*(.*)$/im) || [])[1]);
+  let headerDate;
+  if (dateRaw) {
+    const parsed = new Date(dateRaw);
+    if (Number.isFinite(parsed.getTime())) headerDate = parsed;
+  }
+  return {
+    from: from || 'Unknown',
+    subject: subject || '(no subject)',
+    headerDate,
+  };
+}
+
+async function fetchHeaderRowsByUids(imap, uids) {
+  if (!uids.length) return [];
+  const fetchOptions = {
+    bodies: ['HEADER.FIELDS (DATE FROM SUBJECT)'],
+    markSeen: false,
+  };
+  const messages = await fetchByUids(imap, uids, fetchOptions);
+  return messages.map((item) => {
+    const parsed = parseHeaderFieldsBody(item.body);
+    return {
+      uid: item.attributes?.uid,
+      from: parsed.from,
+      subject: parsed.subject,
+      headerDate: parsed.headerDate,
+      date: item.attributes?.date,
+      flags: item.attributes?.flags || [],
+      snippet: '',
+    };
+  });
+}
+
 async function fetchCheckRowsByUids(imap, uids, lite) {
   if (!uids.length) return [];
   const fetchOptions = { bodies: [''], markSeen: false };
@@ -605,6 +647,7 @@ function mergeRowsByUid(rows) {
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
+  console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset}`);
   let allUids = await searchUids(imap, buildSearchCriteria({ unreadOnly }));
   if (allUids.length === 0 && unreadOnly) {
     allUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false }));
@@ -636,12 +679,16 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
   const FETCH_CHUNK = 100;
   const MAX_SCAN = 25000;
   const uidsToScan = buildDateRangeScanUids(allUids, sinceUids, recentUids).slice(0, MAX_SCAN);
+  console.error(
+    `[imap] date-range uids: all=${allUids.length} since=${sinceUids.length}`
+    + ` recent=${recentUids.length} scanning=${uidsToScan.length}`,
+  );
 
   let results = [];
   let scannedUids = 0;
   for (let i = 0; i < uidsToScan.length; i += FETCH_CHUNK) {
     const chunk = uidsToScan.slice(i, i + FETCH_CHUNK);
-    const batchResults = await fetchCheckRowsByUids(imap, chunk, false);
+    const batchResults = await fetchHeaderRowsByUids(imap, chunk);
     results = mergeRowsByUid(results.concat(batchResults));
     scannedUids += chunk.length;
     const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
@@ -1104,11 +1151,14 @@ async function main() {
         process.exit(1);
     }
 
-    console.log(JSON.stringify(result, null, 2));
+    console.log(JSON.stringify(result ?? [], null, 2));
   } catch (err) {
     console.error('Error:', err.message);
     process.exit(1);
   }
 }
 
-main();
+main().catch((err) => {
+  console.error('Fatal:', err.message || err);
+  process.exit(1);
+});
