@@ -85,6 +85,22 @@ function parseScanMeta(stderr) {
   }
 }
 
+function formatScanDiagnostic(scanMeta, dateRangeLabel) {
+  if (!scanMeta) return null;
+  const span = scanMeta.span
+    ? `dates in scanned mail: ${scanMeta.span.oldest} through ${scanMeta.span.newest}`
+    : 'no parseable dates in scanned mail';
+  const used = scanMeta.used?.since && scanMeta.used?.before
+    && (scanMeta.used.since !== scanMeta.wanted?.since || scanMeta.used.before !== scanMeta.wanted?.before)
+    ? ` (matched using ${scanMeta.used.since} .. ${scanMeta.used.before} after year adjustment)`
+    : '';
+  return [
+    'MAILBOX SCAN (quote this verbatim in your reply):',
+    `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.`,
+    `- Requested range: ${dateRangeLabel || 'unknown'}. Matched: ${scanMeta.matched}${used}.`,
+  ].join('\n');
+}
+
 function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null, scanMeta = null) {
   let parsed;
   try {
@@ -96,13 +112,13 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     return { text: rawStdout.trim().slice(0, 12000), messages: [] };
   }
   if (parsed.length === 0) {
-    const spanNote = scanMeta?.span
-      ? ` Scanned ${scanMeta.scanned} message(s); their dates ran ${scanMeta.span.oldest} through ${scanMeta.span.newest}.`
-      : '';
+    const scanBlock = formatScanDiagnostic(scanMeta, dateRangeLabel);
     const hint = dateRangeLabel
-      ? `No messages found in INBOX for ${dateRangeLabel}.${spanNote} Try fetch last 100 emails — list date and subject only — to see actual dates. If the scanned span shows a different year, retry with that year (e.g. 2025 instead of 2026).`
+      ? `No messages found in INBOX for ${dateRangeLabel}.`
       : 'No messages found in INBOX for the requested period.';
-    return { text: hint, messages: [], fetchedCount: 0 };
+    const footer = 'Try: fetch last 100 emails — list date and subject only — to see actual inbox dates. If the MAILBOX SCAN span shows a different year, retry with that year.';
+    const text = [hint, scanBlock, footer].filter(Boolean).join('\n\n');
+    return { text, messages: [], fetchedCount: 0 };
   }
 
   const maxChars = Math.min(200000, Math.max(10000, limit * 500));

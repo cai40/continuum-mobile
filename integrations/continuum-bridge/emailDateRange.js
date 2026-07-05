@@ -48,13 +48,16 @@ function addDays(isoDate, days) {
   return d.toISOString().slice(0, 10);
 }
 
+const RANGE_SEP = String.raw`\s*,?\s*`;
+
 function parseDateRangeFromMessage(message) {
   const text = message || '';
+  const dateToken = String.raw`(?:[a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})`;
   const patterns = [
-    /\bfrom\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
-    /\bbetween\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+and\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
-    /\b(?:emails?\s+)?(?:from\s+)?([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:through|thru|until|to|-)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
-    /\b(?:since|after)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})(?:\s+(?:until|before|to|through)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}))?\b/i,
+    new RegExp(String.raw`\bfrom\s+(${dateToken})${RANGE_SEP}(?:back\s+to|to)\s+(${dateToken})\b`, 'i'),
+    new RegExp(String.raw`\bbetween\s+(${dateToken})${RANGE_SEP}and\s+(${dateToken})\b`, 'i'),
+    new RegExp(String.raw`\b(?:emails?\s+)?(?:from\s+)?(${dateToken})${RANGE_SEP}(?:through|thru|until|to|-)\s+(${dateToken})\b`, 'i'),
+    new RegExp(String.raw`\b(?:since|after)\s+(${dateToken})(?:${RANGE_SEP}(?:until|before|to|through)\s+(${dateToken}))?\b`, 'i'),
   ];
 
   for (const pattern of patterns) {

@@ -12,7 +12,7 @@ const EMAIL_LIVE_INBOX_APPEND = [
   'If the user asked for more emails than were fetched, state the actual count and stop.',
   'Never claim you lack email access when inbox data is present below.',
   'NEVER say you are waiting for the system to load the next batch — you cannot self-fetch; the user must send a new message with skip/fetch phrasing.',
-  'If no inbox block appears below, tell the user their message did not trigger IMAP — ask them to send exactly: skip 100, fetch next 250 emails.',
+  'If a MAILBOX SCAN block appears below, you MUST quote its scanned date span and matched count verbatim — do not omit or paraphrase it.',
   'NEVER ask the user to "let you know when the batch is ready" — that is impossible.',
 ].join(' ');
 

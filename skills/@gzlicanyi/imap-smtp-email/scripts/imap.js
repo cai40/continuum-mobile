@@ -454,13 +454,13 @@ async function downloadAttachments(uid, mailbox = DEFAULT_MAILBOX, outputDir = '
   }
 }
 
-// Local calendar date for IMAP SINCE/BEFORE (avoids UTC ISO parse shifting the day).
+// Local calendar date for IMAP SINCE/BEFORE and JS filtering (midnight local = full day inclusive).
 function imapDateFromIso(isoStr) {
   if (!isoStr) return null;
   const parts = String(isoStr).split('-').map(Number);
   if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
     const [y, m, d] = parts;
-    return new Date(y, m - 1, d, 12, 0, 0, 0);
+    return new Date(y, m - 1, d, 0, 0, 0, 0);
   }
   return new Date(isoStr);
 }
