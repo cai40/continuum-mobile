@@ -2,7 +2,6 @@
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 1000;
-const MAX_OFFSET = 50000;
 const DEFAULT_RECENT = '7d';
 
 function clampLimit(value, fallback = DEFAULT_LIMIT) {
@@ -14,7 +13,7 @@ function clampLimit(value, fallback = DEFAULT_LIMIT) {
 function clampOffset(value, fallback = 0) {
   const n = parseInt(value, 10);
   if (Number.isNaN(n)) return fallback;
-  return Math.min(MAX_OFFSET, Math.max(0, n));
+  return Math.max(0, n);
 }
 
 function parseLimitFromMessage(message) {
@@ -112,7 +111,6 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
 module.exports = {
   DEFAULT_LIMIT,
   MAX_LIMIT,
-  MAX_OFFSET,
   clampLimit,
   clampOffset,
   parseLimitFromMessage,

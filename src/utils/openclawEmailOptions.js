@@ -4,18 +4,10 @@ import {
   MAX_OPENCLAW_EMAIL_LIMIT,
 } from '../constants/Config';
 
-export const MAX_OPENCLAW_EMAIL_OFFSET = 50000;
-
-export function clampEmailLimit(value) {
-  const n = parseInt(String(value || '').trim(), 10);
-  if (Number.isNaN(n)) return DEFAULT_OPENCLAW_EMAIL_LIMIT;
-  return Math.min(MAX_OPENCLAW_EMAIL_LIMIT, Math.max(1, n));
-}
-
 export function clampEmailOffset(value) {
   const n = parseInt(String(value || '').trim(), 10);
   if (Number.isNaN(n)) return 0;
-  return Math.min(MAX_OPENCLAW_EMAIL_OFFSET, Math.max(0, n));
+  return Math.max(0, n);
 }
 
 export function normalizeEmailRecent(value) {
