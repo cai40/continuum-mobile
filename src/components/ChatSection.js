@@ -529,6 +529,8 @@ const ChatSection = () => {
       const onStreamUpdate = (event, json) => {
         if (event === 'text' && json.token) {
           setStreamingContent(prev => prev + json.token);
+        } else if (event === 'status' && json.detail) {
+          setStreamingContent(String(json.detail));
         } else if (event === 'audio' && json.audio) {
           soundQueueRef.current.push(json.audio);
           if (!isPlayingQueueRef.current) playNextStreamChunk();

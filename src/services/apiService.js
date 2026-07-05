@@ -255,6 +255,21 @@ export const chatStream = (
 /**
  * Chat via OpenClaw VPS bridge: Continuum memory + Yahoo email skills.
  */
+function sanitizeBridgeErrorMessage(raw, status) {
+  const text = String(raw || "").trim();
+  if (!text) return `Bridge error (${status || "unknown"})`;
+  if (/^\s*</.test(text) || /<!DOCTYPE/i.test(text) || /<html/i.test(text)) {
+    if (/cloudflare/i.test(text)) {
+      return "Cloudflare timed out the bridge connection. Email fetch can take 1–2 minutes — retry with a smaller range, or wait and try again.";
+    }
+    if (status === 502 || status === 503 || status === 504) {
+      return `Bridge or backend unavailable (${status}). Try again shortly.`;
+    }
+    return "Server returned an HTML error page instead of a chat reply. Check HTTPS bridge URL in Setup and retry.";
+  }
+  return text.length > 400 ? `${text.slice(0, 400)}…` : text;
+}
+
 function parseBridgeHttpError(responseText, status) {
   let msg = `Bridge error (${status})`;
   if (!responseText?.trim()) return msg;
@@ -267,9 +282,9 @@ function parseBridgeHttpError(responseText, status) {
         detail = inner.detail || inner.error || detail;
       } catch (e) {}
     }
-    if (detail) msg = String(detail);
+    if (detail) msg = sanitizeBridgeErrorMessage(String(detail), status);
   } catch (e) {
-    msg = responseText.slice(0, 200);
+    msg = sanitizeBridgeErrorMessage(responseText, status);
   }
   return msg;
 }
@@ -378,7 +393,7 @@ export const openClawChatStream = (
             } else if (currentEvent === "transcript" && json.text) {
               userTranscript = json.text;
             } else if (currentEvent === "error") {
-              finish(json.detail || "OpenClaw bridge error");
+              finish(sanitizeBridgeErrorMessage(json.detail || "OpenClaw bridge error", xhr.status));
             }
           } catch (e) {}
         }

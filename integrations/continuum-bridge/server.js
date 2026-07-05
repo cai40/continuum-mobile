@@ -54,6 +54,38 @@ function verifyBridgeSecret(req, config) {
   return header === secret || bearer === secret;
 }
 
+function sanitizeUpstreamError(raw, status) {
+  const text = String(raw || '').trim();
+  if (!text) return `Upstream request failed (${status || 'unknown'})`;
+  if (/^\s*</.test(text) || /<!DOCTYPE/i.test(text) || /<html/i.test(text)) {
+    if (/cloudflare/i.test(text)) {
+      return 'Cloudflare timed out or blocked the request. Email fetch can take 1–2 minutes — retry, or run a smaller date range with a lower limit.';
+    }
+    if (status === 502 || status === 503 || status === 504) {
+      return `Continuum backend unavailable (${status}). Try again in a moment.`;
+    }
+    return `Server returned an HTML error page (${status || 'error'}) instead of a chat reply. Retry shortly.`;
+  }
+  return text.length > 500 ? `${text.slice(0, 500)}…` : text;
+}
+
+function beginSse(res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  const write = (event, data) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+  const keepalive = setInterval(() => write('ping', { t: Date.now() }), 20000);
+  const end = () => {
+    clearInterval(keepalive);
+    res.end();
+  };
+  return { write, end };
+}
+
 function buildContinuumForm(payload) {
   const form = new FormData();
   form.append('message', payload.message);
@@ -131,6 +163,11 @@ async function handleChatStream(req, res, config) {
     return json(res, 400, { success: false, error: 'message is required' });
   }
 
+  // Open SSE before slow IMAP / upstream work so Cloudflare tunnels stay alive.
+  const sse = beginSse(res);
+  sse.write('status', { detail: 'Starting…' });
+
+  sse.write('status', { detail: 'Fetching Yahoo inbox (if requested)…' });
   const emailContext = await maybeFetchEmailContext(message, {
     email_limit: payload.email_limit,
     email_offset: payload.email_offset,
@@ -178,6 +215,7 @@ async function handleChatStream(req, res, config) {
     payload.persona = appendGroundingPersona(payload.persona || '');
   }
 
+  sse.write('status', { detail: 'Asking Continuum…' });
   const form = buildContinuumForm(payload);
   const upstream = await fetch(`${config.apiUrl}/chat/stream`, {
     method: 'POST',
@@ -187,14 +225,10 @@ async function handleChatStream(req, res, config) {
 
   if (!upstream.ok) {
     const detail = await upstream.text();
-    return json(res, upstream.status, { success: false, error: detail });
+    sse.write('error', { detail: sanitizeUpstreamError(detail, upstream.status) });
+    sse.end();
+    return;
   }
-
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-  });
 
   const reader = upstream.body.getReader();
   try {
@@ -204,7 +238,7 @@ async function handleChatStream(req, res, config) {
       res.write(Buffer.from(value));
     }
   } finally {
-    res.end();
+    sse.end();
   }
 }
 
