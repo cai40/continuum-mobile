@@ -55,8 +55,12 @@ function parseOffsetFromMessage(message) {
   const range = parseRangeFromMessage(text);
   if (range) return range.offset;
 
+  const batchSkip = text.match(/\b(\d{1,4})\s+emails?\s*\(\s*skipp(?:ing|ed)?\s+(?:the\s+)?(?:first\s+)?(\d{1,4})\s*\)/i);
+  if (batchSkip) return clampOffset(batchSkip[2], null);
+
   const patterns = [
     /\bnext\s+\d{1,4}\s+emails?\s+(?:after|past|beyond|from|starting(?:\s+after)?)\s+(?:the\s+)?(?:first\s+)?(\d{1,4})\b/i,
+    /\bskipp?(?:ing|ed)?\s+(?:the\s+)?(?:first\s+)?(\d{1,4})(?:\s+emails?)?\b/i,
     /\b(?:skip|offset)\s+(?:the\s+)?(?:first\s+)?(\d{1,4})(?:\s+emails?)?\b/i,
     /\b(?:after|beyond)\s+(?:the\s+)?(?:first|top)\s+(\d{1,4})\s+emails?\b/i,
   ];
