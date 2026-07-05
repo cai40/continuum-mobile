@@ -301,37 +301,55 @@ function selectUidsByOffsetLimit(allUids, limit, offset = 0) {
 // Check for new/unread emails
 async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0, lite = false, sinceStr = null, beforeStr = null) {
   const imap = await connect();
+  const dateRangeMode = !!(sinceStr && beforeStr);
 
   try {
     await openBox(imap, mailbox);
 
-    const searchCriteria = unreadOnly ? ['UNSEEN'] : ['ALL'];
+    let clientFilterBefore = null;
+    let searchCriteria = buildSearchCriteria({
+      unreadOnly, sinceStr, beforeStr, recentTime, useImapBefore: !dateRangeMode,
+    });
 
-    if (sinceStr) {
-      searchCriteria.push(['SINCE', new Date(sinceStr)]);
-    }
-    if (beforeStr) {
-      searchCriteria.push(['BEFORE', new Date(beforeStr)]);
-    } else if (recentTime) {
-      const sinceDate = parseRelativeTime(recentTime);
-      searchCriteria.push(['SINCE', sinceDate]);
+    let allUids = await searchUids(imap, searchCriteria);
+
+    // Yahoo often returns 0 for SINCE+BEFORE — retry SINCE-only and filter by INTERNALDATE in JS.
+    if (allUids.length === 0 && dateRangeMode) {
+      searchCriteria = buildSearchCriteria({ unreadOnly, sinceStr, beforeStr: null, recentTime });
+      allUids = await searchUids(imap, searchCriteria);
+      clientFilterBefore = beforeStr;
     }
 
-    // Search returns UIDs in ascending order; take only the last `limit`
-    const allUids = await searchUids(imap, searchCriteria);
     if (allUids.length === 0) return [];
+
+    const fetchCap = dateRangeMode ? Math.min(allUids.length, Math.max(limit + offset, 500) + 500) : allUids.length;
+    const cappedUids = dateRangeMode && allUids.length > fetchCap
+      ? allUids.slice(-fetchCap)
+      : allUids;
+
+    const fetchOptions = { bodies: [''], markSeen: false };
+
+    if (dateRangeMode || clientFilterBefore) {
+      const messages = (await fetchByUids(imap, cappedUids, fetchOptions));
+      let results = [];
+      for (const item of messages) {
+        const parsed = await parseEmail(item.body);
+        const row = {
+          uid: item.attributes.uid,
+          ...parsed,
+          date: item.attributes.date,
+          flags: item.attributes.flags,
+        };
+        results.push(lite ? compactCheckRow(row) : row);
+      }
+      results = filterByBeforeDate(results, clientFilterBefore || beforeStr);
+      results = sortRowsNewestFirst(results);
+      return results.slice(offset, offset + limit);
+    }
 
     const fetchUids = selectUidsByOffsetLimit(allUids, limit, offset);
     if (fetchUids.length === 0) return [];
 
-    const fetchOptions = {
-      bodies: [''],
-      markSeen: false,
-    };
-
-    // imap.fetch returns messages in UID-ascending order regardless of input
-    // array order, so reversing the input had no effect; reverse the output
-    // to actually get newest-first.
     const messages = (await fetchByUids(imap, fetchUids, fetchOptions)).reverse();
 
     const results = [];
@@ -466,6 +484,44 @@ async function downloadAttachments(uid, mailbox = DEFAULT_MAILBOX, outputDir = '
   }
 }
 
+// Local calendar date for IMAP SINCE/BEFORE (avoids UTC ISO parse shifting the day).
+function imapDateFromIso(isoStr) {
+  if (!isoStr) return null;
+  const parts = String(isoStr).split('-').map(Number);
+  if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+    const [y, m, d] = parts;
+    return new Date(y, m - 1, d, 12, 0, 0, 0);
+  }
+  return new Date(isoStr);
+}
+
+function buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime, useImapBefore = true }) {
+  const criteria = [];
+  if (unreadOnly) criteria.push('UNSEEN');
+  if (sinceStr) criteria.push(['SINCE', imapDateFromIso(sinceStr)]);
+  if (beforeStr && useImapBefore) criteria.push(['BEFORE', imapDateFromIso(beforeStr)]);
+  else if (recentTime) criteria.push(['SINCE', parseRelativeTime(recentTime)]);
+  if (criteria.length === 0) criteria.push('ALL');
+  return criteria;
+}
+
+function filterByBeforeDate(rows, beforeStr) {
+  if (!beforeStr) return rows;
+  const endMs = imapDateFromIso(beforeStr).getTime();
+  return rows.filter((row) => {
+    const t = new Date(row.date || row.headerDate || 0).getTime();
+    return Number.isFinite(t) && t < endMs;
+  });
+}
+
+function sortRowsNewestFirst(rows) {
+  return rows.sort((a, b) => {
+    const ta = new Date(a.date || a.headerDate || 0).getTime();
+    const tb = new Date(b.date || b.headerDate || 0).getTime();
+    return tb - ta;
+  });
+}
+
 // Parse relative time (e.g., "2h", "30m", "7d") to Date
 function parseRelativeTime(timeStr) {
   const match = timeStr.match(/^(\d+)(m|h|d)$/);
@@ -512,9 +568,8 @@ async function searchEmails(options) {
       const sinceDate = parseRelativeTime(options.recent);
       criteria.push(['SINCE', sinceDate]);
     } else {
-      // Handle absolute dates
-      if (options.since) criteria.push(['SINCE', options.since]);
-      if (options.before) criteria.push(['BEFORE', options.before]);
+      if (options.since) criteria.push(['SINCE', imapDateFromIso(options.since)]);
+      if (options.before) criteria.push(['BEFORE', imapDateFromIso(options.before)]);
     }
 
     // Default to all if no criteria

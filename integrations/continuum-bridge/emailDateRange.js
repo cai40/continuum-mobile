@@ -1,5 +1,20 @@
 'use strict';
 
+const MONTHS = {
+  january: 1, jan: 1,
+  february: 2, feb: 2,
+  march: 3, mar: 3,
+  april: 4, apr: 4,
+  may: 5,
+  june: 6, jun: 6,
+  july: 7, jul: 7,
+  august: 8, aug: 8,
+  september: 9, sep: 9, sept: 9,
+  october: 10, oct: 10,
+  november: 11, nov: 11,
+  december: 12, dec: 12,
+};
+
 function parseDateToken(raw) {
   const m = String(raw || '').trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
   if (!m) return null;
@@ -12,6 +27,21 @@ function parseDateToken(raw) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+function parseNamedDateToken(raw) {
+  const m = String(raw || '').trim().match(/^([a-z]+)\s+(\d{1,2}),?\s+(\d{4})$/i);
+  if (!m) return null;
+  const month = MONTHS[m[1].toLowerCase()];
+  if (!month) return null;
+  const day = parseInt(m[2], 10);
+  const year = parseInt(m[3], 10);
+  if (day < 1 || day > 31 || year < 1970 || year > 2100) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function parseAnyDateToken(raw) {
+  return parseDateToken(raw) || parseNamedDateToken(raw);
+}
+
 function addDays(isoDate, days) {
   const d = new Date(`${isoDate}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
@@ -21,22 +51,22 @@ function addDays(isoDate, days) {
 function parseDateRangeFromMessage(message) {
   const text = message || '';
   const patterns = [
-    /\bfrom\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
-    /\bbetween\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+and\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
-    /\b(?:emails?\s+)?(?:from\s+)?(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:through|thru|until|to|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
-    /\b(?:since|after)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})(?:\s+(?:until|before|to|through)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}))?\b/i,
+    /\bfrom\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
+    /\bbetween\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+and\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
+    /\b(?:emails?\s+)?(?:from\s+)?([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:through|thru|until|to|-)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i,
+    /\b(?:since|after)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})(?:\s+(?:until|before|to|through)\s+([a-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}))?\b/i,
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
-    const d1 = parseDateToken(match[1]);
+    const d1 = parseAnyDateToken(match[1]);
     if (!d1) continue;
     if (!match[2]) {
       const tomorrow = addDays(new Date().toISOString().slice(0, 10), 1);
       return { since: d1, before: tomorrow, label: `${d1} through today` };
     }
-    const d2 = parseDateToken(match[2]);
+    const d2 = parseAnyDateToken(match[2]);
     if (!d2) continue;
     const since = d1 <= d2 ? d1 : d2;
     const end = d1 <= d2 ? d2 : d1;
@@ -51,6 +81,8 @@ function parseDateRangeFromMessage(message) {
 
 module.exports = {
   parseDateToken,
+  parseNamedDateToken,
+  parseAnyDateToken,
   parseDateRangeFromMessage,
   addDays,
 };

@@ -86,7 +86,10 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     return { text: rawStdout.trim().slice(0, 12000), messages: [] };
   }
   if (parsed.length === 0) {
-    return { text: 'No messages found in INBOX for the requested period.', messages: [], fetchedCount: 0 };
+    const hint = dateRangeLabel
+      ? `No messages found in INBOX for ${dateRangeLabel}. If mail exists in this window, try numeric dates (4/1/2026 to 6/19/2026), raise Email Fetch Limit, or paginate with skip/page.`
+      : 'No messages found in INBOX for the requested period.';
+    return { text: hint, messages: [], fetchedCount: 0 };
   }
 
   const maxChars = Math.min(200000, Math.max(10000, limit * 500));

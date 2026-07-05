@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = {
-  version: '2026.07.05',
+  version: '2026.07.06',
   features: {
     date_range: true,
     pagination: true,
