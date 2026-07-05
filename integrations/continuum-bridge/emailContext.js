@@ -232,6 +232,7 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
   const args = sender
     ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
     : [imapScript, ...imapCheckArgs(fetchOptions)];
+  console.error('[continuum-bridge] imap args:', args.slice(1).join(' '));
   const timeoutMs = fetchOptions.since && fetchOptions.before
     ? Math.min(300000, 120000 + fetchOptions.limit * 3000)
     : Math.min(180000, 60000 + fetchOptions.limit * 2500);

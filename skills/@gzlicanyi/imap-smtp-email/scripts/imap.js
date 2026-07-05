@@ -564,20 +564,29 @@ function filterDateRangeWithYearFallback(rows, sinceStr, beforeStr) {
   return { filtered: [], usedSince: sinceStr, usedBefore: beforeStr };
 }
 
-function selectUidsForDateRange(allUids, fetchCap, sinceStr, beforeStr) {
-  if (allUids.length <= fetchCap) return allUids;
-  const sinceMs = imapDateFromIso(sinceStr).getTime();
-  const beforeMs = imapDateFromIso(beforeStr).getTime();
-  const now = Date.now();
-  const eighteenMonthsMs = 548 * 24 * 60 * 60 * 1000;
-  const rangeEndedRecently = beforeMs >= now - eighteenMonthsMs;
-  const rangeStartsRecently = sinceMs >= now - eighteenMonthsMs;
-  // Ascending UIDs: when capping, keep the low-UID side of the since-window so Apr–Jun
-  // is not dropped behind a July mail burst at the high-UID end.
-  if (rangeEndedRecently || rangeStartsRecently) {
-    return allUids.slice(0, fetchCap);
+function mergeRowsByUid(rows) {
+  const byUid = new Map();
+  for (const row of rows) {
+    if (row?.uid != null) byUid.set(row.uid, row);
   }
-  return allUids.slice(-fetchCap);
+  return [...byUid.values()];
+}
+
+function planDateRangeUidBatches(allUids, sinceUids, fetchCap) {
+  const cap = Math.max(1, fetchCap);
+  if (allUids.length <= cap) return [allUids];
+
+  if (sinceUids.length > 0) {
+    if (sinceUids.length <= cap) return [sinceUids];
+    const low = sinceUids.slice(0, cap);
+    const high = sinceUids.slice(-cap);
+    return low[0] === high[0] ? [low] : [high, low];
+  }
+
+  // Yahoo SINCE failed — scan both ends of the full mailbox.
+  const low = allUids.slice(0, cap);
+  const high = allUids.slice(-cap);
+  return low[0] === high[0] ? [low] : [high, low];
 }
 
 async function selectUidsForDateRangeFetch(imap, allUids, fetchCap, sinceStr, unreadOnly) {
@@ -588,10 +597,8 @@ async function selectUidsForDateRangeFetch(imap, allUids, fetchCap, sinceStr, un
   if (sinceUids.length === 0 && unreadOnly) {
     sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
   }
-  if (sinceUids.length > 0 && sinceUids.length <= fetchCap) return sinceUids;
-  if (sinceUids.length > fetchCap) return sinceUids.slice(0, fetchCap);
-
-  return selectUidsForDateRange(allUids, fetchCap, sinceStr, null);
+  const batches = planDateRangeUidBatches(allUids, sinceUids, fetchCap);
+  return batches[0];
 }
 
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
@@ -622,23 +629,32 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
   }
 
-  let uidsToFetch = await selectUidsForDateRangeFetch(
-    imap, allUids, fetchCap, sinceStr, unreadOnly,
-  );
+  const uidBatches = planDateRangeUidBatches(allUids, sinceUids, fetchCap);
+  let results = [];
+  let scannedUids = 0;
+  for (const batch of uidBatches) {
+    const batchResults = await fetchRowsByUids(imap, batch, { lite, compactNow: false });
+    results = mergeRowsByUid(results.concat(batchResults));
+    scannedUids += batch.length;
+    const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
+    if (batchFiltered.length > 0) break;
+  }
 
-  let results = await fetchRowsByUids(imap, uidsToFetch, { lite, compactNow: false });
   let span = scanDateSpan(results);
   let { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
 
-  // If capped the since-window, fetch the next UID chunk (toward July) when no matches yet.
-  if (filtered.length === 0 && sinceUids.length > uidsToFetch.length) {
-    const extraUids = sinceUids.slice(uidsToFetch.length, uidsToFetch.length + fetchCap);
-    if (extraUids.length > 0) {
-      const extraResults = await fetchRowsByUids(imap, extraUids, { lite, compactNow: false });
-      results = results.concat(extraResults);
+  // Walk additional since-window chunks if still zero (large Apr–Jul inboxes).
+  if (filtered.length === 0 && sinceUids.length > fetchCap) {
+    for (let start = fetchCap; start < sinceUids.length; start += fetchCap) {
+      const chunk = sinceUids.slice(start, start + fetchCap);
+      if (!chunk.length) break;
+      const chunkResults = await fetchRowsByUids(imap, chunk, { lite, compactNow: false });
+      results = mergeRowsByUid(results.concat(chunkResults));
+      scannedUids += chunk.length;
       span = scanDateSpan(results);
       ({ filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr));
-      console.error(`[imap] date-range: fetched next ${extraUids.length} uid(s), matched ${filtered.length}`);
+      console.error(`[imap] date-range: chunk ${start}-${start + chunk.length} matched ${filtered.length}`);
+      if (filtered.length > 0) break;
     }
   }
 
@@ -650,13 +666,16 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     : [];
 
   console.error(
-    `[imap] date-range lookback ${days}d: fetched ${uidsToFetch.length}/${allUids.length} uid(s),`
+    `[imap] date-range lookback ${days}d: fetched ${scannedUids}/${allUids.length} uid(s) in ${uidBatches.length} batch(es),`
+    + ` since-window ${sinceUids.length},`
     + ` scanned ${span ? `${span.oldest}..${span.newest}` : 'no dates'},`
     + ` matched ${filtered.length} for ${usedSince}..${usedBefore}`,
   );
   console.error(`SCAN_META:${JSON.stringify({
-    scanned: uidsToFetch.length,
+    scanned: scannedUids,
     totalUids: allUids.length,
+    sinceWindow: sinceUids.length,
+    batches: uidBatches.length,
     span,
     matched: filtered.length,
     sampleDates,
