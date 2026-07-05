@@ -332,8 +332,9 @@ const ChatSection = () => {
       if (!finalInput.trim() && activeAttachments.length === 0) return;
 
       const isEmailQuery =
-        /\b(email|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash)\b/i.test(finalInput)
-        || /\b(delete|remove|trash|move)\b.*\b(email|mail|inbox|message|junk|spam)\b/i.test(finalInput);
+        /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
+        || /\b(delete|remove|trash|move)\b.*\b(emails?|mail|inbox|message|junk|spam)\b/i.test(finalInput)
+        || /\bemails?\s+\d{1,4}\s*[-–]\s*\d{1,4}\b/i.test(finalInput);
 
       const openrouterProviders = [
         'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',

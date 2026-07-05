@@ -11,6 +11,8 @@ const EMAIL_LIVE_INBOX_APPEND = [
   'Use ONLY the UIDs and headers in this message. Never invent, simulate, or reconstruct emails.',
   'If the user asked for more emails than were fetched, state the actual count and stop.',
   'Never claim you lack email access when inbox data is present below.',
+  'NEVER say you are waiting for the system to load the next batch — IMAP fetch happens in this turn when triggered.',
+  'If no inbox block appears below, tell the user to resend with an explicit fetch phrase (e.g. "skip 100, fetch next 250 emails").',
 ].join(' ');
 
 const EMAIL_LIVE_INBOX_MEMORY_APPEND = [

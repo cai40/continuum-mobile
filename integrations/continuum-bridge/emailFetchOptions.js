@@ -4,6 +4,8 @@ const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 1000;
 const DEFAULT_RECENT = '7d';
 
+const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary)\b/i;
+
 function clampLimit(value, fallback = DEFAULT_LIMIT) {
   const n = parseInt(value, 10);
   if (Number.isNaN(n)) return fallback;
@@ -108,6 +110,17 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   return { limit, offset, recent, unreadOnly };
 }
 
+function wantsEmailFetch(message, payloadOptions = {}) {
+  const text = message || '';
+  if (EMAIL_TRIGGER.test(text)) return true;
+  if (parseRangeFromMessage(text)) return true;
+  if (parseOffsetFromMessage(text) != null) return true;
+  if (parseLimitFromMessage(text) != null && /\bemails?\b/i.test(text)) return true;
+  if (/\b(?:page|batch)\s+\d/i.test(text)) return true;
+  if (Number(payloadOptions.email_offset) > 0) return true;
+  return false;
+}
+
 module.exports = {
   DEFAULT_LIMIT,
   MAX_LIMIT,
@@ -118,4 +131,5 @@ module.exports = {
   parseRangeFromMessage,
   parseRecentFromMessage,
   resolveEmailFetchOptions,
+  wantsEmailFetch,
 };

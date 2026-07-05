@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { resolveEmailFetchOptions, MAX_LIMIT } = require('./emailFetchOptions');
+const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
@@ -38,8 +38,6 @@ async function probeImapDeleteCommand(imapScript) {
     return false;
   }
 }
-
-const EMAIL_KEYWORDS = /\b(email|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember)\b/i;
 
 function findImapScript() {
   const home = process.env.HOME || '/root';
@@ -189,7 +187,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
   const deleteRequested = wantsEmailDelete(message);
   const triageRequested = wantsTriage(message);
   const memoryIngestRequested = wantsEmailMemoryIngest(message);
-  if (!EMAIL_KEYWORDS.test(message || '') && !deleteRequested && !triageRequested && !memoryIngestRequested) {
+  if (!wantsEmailFetch(message, payloadOptions) && !deleteRequested && !triageRequested && !memoryIngestRequested) {
     return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null };
   }
 
