@@ -223,7 +223,7 @@ async function fetchHeaderRowsByUids(imap, uids, timeoutMs = 120000) {
     bodies: ['HEADER.FIELDS (DATE FROM SUBJECT)'],
     markSeen: false,
   };
-  const spec = uidChunkToFetchSpec(uids);
+  const spec = uidListToFetchSpec(uids);
   const messages = await Promise.race([
     fetchByUids(imap, spec, fetchOptions),
     new Promise((_, reject) => {
@@ -244,13 +244,57 @@ async function fetchHeaderRowsByUids(imap, uids, timeoutMs = 120000) {
   });
 }
 
-function uidChunkToFetchSpec(chunk) {
-  if (!chunk.length) return [];
-  const sorted = [...chunk].sort((a, b) => a - b);
+function uidListToFetchSpec(uids) {
+  if (!uids.length) return [];
+  const sorted = [...uids].sort((a, b) => a - b);
   if (sorted.length === 1) return sorted;
   const contiguous = sorted.every((uid, i) => i === 0 || uid === sorted[i - 1] + 1);
   if (contiguous) return [`${sorted[0]}:${sorted[sorted.length - 1]}`];
   return sorted;
+}
+
+async function fetchHeaderRowsByUidRange(imap, uidLow, uidHigh, timeoutMs = 120000) {
+  return fetchHeaderRowsByUids(imap, [`${uidLow}:${uidHigh}`], timeoutMs);
+}
+
+function pushUidBatches(plan, uids, labelPrefix, batchSize = 100) {
+  const sorted = [...uids].sort((a, b) => a - b);
+  for (let i = 0; i < sorted.length; i += batchSize) {
+    plan.push({
+      type: 'uids',
+      label: `${labelPrefix}-${i}`,
+      values: sorted.slice(i, i + batchSize),
+    });
+  }
+}
+
+// Yahoo SEARCH caps at ~1000 UIDs. Walk older mail with UID range FETCH (sparse-safe).
+function buildDateRangeScanPlan(sinceUids, recentUids) {
+  const plan = [];
+  const UID_BLOCK = 2000;
+  const MAX_OLDER_RANGES = 25;
+
+  if (sinceUids.length) pushUidBatches(plan, sinceUids, 'since');
+
+  if (recentUids.length >= 1000) {
+    const minRecent = Math.min(...recentUids);
+    let uidHigh = minRecent - 1;
+    let rangeCount = 0;
+    while (uidHigh > 0 && rangeCount < MAX_OLDER_RANGES) {
+      const uidLow = Math.max(1, uidHigh - UID_BLOCK + 1);
+      plan.push({ type: 'range', label: `${uidLow}:${uidHigh}`, low: uidLow, high: uidHigh });
+      console.error(
+        `[imap] date-range: expand older range ${uidLow}:${uidHigh}`
+        + ` (Yahoo cap ~1000, min recent uid ${minRecent})`,
+      );
+      uidHigh = uidLow - 1;
+      rangeCount++;
+    }
+  }
+
+  if (recentUids.length) pushUidBatches(plan, recentUids, 'recent');
+
+  return plan;
 }
 
 async function fetchCheckRowsByUids(imap, uids, lite) {
@@ -282,35 +326,7 @@ function buildDateRangeScanUids(sinceUids, recentUids, maxScan = 25000) {
   };
   for (const uid of sinceUids) add(uid);
   for (const uid of recentUids) add(uid);
-
-  let ordered = out.sort((a, b) => a - b);
-
-  // Yahoo caps SEARCH results (~1000). Older mail in the lookback window lives below min(recent).
-  if (recentUids.length >= 1000 && ordered.length > 0) {
-    const minRecent = Math.min(...recentUids);
-    const older = [];
-    const UID_BLOCK = 500;
-    let uidHigh = minRecent - 1;
-    while (uidHigh > 0 && older.length + ordered.length < maxScan) {
-      const uidLow = Math.max(1, uidHigh - UID_BLOCK + 1);
-      for (let u = uidLow; u <= uidHigh; u++) {
-        if (!seen.has(u)) {
-          seen.add(u);
-          older.push(u);
-        }
-      }
-      console.error(
-        `[imap] date-range: expand older uids ${uidLow}..${uidHigh}`
-        + ` (Yahoo search cap ~1000, min recent uid ${minRecent})`,
-      );
-      uidHigh = uidLow - 1;
-    }
-    ordered = [...older.sort((a, b) => a - b), ...ordered].slice(0, maxScan);
-  } else {
-    ordered = ordered.slice(0, maxScan);
-  }
-
-  return ordered;
+  return out.sort((a, b) => a - b).slice(0, maxScan);
 }
 
 async function searchUidsLogged(imap, criteria, label, timeoutMs = 90000) {
@@ -754,15 +770,13 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     );
   }
 
-  const FETCH_CHUNK = 100;
-  const MAX_SCAN = 25000;
-  const uidsToScan = buildDateRangeScanUids(sinceUids, recentUids, MAX_SCAN);
+  const scanPlan = buildDateRangeScanPlan(sinceUids, recentUids);
   console.error(
-    `[imap] date-range uids: since=${sinceUids.length} recent=${recentUids.length}`
-    + ` scanning=${uidsToScan.length}`,
+    `[imap] date-range scan: since=${sinceUids.length} recent=${recentUids.length}`
+    + ` steps=${scanPlan.length}`,
   );
 
-  if (uidsToScan.length === 0) {
+  if (scanPlan.length === 0) {
     console.error(`SCAN_META:${JSON.stringify({
       scanned: 0,
       totalUids: 0,
@@ -776,18 +790,35 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     return [];
   }
 
+  const sinceMs = imapDateFromIso(sinceStr).getTime();
   let results = [];
-  let scannedUids = 0;
-  for (let i = 0; i < uidsToScan.length; i += FETCH_CHUNK) {
-    const chunk = uidsToScan.slice(i, i + FETCH_CHUNK);
-    const batchResults = await fetchHeaderRowsByUids(imap, chunk);
+  let scannedRows = 0;
+  for (const step of scanPlan) {
+    let batchResults = [];
+    if (step.type === 'range') {
+      batchResults = await fetchHeaderRowsByUidRange(imap, step.low, step.high);
+    } else {
+      batchResults = await fetchHeaderRowsByUids(imap, step.values);
+    }
+    scannedRows += batchResults.length;
     results = mergeRowsByUid(results.concat(batchResults));
-    scannedUids += chunk.length;
     const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
     console.error(
-      `[imap] date-range chunk ${i}-${i + chunk.length}: fetched ${batchResults.length} row(s),`
+      `[imap] date-range ${step.label}: fetched ${batchResults.length} row(s),`
       + ` total matched ${batchFiltered.length}`,
     );
+
+    if (step.type === 'range' && batchResults.length > 0 && batchFiltered.length < offset + limit) {
+      const newestInBatch = Math.max(...batchResults.map(emailTimestampMs).filter((t) => t > 0));
+      if (newestInBatch > 0 && newestInBatch < sinceMs) {
+        console.error(
+          `[imap] date-range: stop older scan (newest in ${step.label} is`
+          + ` ${new Date(newestInBatch).toISOString().slice(0, 10)} < since ${sinceStr})`,
+        );
+        break;
+      }
+    }
+
     if (batchFiltered.length >= offset + limit) break;
   }
 
@@ -802,15 +833,16 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     : [];
 
   console.error(
-    `[imap] date-range lookback ${days}d: scanned ${scannedUids} uid(s),`
+    `[imap] date-range lookback ${days}d: fetched ${scannedRows} row(s) in ${scanPlan.length} step(s),`
     + ` since-window ${sinceUids.length}, recent-window ${recentUids.length},`
     + ` parsed ${results.length} row(s),`
     + ` dates ${span ? `${span.oldest}..${span.newest}` : 'none'},`
     + ` matched ${filtered.length} for ${usedSince}..${usedBefore}`,
   );
   console.error(`SCAN_META:${JSON.stringify({
-    scanned: scannedUids,
-    totalUids: uidsToScan.length,
+    scanned: scannedRows,
+    totalUids: buildDateRangeScanUids(sinceUids, recentUids).length,
+    scanSteps: scanPlan.length,
     sinceWindow: sinceUids.length,
     recentWindow: recentUids.length,
     parsed: results.length,
