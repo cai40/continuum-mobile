@@ -196,50 +196,50 @@ function fetchByUids(imap, uids, fetchOptions) {
   });
 }
 
-function decodeHeaderValue(raw) {
-  return String(raw || '')
-    .replace(/\r?\n[ \t]+/g, ' ')
-    .trim();
-}
-
-function parseHeaderFieldsBody(body) {
-  const text = String(body || '');
-  const subject = decodeHeaderValue((text.match(/^Subject:\s*(.*)$/im) || [])[1]);
-  const from = decodeHeaderValue((text.match(/^From:\s*(.*)$/im) || [])[1]);
-  const dateRaw = decodeHeaderValue((text.match(/^Date:\s*(.*)$/im) || [])[1]);
-  let headerDate;
-  if (dateRaw) {
-    const parsed = new Date(dateRaw);
-    if (Number.isFinite(parsed.getTime())) headerDate = parsed;
-  }
-  return {
-    from: from || 'Unknown',
-    subject: subject || '(no subject)',
-    headerDate,
-  };
-}
-
-async function fetchHeaderRowsByUids(imap, uids) {
+async function fetchCheckRowsByUids(imap, uids, lite) {
   if (!uids.length) return [];
-  const fetchOptions = {
-    bodies: ['HEADER.FIELDS (DATE FROM SUBJECT)'],
-    markSeen: false,
-  };
+  const fetchOptions = { bodies: [''], markSeen: false };
   const messages = await fetchByUids(imap, uids, fetchOptions);
   const results = [];
   for (const item of messages) {
-    const parsed = parseHeaderFieldsBody(item.body);
-    results.push({
+    const parsed = await parseEmail(item.body);
+    const row = {
       uid: item.attributes?.uid,
-      from: parsed.from,
-      subject: parsed.subject,
-      headerDate: parsed.headerDate,
+      ...parsed,
       date: item.attributes?.date,
-      flags: item.attributes?.flags || [],
-      snippet: '',
-    });
+      flags: item.attributes?.flags,
+    };
+    results.push(lite ? compactCheckRow(row) : row);
   }
   return results;
+}
+
+function buildDateRangeScanUids(allUids, sinceUids, maxScan) {
+  if (allUids.length <= maxScan) return [...allUids];
+  const seen = new Set();
+  const ordered = [];
+  const add = (uid) => {
+    if (uid != null && !seen.has(uid)) {
+      seen.add(uid);
+      ordered.push(uid);
+    }
+  };
+  // Newest mail first (July burst) — same UIDs as working "fetch last 100".
+  for (const uid of allUids.slice(-2000)) add(uid);
+  const sinceList = sinceUids.length > 0 ? sinceUids : allUids;
+  for (const uid of sinceList.slice(0, Math.max(0, maxScan - ordered.length))) add(uid);
+  for (const uid of sinceList.slice(-Math.max(0, maxScan - ordered.length))) add(uid);
+  return ordered.slice(0, maxScan);
+}
+
+async function fetchRowsInChunks(imap, uids, lite, chunkSize = 100) {
+  let rows = [];
+  for (let i = 0; i < uids.length; i += chunkSize) {
+    const chunk = uids.slice(i, i + chunkSize);
+    const batch = await fetchCheckRowsByUids(imap, chunk, lite);
+    rows = mergeRowsByUid(rows.concat(batch));
+  }
+  return rows;
 }
 
 // Search for messages
@@ -644,7 +644,6 @@ function planDateRangeUidBatches(allUids, sinceUids, fetchCap) {
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
-  // Always search ALL: Yahoo SINCE windows are incomplete; small/medium inboxes scan fully.
   let allUids = await searchUids(imap, buildSearchCriteria({ unreadOnly }));
   if (allUids.length === 0 && unreadOnly) {
     allUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false }));
@@ -662,41 +661,33 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     return [];
   }
 
-  const fetchCap = 15000;
   const sinceCriteria = buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false });
   let sinceUids = await searchUids(imap, sinceCriteria);
   if (sinceUids.length === 0 && unreadOnly) {
     sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
   }
 
-  const uidBatches = planDateRangeUidBatches(allUids, sinceUids, fetchCap);
+  const FETCH_CHUNK = 100;
+  const MAX_SCAN = 10000;
+  const uidsToScan = buildDateRangeScanUids(allUids, sinceUids, MAX_SCAN);
+
   let results = [];
   let scannedUids = 0;
-  for (const batch of uidBatches) {
-    const batchResults = await fetchHeaderRowsByUids(imap, batch);
+  for (let i = 0; i < uidsToScan.length; i += FETCH_CHUNK) {
+    const chunk = uidsToScan.slice(i, i + FETCH_CHUNK);
+    const batchResults = await fetchCheckRowsByUids(imap, chunk, lite);
     results = mergeRowsByUid(results.concat(batchResults));
-    scannedUids += batch.length;
+    scannedUids += chunk.length;
     const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
-    if (batchFiltered.length > 0) break;
+    console.error(
+      `[imap] date-range chunk ${i}-${i + chunk.length}: fetched ${batchResults.length} row(s),`
+      + ` total matched ${batchFiltered.length}`,
+    );
+    if (batchFiltered.length >= offset + limit) break;
   }
 
   let span = scanDateSpan(results);
   let { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
-
-  // Walk additional since-window chunks if still zero (large Apr–Jul inboxes).
-  if (filtered.length === 0 && sinceUids.length > fetchCap) {
-    for (let start = fetchCap; start < sinceUids.length; start += fetchCap) {
-      const chunk = sinceUids.slice(start, start + fetchCap);
-      if (!chunk.length) break;
-      const chunkResults = await fetchHeaderRowsByUids(imap, chunk);
-      results = mergeRowsByUid(results.concat(chunkResults));
-      scannedUids += chunk.length;
-      span = scanDateSpan(results);
-      ({ filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr));
-      console.error(`[imap] date-range: chunk ${start}-${start + chunk.length} matched ${filtered.length}`);
-      if (filtered.length > 0) break;
-    }
-  }
 
   const sampleDates = filtered.length === 0
     ? sortRowsNewestFirst([...results]).slice(0, 5).map((row) => {
@@ -706,16 +697,17 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     : [];
 
   console.error(
-    `[imap] date-range lookback ${days}d: fetched ${scannedUids}/${allUids.length} uid(s) in ${uidBatches.length} batch(es),`
+    `[imap] date-range lookback ${days}d: scanned ${scannedUids}/${allUids.length} uid(s),`
     + ` since-window ${sinceUids.length},`
-    + ` scanned ${span ? `${span.oldest}..${span.newest}` : 'no dates'},`
+    + ` parsed ${results.length} row(s),`
+    + ` dates ${span ? `${span.oldest}..${span.newest}` : 'none'},`
     + ` matched ${filtered.length} for ${usedSince}..${usedBefore}`,
   );
   console.error(`SCAN_META:${JSON.stringify({
     scanned: scannedUids,
     totalUids: allUids.length,
     sinceWindow: sinceUids.length,
-    batches: uidBatches.length,
+    parsed: results.length,
     span,
     matched: filtered.length,
     sampleDates,
