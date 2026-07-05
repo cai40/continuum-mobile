@@ -485,8 +485,21 @@ function filterByDateRange(rows, sinceStr, beforeStr) {
   });
 }
 
+function filterTimestampMs(row) {
+  // INTERNALDATE (when Yahoo received the message) is reliable for range filters.
+  // Date: headers are often wrong on marketing mail.
+  for (const v of [row.date, row.headerDate]) {
+    const t = new Date(v).getTime();
+    if (Number.isFinite(t) && t > 0) return t;
+  }
+  return 0;
+}
+
 function emailTimestampMs(row) {
-  // Prefer the Date: header users see over IMAP INTERNALDATE.
+  return filterTimestampMs(row);
+}
+
+function displayTimestampMs(row) {
   for (const v of [row.headerDate, row.date]) {
     const t = new Date(v).getTime();
     if (Number.isFinite(t) && t > 0) return t;
@@ -556,15 +569,29 @@ function selectUidsForDateRange(allUids, fetchCap, sinceStr, beforeStr) {
   const sinceMs = imapDateFromIso(sinceStr).getTime();
   const beforeMs = imapDateFromIso(beforeStr).getTime();
   const now = Date.now();
-  // UID order tracks arrival time: recent ranges (e.g. Apr–Jun when today is Jul) live at the
-  // HIGH-UID end. Only scan the low-UID end for ranges that ended well over a year ago.
   const eighteenMonthsMs = 548 * 24 * 60 * 60 * 1000;
   const rangeEndedRecently = beforeMs >= now - eighteenMonthsMs;
   const rangeStartsRecently = sinceMs >= now - eighteenMonthsMs;
+  // Ascending UIDs: when capping, keep the low-UID side of the since-window so Apr–Jun
+  // is not dropped behind a July mail burst at the high-UID end.
   if (rangeEndedRecently || rangeStartsRecently) {
-    return allUids.slice(-fetchCap);
+    return allUids.slice(0, fetchCap);
   }
-  return allUids.slice(0, fetchCap);
+  return allUids.slice(-fetchCap);
+}
+
+async function selectUidsForDateRangeFetch(imap, allUids, fetchCap, sinceStr, unreadOnly) {
+  if (allUids.length <= fetchCap) return allUids;
+
+  const sinceCriteria = buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false });
+  let sinceUids = await searchUids(imap, sinceCriteria);
+  if (sinceUids.length === 0 && unreadOnly) {
+    sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
+  }
+  if (sinceUids.length > 0 && sinceUids.length <= fetchCap) return sinceUids;
+  if (sinceUids.length > fetchCap) return sinceUids.slice(0, fetchCap);
+
+  return selectUidsForDateRange(allUids, fetchCap, sinceStr, null);
 }
 
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
@@ -589,11 +616,31 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
   }
 
   const fetchCap = 15000;
-  const uidsToFetch = selectUidsForDateRange(allUids, fetchCap, sinceStr, beforeStr);
+  const sinceCriteria = buildSearchCriteria({ unreadOnly, sinceStr, useImapBefore: false });
+  let sinceUids = await searchUids(imap, sinceCriteria);
+  if (sinceUids.length === 0 && unreadOnly) {
+    sinceUids = await searchUids(imap, buildSearchCriteria({ unreadOnly: false, sinceStr, useImapBefore: false }));
+  }
 
-  const results = await fetchRowsByUids(imap, uidsToFetch, { lite, compactNow: false });
-  const span = scanDateSpan(results);
-  const { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
+  let uidsToFetch = await selectUidsForDateRangeFetch(
+    imap, allUids, fetchCap, sinceStr, unreadOnly,
+  );
+
+  let results = await fetchRowsByUids(imap, uidsToFetch, { lite, compactNow: false });
+  let span = scanDateSpan(results);
+  let { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
+
+  // If capped the since-window, fetch the next UID chunk (toward July) when no matches yet.
+  if (filtered.length === 0 && sinceUids.length > uidsToFetch.length) {
+    const extraUids = sinceUids.slice(uidsToFetch.length, uidsToFetch.length + fetchCap);
+    if (extraUids.length > 0) {
+      const extraResults = await fetchRowsByUids(imap, extraUids, { lite, compactNow: false });
+      results = results.concat(extraResults);
+      span = scanDateSpan(results);
+      ({ filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr));
+      console.error(`[imap] date-range: fetched next ${extraUids.length} uid(s), matched ${filtered.length}`);
+    }
+  }
 
   const sampleDates = filtered.length === 0
     ? sortRowsNewestFirst([...results]).slice(0, 5).map((row) => {
@@ -631,11 +678,7 @@ function filterByBeforeDate(rows, beforeStr) {
 }
 
 function sortRowsNewestFirst(rows) {
-  return rows.sort((a, b) => {
-    const ta = new Date(a.date || a.headerDate || 0).getTime();
-    const tb = new Date(b.date || b.headerDate || 0).getTime();
-    return tb - ta;
-  });
+  return rows.sort((a, b) => filterTimestampMs(b) - filterTimestampMs(a));
 }
 
 // Parse relative time (e.g., "2h", "30m", "7d") to Date

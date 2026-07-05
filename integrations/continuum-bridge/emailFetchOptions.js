@@ -96,9 +96,11 @@ function parseRecentFromMessage(message) {
 function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const limitFromMessage = parseLimitFromMessage(message);
   const offsetFromMessage = parseOffsetFromMessage(message);
+  const dateRangeFromMessage = parseDateRangeFromMessage(message);
+  const defaultLimit = dateRangeFromMessage ? 250 : DEFAULT_LIMIT;
   const limit = clampLimit(
     limitFromMessage ?? payloadOptions.email_limit,
-    DEFAULT_LIMIT,
+    defaultLimit,
   );
   let offset = clampOffset(
     offsetFromMessage ?? payloadOptions.email_offset,
@@ -109,7 +111,6 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
     const page = parseInt(pageMatch[1], 10);
     if (page > 1) offset = clampOffset((page - 1) * limit);
   }
-  const dateRangeFromMessage = parseDateRangeFromMessage(message);
   const recent = dateRangeFromMessage
     ? null
     : (parseRecentFromMessage(message) || payloadOptions.email_recent || DEFAULT_RECENT);
