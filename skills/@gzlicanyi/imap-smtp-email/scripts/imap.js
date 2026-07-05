@@ -217,13 +217,19 @@ function parseHeaderFieldsBody(body) {
   };
 }
 
-async function fetchHeaderRowsByUids(imap, uids) {
+async function fetchHeaderRowsByUids(imap, uids, timeoutMs = 120000) {
   if (!uids.length) return [];
   const fetchOptions = {
     bodies: ['HEADER.FIELDS (DATE FROM SUBJECT)'],
     markSeen: false,
   };
-  const messages = await fetchByUids(imap, uids, fetchOptions);
+  const spec = uidChunkToFetchSpec(uids);
+  const messages = await Promise.race([
+    fetchByUids(imap, spec, fetchOptions),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(`IMAP header fetch timed out (${spec.join(',')})`)), timeoutMs);
+    }),
+  ]);
   return messages.map((item) => {
     const parsed = parseHeaderFieldsBody(item.body);
     return {
@@ -236,6 +242,15 @@ async function fetchHeaderRowsByUids(imap, uids) {
       snippet: '',
     };
   });
+}
+
+function uidChunkToFetchSpec(chunk) {
+  if (!chunk.length) return [];
+  const sorted = [...chunk].sort((a, b) => a - b);
+  if (sorted.length === 1) return sorted;
+  const contiguous = sorted.every((uid, i) => i === 0 || uid === sorted[i - 1] + 1);
+  if (contiguous) return [`${sorted[0]}:${sorted[sorted.length - 1]}`];
+  return sorted;
 }
 
 async function fetchCheckRowsByUids(imap, uids, lite) {
@@ -256,7 +271,7 @@ async function fetchCheckRowsByUids(imap, uids, lite) {
   return results;
 }
 
-function buildDateRangeScanUids(sinceUids, recentUids) {
+function buildDateRangeScanUids(sinceUids, recentUids, maxScan = 25000) {
   const seen = new Set();
   const out = [];
   const add = (uid) => {
@@ -267,7 +282,35 @@ function buildDateRangeScanUids(sinceUids, recentUids) {
   };
   for (const uid of sinceUids) add(uid);
   for (const uid of recentUids) add(uid);
-  return out;
+
+  let ordered = out.sort((a, b) => a - b);
+
+  // Yahoo caps SEARCH results (~1000). Older mail in the lookback window lives below min(recent).
+  if (recentUids.length >= 1000 && ordered.length > 0) {
+    const minRecent = Math.min(...recentUids);
+    const older = [];
+    const UID_BLOCK = 500;
+    let uidHigh = minRecent - 1;
+    while (uidHigh > 0 && older.length + ordered.length < maxScan) {
+      const uidLow = Math.max(1, uidHigh - UID_BLOCK + 1);
+      for (let u = uidLow; u <= uidHigh; u++) {
+        if (!seen.has(u)) {
+          seen.add(u);
+          older.push(u);
+        }
+      }
+      console.error(
+        `[imap] date-range: expand older uids ${uidLow}..${uidHigh}`
+        + ` (Yahoo search cap ~1000, min recent uid ${minRecent})`,
+      );
+      uidHigh = uidLow - 1;
+    }
+    ordered = [...older.sort((a, b) => a - b), ...ordered].slice(0, maxScan);
+  } else {
+    ordered = ordered.slice(0, maxScan);
+  }
+
+  return ordered;
 }
 
 async function searchUidsLogged(imap, criteria, label, timeoutMs = 90000) {
@@ -397,7 +440,7 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
 
     if (sinceStr && beforeStr) {
       console.error(`[imap] date-range check ${sinceStr}..${beforeStr} limit=${limit} offset=${offset}`);
-      return fetchDateRangeViaRecentLookback(imap, {
+      return await fetchDateRangeViaRecentLookback(imap, {
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
     }
@@ -713,7 +756,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
 
   const FETCH_CHUNK = 100;
   const MAX_SCAN = 25000;
-  const uidsToScan = buildDateRangeScanUids(sinceUids, recentUids).slice(0, MAX_SCAN);
+  const uidsToScan = buildDateRangeScanUids(sinceUids, recentUids, MAX_SCAN);
   console.error(
     `[imap] date-range uids: since=${sinceUids.length} recent=${recentUids.length}`
     + ` scanning=${uidsToScan.length}`,
