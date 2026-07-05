@@ -269,8 +269,17 @@ async function parseEmail(bodyStr, includeAttachments = false) {
   };
 }
 
+// Select UIDs newest-first window: offset skips the newest N, limit takes the next batch.
+function selectUidsByOffsetLimit(allUids, limit, offset = 0) {
+  if (!allUids.length) return [];
+  const off = Math.max(0, parseInt(offset, 10) || 0);
+  const lim = Math.max(1, parseInt(limit, 10) || 10);
+  if (off >= allUids.length) return [];
+  return allUids.slice(-(off + lim), off > 0 ? -off : undefined);
+}
+
 // Check for new/unread emails
-async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false) {
+async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0) {
   const imap = await connect();
 
   try {
@@ -288,7 +297,8 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
     const allUids = await searchUids(imap, searchCriteria);
     if (allUids.length === 0) return [];
 
-    const fetchUids = allUids.slice(-limit);
+    const fetchUids = selectUidsByOffsetLimit(allUids, limit, offset);
+    if (fetchUids.length === 0) return [];
 
     const fetchOptions = {
       bodies: [''],
@@ -482,6 +492,7 @@ async function searchEmails(options) {
     if (criteria.length === 0) criteria.push('ALL');
 
     const limit = parseInt(options.limit) || 20;
+    const offset = parseInt(options.offset) || 0;
     const fetchOptions = { bodies: [''], markSeen: false };
 
     // Default UID-slice: fast, correct when UID order matches INTERNALDATE
@@ -491,7 +502,8 @@ async function searchEmails(options) {
     if (options.sort !== 'date') {
       const allUids = await searchUids(imap, criteria);
       if (allUids.length === 0) return [];
-      const fetchUids = allUids.slice(-limit);
+      const fetchUids = selectUidsByOffsetLimit(allUids, limit, offset);
+      if (fetchUids.length === 0) return [];
       const messages = (await fetchByUids(imap, fetchUids, fetchOptions)).reverse();
       const results = [];
       for (const item of messages) {
@@ -512,7 +524,7 @@ async function searchEmails(options) {
       const dateA = a.attributes.date ? new Date(a.attributes.date) : new Date(0);
       const dateB = b.attributes.date ? new Date(b.attributes.date) : new Date(0);
       return dateB - dateA;
-    }).slice(0, limit);
+    }).slice(offset, offset + limit);
 
     const results = [];
     for (const item of sortedMessages) {
@@ -753,7 +765,8 @@ async function main() {
           options.mailbox || DEFAULT_MAILBOX,
           parseInt(options.limit) || 10,
           options.recent || null,
-          !!options.unseen // bare flag (--unseen) or explicit value (--unseen true)
+          !!options.unseen,
+          parseInt(options.offset) || 0,
         );
         break;
 

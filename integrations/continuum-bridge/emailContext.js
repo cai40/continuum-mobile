@@ -77,7 +77,7 @@ function stripHtml(value) {
     .trim();
 }
 
-function formatEmailMessages(rawStdout, limit) {
+function formatEmailMessages(rawStdout, limit, offset = 0) {
   let parsed;
   try {
     parsed = JSON.parse(rawStdout);
@@ -91,7 +91,7 @@ function formatEmailMessages(rawStdout, limit) {
     return { text: 'No messages found in INBOX for the requested period.', messages: [], fetchedCount: 0 };
   }
 
-  const maxChars = Math.min(80000, Math.max(10000, limit * 450));
+  const maxChars = Math.min(200000, Math.max(10000, limit * 500));
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
   const uidList = uids.join(', ');
   const fetchedCount = parsed.length;
@@ -99,8 +99,12 @@ function formatEmailMessages(rawStdout, limit) {
     ? `\nNOTE: Requested up to ${limit} emails but only ${fetchedCount} exist in INBOX for this lookback period. Do NOT invent the missing ${limit - fetchedCount}.`
     : '';
 
+  const offsetNote = offset > 0
+    ? `Skipped newest ${offset} email(s); showing the next batch.`
+    : null;
   const header = [
-    `Fetched ${fetchedCount} REAL email(s) from Yahoo IMAP (requested limit ${limit}, max ${MAX_LIMIT} per request).`,
+    `Fetched ${fetchedCount} REAL email(s) from Yahoo IMAP (offset ${offset}, limit ${limit}, max ${MAX_LIMIT} per request).`,
+    offsetNote,
     uids.length ? `Valid UIDs ONLY: ${uidList}` : null,
     'ANTI-HALLUCINATION: Summarize ONLY the emails listed below. NEVER invent, simulate, reconstruct, or guess emails, UIDs, senders, or subjects not in this list.',
     shortfall || null,
@@ -117,7 +121,7 @@ function formatEmailMessages(rawStdout, limit) {
     const preview = stripHtml(previewSource).slice(0, 220);
     const triage = classifyEmail(msg);
     return [
-      `--- Email ${idx + 1}${unread ? ' (unread)' : ''} [${triage.category}] ---`,
+      `--- Email ${idx + 1 + offset}${unread ? ' (unread)' : ''} [${triage.category}] ---`,
       uid ? `UID: ${uid}` : null,
       `From: ${from}`,
       `Subject: ${subject}`,
@@ -131,6 +135,9 @@ function formatEmailMessages(rawStdout, limit) {
 
 function imapCheckArgs(fetchOptions) {
   const args = ['check', '--limit', String(fetchOptions.limit), '--recent', fetchOptions.recent];
+  if (fetchOptions.offset > 0) {
+    args.push('--offset', String(fetchOptions.offset));
+  }
   if (fetchOptions.unreadOnly) {
     args.push('--unseen');
   }
@@ -159,11 +166,11 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
   if (stderr?.trim()) {
     console.error('[continuum-bridge] imap stderr:', stderr.trim());
   }
-  const formatted = formatEmailMessages(stdout, fetchOptions.limit);
+  const formatted = formatEmailMessages(stdout, fetchOptions.limit, fetchOptions.offset || 0);
   let context = formatted.text;
   if (sender) {
     context = [
-      `Sender filter: FROM "${sender}" (${fetchOptions.recent}, limit ${fetchOptions.limit}).`,
+      `Sender filter: FROM "${sender}" (${fetchOptions.recent}, limit ${fetchOptions.limit}${fetchOptions.offset ? `, offset ${fetchOptions.offset}` : ''}).`,
       wantsEmailMemoryIngest(message)
         ? 'MEMORY INGEST: User wants these emails fed into Continuum memory. Extract durable facts, commitments, dates, and relationship context. Confirm what you captured.'
         : null,
@@ -245,6 +252,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     if (deleteRequested) {
       const manualResult = await maybeDeleteEmails(message, messages, imapScript, {
         enabled: !!payloadOptions.email_delete_enabled,
+        listOffset: fetchOptions.offset || 0,
       });
       if (manualResult.executed) {
         deleteResult = deleteResult.executed

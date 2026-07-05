@@ -143,12 +143,12 @@ function parseIndexList(raw) {
   const chunks = String(raw || '').split(/,|\band\b/i);
   for (const chunk of chunks) {
     const trimmed = chunk.trim();
-    const single = trimmed.match(/^(\d{1,3})$/);
+    const single = trimmed.match(/^(\d{1,4})$/);
     if (single) {
       values.add(parseInt(single[1], 10));
       continue;
     }
-    const range = trimmed.match(/^(\d{1,3})\s*(?:-|–|to)\s*(\d{1,3})$/i);
+    const range = trimmed.match(/^(\d{1,4})\s*(?:-|–|to)\s*(\d{1,4})$/i);
     if (range) {
       const start = parseInt(range[1], 10);
       const end = parseInt(range[2], 10);
@@ -177,7 +177,7 @@ function parseExplicitUids(message) {
   return Array.from(uids);
 }
 
-function resolveDeleteUids(message, emails) {
+function resolveDeleteUids(message, emails, listOffset = 0) {
   if (!Array.isArray(emails) || emails.length === 0) return [];
 
   const text = message || '';
@@ -189,7 +189,7 @@ function resolveDeleteUids(message, emails) {
 
   for (const match of text.matchAll(/\b(?:emails?|messages?|mail)\s*#?\s*(\d+(?:\s*(?:,|and)\s*\d+|\s*-\s*\d+)*)/gi)) {
     for (const idx of parseIndexList(match[1])) {
-      const email = emails[idx - 1];
+      const email = emails[idx - 1 - listOffset];
       if (email?.uid) uids.add(Number(email.uid));
     }
   }
@@ -197,7 +197,7 @@ function resolveDeleteUids(message, emails) {
   const rangeMatch = text.match(/\b(?:emails?|messages?)\s*(\d+)\s*(?:-|–|to)\s*(\d+)/i);
   if (rangeMatch) {
     for (const idx of parseIndexList(`${rangeMatch[1]}-${rangeMatch[2]}`)) {
-      const email = emails[idx - 1];
+      const email = emails[idx - 1 - listOffset];
       if (email?.uid) uids.add(Number(email.uid));
     }
   }
@@ -346,13 +346,13 @@ async function maybeAutoTrashJunk(emails, imapScript, { enabled = false, include
   }
 }
 
-async function maybeDeleteEmails(message, emails, imapScript, { enabled = false } = {}) {
+async function maybeDeleteEmails(message, emails, imapScript, { enabled = false, listOffset = 0 } = {}) {
   if (!enabled || !wantsEmailDelete(message) || !imapScript) {
     return { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
   }
 
   const requestedUids = parseExplicitUids(message);
-  const uids = resolveDeleteUids(message, emails);
+  const uids = resolveDeleteUids(message, emails, listOffset);
   const fetchedSet = new Set(emails.map((e) => Number(e.uid)));
   const skippedUids = requestedUids.filter((uid) => !fetchedSet.has(uid));
 

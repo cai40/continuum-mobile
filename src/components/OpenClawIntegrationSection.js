@@ -333,7 +333,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         />
       </View>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Max emails per inbox request (1–{MAX_OPENCLAW_EMAIL_LIMIT}). Default {DEFAULT_OPENCLAW_EMAIL_LIMIT}. Override in chat: “last 50 emails”.
+        Max emails per inbox request (1–{MAX_OPENCLAW_EMAIL_LIMIT}). Default {DEFAULT_OPENCLAW_EMAIL_LIMIT}. Override in chat: “last 50 emails”, “skip 100, next 250 emails”, or “emails 101–350”.
       </Text>
 
       <Text style={[styles.categoryTitle, { marginTop: 24 }]}>EMAIL LOOKBACK</Text>

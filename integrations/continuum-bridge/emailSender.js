@@ -34,6 +34,7 @@ function imapSearchArgs(fetchOptions, sender) {
     '--recent', fetchOptions.recent,
     '--sort', 'date',
   ];
+  if (fetchOptions.offset) args.push('--offset', String(fetchOptions.offset));
   if (fetchOptions.unreadOnly) args.push('--unseen');
   return args;
 }

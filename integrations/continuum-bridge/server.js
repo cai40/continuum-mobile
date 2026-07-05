@@ -132,6 +132,7 @@ async function handleChatStream(req, res, config) {
 
   const emailContext = await maybeFetchEmailContext(message, {
     email_limit: payload.email_limit,
+    email_offset: payload.email_offset,
     email_recent: payload.email_recent,
     email_delete_enabled: payload.email_delete_enabled,
     email_auto_trash_junk: payload.email_auto_trash_junk,
