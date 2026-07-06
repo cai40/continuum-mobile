@@ -110,10 +110,13 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const cleanup = wantsEmailCleanup(message);
   const moveToFolder = wantsEmailMoveToFolder(message);
   const defaultLimit = dateRangeFromMessage ? 1000 : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
-  const limit = clampLimit(
-    limitFromMessage ?? payloadOptions.email_limit,
-    defaultLimit,
-  );
+  let limit = limitFromMessage != null
+    ? clampLimit(limitFromMessage, defaultLimit)
+    : clampLimit(payloadOptions.email_limit, defaultLimit);
+  // App-stored limits (e.g. 500) must not cap month/year range fetches below the bridge default.
+  if (dateRangeFromMessage && limitFromMessage == null) {
+    limit = Math.max(limit, defaultLimit);
+  }
   let offset = clampOffset(
     offsetFromMessage ?? payloadOptions.email_offset,
     0,
