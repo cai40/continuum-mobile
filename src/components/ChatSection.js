@@ -14,7 +14,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream, renderEmailChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
-import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
+import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, isEmailConfirmMessage } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
 import {
   DOCUMENT_MIME_TYPES,
@@ -334,11 +334,13 @@ const ChatSection = () => {
       const finalInput = isFromVoice ? localTranscript : input;
       if (!finalInput.trim() && activeAttachments.length === 0) return;
 
+      const isEmailConfirm = renderEmailEnabled && isEmailConfirmMessage(finalInput);
       const isEmailQuery =
         /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page|clean)\b/i.test(finalInput)
         || /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to|through|until|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i.test(finalInput)
         || /\b(delete|remove|trash|move)\b.*\b(emails?|mail|inbox|message|junk|spam)\b/i.test(finalInput)
-        || /\bemails?\s+\d{1,4}\s*[-–]\s*\d{1,4}\b/i.test(finalInput);
+        || /\bemails?\s+\d{1,4}\s*[-–]\s*\d{1,4}\b/i.test(finalInput)
+        || isEmailConfirm;
 
       const openrouterProviders = [
         'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',
@@ -585,11 +587,14 @@ const ChatSection = () => {
       };
 
       if (useRenderEmail || useOpenClawBridge) {
+        const emailSourceMessage = isEmailConfirm
+          ? (findPriorEmailUserMessage(messages) || finalInput)
+          : finalInput;
         const emailFetch = isEmailQuery
           ? resolveEmailFetchPayload({
               limit: openclawEmailLimit,
               recent: openclawEmailRecent,
-              message: finalInput,
+              message: emailSourceMessage,
             })
           : {};
         const payload = {

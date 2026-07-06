@@ -1,6 +1,6 @@
 'use strict';
 
-const { wantsEmailCleanup, resolveCleanupUids, MAX_DELETE_PER_REQUEST } = require('./emailDelete');
+const { wantsEmailCleanup, MAX_DELETE_PER_REQUEST, countCleanupTargets } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 
 const BULK_CONFIRM = /\b(yes|yeah|yep|confirm|confirmed|proceed|go ahead|do it|approved|approve|clean all|trash all|delete all matching|move all)\b/i;
@@ -47,7 +47,7 @@ function evaluateOverLimitPermission({
   const totalMatched = scanMeta?.matched ?? fetchedCount;
   const isCleanup = wantsEmailCleanup(message);
   const isMove = !!moveRequested;
-  const cleanupTargets = isCleanup ? resolveCleanupUids(messages).length : 0;
+  const cleanupTargets = isCleanup ? countCleanupTargets(messages) : 0;
 
   const overRange = totalMatched > limit;
   const overFetchCap = fetchedCount >= limit && totalMatched > fetchedCount;

@@ -91,11 +91,19 @@ function beginSse(res) {
   return { write, end };
 }
 
+function slimHistory(history) {
+  return (history || []).slice(-4).map((m) => ({
+    role: m.role || 'user',
+    content: String(m.content || '').slice(0, 3000),
+  }));
+}
+
 function buildContinuumForm(payload) {
   const form = new FormData();
-  form.append('message', payload.message);
+  const msg = String(payload.message || '');
+  form.append('message', msg.length > 900000 ? `${msg.slice(0, 900000)}\n\n[truncated for size]` : msg);
   form.append('provider', payload.provider || 'gemini');
-  form.append('history', JSON.stringify(payload.history || []));
+  form.append('history', JSON.stringify(slimHistory(payload.history)));
   if (payload.persona) form.append('persona', payload.persona);
   if (payload.gemini_key) form.append('gemini_key', payload.gemini_key);
   if (payload.groq_key) form.append('groq_key', payload.groq_key);
@@ -201,6 +209,7 @@ async function handleChatStream(req, res, config) {
     email_before: payload.email_before,
     email_delete_enabled: payload.email_delete_enabled,
     email_auto_trash_junk: payload.email_auto_trash_junk,
+    history: payload.history,
   });
   const hasLiveInbox = emailContext && !emailContext.startsWith('[Yahoo email not available]');
   const hasWebSearch = !!webContext && !webContext.startsWith('[Web search not available]');
