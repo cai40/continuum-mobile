@@ -180,7 +180,8 @@ async function handleChatStream(req, res, config) {
   sse.write('status', { detail: 'Starting…' });
 
   sse.write('status', { detail: 'Searching the web (if needed)…' });
-  const webContext = await maybeFetchWebContext(message);
+  const alreadyHasWebSearch = /\[Web search\s*[—-]/i.test(message);
+  const webContext = alreadyHasWebSearch ? null : await maybeFetchWebContext(message);
 
   sse.write('status', { detail: 'Fetching Yahoo inbox (if requested)…' });
   const emailContext = await maybeFetchEmailContext(message, {

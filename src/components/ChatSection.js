@@ -405,7 +405,7 @@ const ChatSection = () => {
       }
 
       let webSearchContext = '';
-      if (isWebSearchQuery && !useOpenClawBridge) {
+      if (isWebSearchQuery) {
         setStreamingContent('Searching the web…');
         try {
           webSearchContext = (await fetchWebSearchContext(finalInput, null)) || '';
@@ -573,10 +573,10 @@ const ChatSection = () => {
           message: finalInput,
         });
         const payload = {
-          message: finalInput,
+          message: webSearchContext ? `${webSearchContext}\n\n${finalInput}` : finalInput,
           provider,
-          persona: appendGroundingPersona(persona),
-          history: messages.slice(-20),
+          persona: appendGroundingPersona(persona, webSearchContext ? [WEB_SEARCH_APPEND] : []),
+          history: webSearchContext ? [] : messages.slice(-20),
           gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
           groq_key: provider === 'groq' ? (groqKey || '').trim() : '',
           api_key: (activeKey || '').trim(),

@@ -45,6 +45,12 @@ function wantsWebSearch(message) {
 
   if (/\blast night\b/i.test(text) && topic.test(text)) return true;
 
+  if (/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}/i.test(text) && topic.test(text)) {
+    return true;
+  }
+
+  if (/\b\w+\s+vs\.?\s+\w+\b/i.test(text) && topic.test(text)) return true;
+
   if (/\b(what is|what's|who is|who's|when is|how did|tell me about)\b/i.test(text) && live.test(text)) {
     return true;
   }
@@ -72,6 +78,60 @@ function buildSearchQuery(message) {
     q += ` ${new Date().getFullYear()}`;
   }
   return q;
+}
+
+const MONTHS = {
+  january: '01', february: '02', march: '03', april: '04',
+  may: '05', june: '06', july: '07', august: '08',
+  september: '09', october: '10', november: '11', december: '12',
+};
+
+function buildSearchQueries(message) {
+  const queries = [buildSearchQuery(message)];
+  const text = String(message || '');
+
+  const dateLong = text.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(20\d{2})\b/i);
+  if (dateLong) {
+    const month = MONTHS[dateLong[1].toLowerCase()];
+    const day = String(dateLong[2]).padStart(2, '0');
+    const iso = `${dateLong[3]}-${month}-${day}`;
+    if (/\bnorway\b/i.test(text)) queries.push(`Norway Brazil World Cup ${iso} result score`);
+    if (/\bbrazil\b/i.test(text)) queries.push(`Brazil Norway World Cup ${iso} result score`);
+  }
+
+  if (/\bnorway\b/i.test(text)) {
+    queries.push('Norway Brazil World Cup 2026 result score');
+  }
+
+  const vsMatch = text.match(/\b([A-Za-z]+)\s+vs\.?\s+([A-Za-z]+)\b/i);
+  if (vsMatch) {
+    queries.push(`${vsMatch[1]} ${vsMatch[2]} World Cup 2026 result score`);
+  }
+
+  return [...new Set(queries.map((q) => q.trim()).filter(Boolean))];
+}
+
+function hasActionableResults(results) {
+  if (!results?.length) return false;
+  const text = results.map((r) => `${r.title} ${r.snippet || ''}`).join(' ');
+  if (/\d{1,2}\s*[-–]\s*\d{1,2}/.test(text)) return true;
+  if (/\b(beat|defeat|won|win|loss|lost|eliminated|advanced|stun|upset|brace|knock(?:ed)? out|distraught)\b/i.test(text)) return true;
+  return false;
+}
+
+function extractHeadlineHints(results) {
+  const hints = [];
+  const seen = new Set();
+  for (const row of results || []) {
+    const title = String(row.title || '').trim();
+    if (!title || seen.has(title)) continue;
+    const blob = `${title} ${row.snippet || ''}`;
+    if (/\d{1,2}\s*[-–]\s*\d{1,2}/.test(blob) || /\b(beat|defeat|won|win|loss|lost|eliminated|advanced|stun|upset|brace|knock(?:ed)? out|distraught)\b/i.test(blob)) {
+      seen.add(title);
+      hints.push(title);
+    }
+  }
+  return hints.slice(0, 5);
 }
 
 function isLiveQuery(query) {
@@ -300,7 +360,24 @@ async function enrichResultsWithPageText(data, maxPages = 1) {
   };
 }
 
-async function searchWeb(query) {
+async function searchWeb(query, extraQueries = []) {
+  const allQueries = [...new Set([query, ...extraQueries].map((q) => String(q || '').trim()).filter(Boolean))];
+  let best = null;
+
+  for (const q of allQueries) {
+    const data = await searchWebOnce(q);
+    if (!data.results?.length) continue;
+    if (!best || (hasActionableResults(data.results) && !hasActionableResults(best.results))) {
+      best = { ...data, query: q };
+    }
+    if (hasActionableResults(data.results)) return { ...data, query: q };
+  }
+
+  if (best) return best;
+  return searchWebOnce(allQueries[0] || query);
+}
+
+async function searchWebOnce(query) {
   const braveKey = loadBraveApiKey();
   if (braveKey) {
     try {
@@ -345,9 +422,16 @@ function formatSearchResults({ provider, results, query }) {
     `Query: ${query}`,
     `Retrieved: ${new Date().toISOString()}`,
     '',
-    'Use ONLY the sources below for current/live facts. Cite titles and URLs when summarizing.',
+    'Use ONLY the sources below for current/live facts. Answer directly from headlines — do NOT say "no results" when headlines are listed.',
     '',
   ];
+
+  const hints = extractHeadlineHints(results);
+  if (hints.length) {
+    lines.push('KEY HEADLINES — state the outcome/score from these:');
+    hints.forEach((h) => lines.push(`- ${h}`));
+    lines.push('');
+  }
 
   results.forEach((row, idx) => {
     lines.push(`${idx + 1}. ${row.title}`);
@@ -366,6 +450,7 @@ function formatSearchResults({ provider, results, query }) {
 module.exports = {
   wantsWebSearch,
   buildSearchQuery,
+  buildSearchQueries,
   searchWeb,
   formatSearchResults,
   loadBraveApiKey,

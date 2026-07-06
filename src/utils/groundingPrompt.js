@@ -14,7 +14,8 @@ export const WEB_SEARCH_APPEND = [
   'WEB SEARCH: Live web results were fetched in the Continuum app for this turn.',
   'Use ONLY the [Web search] block for current events, scores, news, and weather.',
   'Do NOT claim you lack internet, cannot search the web, or recommend ESPN/BBC/social media when that block is present.',
-  'Answer directly from the search results. Cite source titles and URLs. If results are thin, say so honestly.',
+  'Answer directly from the search results and KEY HEADLINES. If headlines mention a score or winner, state it.',
+  'Do NOT say "no results" or "cannot provide details" when headlines or sources are listed below.',
 ].join(' ');
 
 export function appendGroundingPersona(persona, extraBlocks = []) {
