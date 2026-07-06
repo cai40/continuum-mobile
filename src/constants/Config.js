@@ -1,4 +1,5 @@
 export const API_URL = "https://continuum-backend-0q9j.onrender.com";
+export const RENDER_EMAIL_BRIDGE_URL = "https://continuum-email-bridge.onrender.com";
 export const OPENCLAW_BRIDGE_PORT = 8787;
 export const DEFAULT_OPENCLAW_BRIDGE_SECRET = 'openclaw2026';
 export const DEFAULT_OPENCLAW_EMAIL_LIMIT = 25;
