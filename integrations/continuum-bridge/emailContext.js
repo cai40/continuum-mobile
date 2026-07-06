@@ -6,9 +6,9 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
-const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, MAX_DELETE_PER_REQUEST } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
-const { evaluateOverLimitPermission, formatPermissionBlock } = require('./emailPermission');
+const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
 
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
@@ -118,7 +118,7 @@ function parseScanMeta(stderr) {
   };
 }
 
-function formatScanDiagnostic(scanMeta, dateRangeLabel) {
+function formatScanDiagnostic(scanMeta, dateRangeLabel, loadedCount = null) {
   if (!scanMeta) return null;
   const span = scanMeta.span
     ? `dates in scanned mail: ${scanMeta.span.oldest} through ${scanMeta.span.newest}`
@@ -136,15 +136,20 @@ function formatScanDiagnostic(scanMeta, dateRangeLabel) {
   if (scanMeta.recentWindow != null || scanMeta.parsed != null) {
     const headers = scanMeta.scanned ?? scanMeta.parsed ?? 0;
     const recent = scanMeta.recentWindow ?? '?';
-    scanLine = `- Scanned ${headers} message header(s) across inbox; Yahoo recent search window: ${recent} UID(s). ${span}.${samples}`;
+    scanLine = `- Scanned ${headers} INBOX header(s) for filtering. Yahoo IMAP UID search window: ${recent} (internal IMAP limit — NOT emails loaded). ${span}.${samples}`;
   } else {
     scanLine = `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.${samples}`;
   }
+  const loadedLine = loadedCount != null
+    ? `- Emails loaded for this reply: ${loadedCount}${matched ? ` of ${matched} matched` : ''}.`
+    : null;
   return [
     'MAILBOX SCAN (you MUST include all lines below in your reply):',
     scanLine,
+    loadedLine,
     `- Requested range: ${dateRangeLabel || 'unknown'}. Matched: ${matched}${used}.`,
-  ].join('\n');
+    'NEVER say "1000 emails fetched" — the UID window is not the load count; use "Emails loaded" and Matched above.',
+  ].filter(Boolean).join('\n');
 }
 
 function inlineScanSummary(scanMeta) {
@@ -181,7 +186,7 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
   }
   const topSenders = Object.entries(bySender).sort((a, b) => b[1] - a[1]).slice(0, 15);
   const cleanupCount = countCleanupTargets(parsed);
-  const scanBlock = formatScanDiagnostic(scanMeta, dateRangeLabel);
+  const scanBlock = formatScanDiagnostic(scanMeta, dateRangeLabel, parsed.length);
   const matched = scanMeta?.matched ?? null;
   const batchLine = matched != null && matched > parsed.length
     ? `${parsed.length} of ${matched} matched email(s) loaded in this batch (fetch limit ${limit}, offset ${offset}).`
@@ -205,7 +210,7 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
     'Top senders:',
     ...topSenders.map(([s, n]) => `- ${s}: ${n}`),
     '',
-    `Cleanup targets in this batch (news/promo/junk): ${cleanupCount} (max 100 per path; auto-trash + cleanup report one combined total).`,
+    `Cleanup targets in this batch (news/promo/junk): ${cleanupCount} (under 500: up to ${Math.min(500, cleanupCount)} moved to Trash per run without confirm).`,
     'Give counts and high-level themes only. Confirm trash results only from [Email cleanup executed] blocks.',
   ].filter(Boolean);
 
@@ -234,7 +239,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     return { text: rawStdout.trim().slice(0, 12000), messages: [] };
   }
   if (parsed.length === 0) {
-    const scanBlock = formatScanDiagnostic(scanMeta, dateRangeLabel);
+    const scanBlock = formatScanDiagnostic(scanMeta, dateRangeLabel, 0);
     const inline = inlineScanSummary(scanMeta);
     const hint = dateRangeLabel
       ? `No messages found in INBOX for ${dateRangeLabel}.${inline ? ` ${inline}` : ''}`
@@ -495,10 +500,17 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       destFolder,
     });
 
-    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested) {
+    const deleteCap = resolveDeleteCap({ message: effectiveMessage, messages, permission });
+    const fullCleanupRun = wantsEmailCleanup(effectiveMessage)
+      && deleteRequested
+      && !permission
+      && deleteCap > MAX_DELETE_PER_REQUEST;
+
+    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested && !fullCleanupRun) {
       deleteResult = await maybeAutoTrashJunk(messages, imapScript, {
         enabled: true,
         includeGithub: false,
+        max: deleteCap,
       });
     }
 
@@ -506,6 +518,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       const manualResult = await maybeDeleteEmails(effectiveMessage, messages, imapScript, {
         enabled: !!payloadOptions.email_delete_enabled,
         listOffset: fetchOptions.offset || 0,
+        maxDelete: deleteCap,
       });
       if (manualResult.executed) {
         deleteResult = deleteResult.executed

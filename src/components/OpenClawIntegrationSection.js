@@ -471,7 +471,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
             Auto-trash promos & newsletters on fetch
           </Text>
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
-            When ON, every inbox fetch moves newsletter/promo/spam to Trash (max 100). Banks, DocuSign, OTP, and Cash App are never auto-deleted. Requires delete permission above.
+            When ON, every inbox fetch moves newsletter/promo/spam to Trash (max 100; up to 500 on fetch-and-clean). Banks, DocuSign, OTP, and Cash App are never auto-deleted. Requires delete permission above.
           </Text>
         </View>
         <Switch
@@ -487,7 +487,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         Triggers on “check inbox”, “summarize email”, or any mail chat. Say “check my Yahoo inbox” daily to purge junk.
       </Text>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Say “clean up inbox” to trash news, newsletters, promos, ads, GitHub/dev mail, and bank statements (not OTP/security). Supports “June 2026”, “for 2026”, etc. Cleanups under 500 targets run without a confirm prompt (max 100 per batch). At 500+ cleanup targets you’ll be asked to confirm. Requires delete permission above.
+        Say “clean up inbox” to trash news, newsletters, promos, ads, GitHub/dev mail, and bank statements (not OTP/security). Supports “June 2026”, “for 2026”, etc. Cleanups under 500 targets move up to 500 to Trash per run without confirm. At 500+ cleanup targets you’ll be asked to confirm. Requires delete permission above.
       </Text>
 
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>

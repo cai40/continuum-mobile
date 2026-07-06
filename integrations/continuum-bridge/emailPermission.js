@@ -1,6 +1,6 @@
 'use strict';
 
-const { wantsEmailCleanup, MAX_DELETE_PER_REQUEST, countCleanupTargets } = require('./emailDelete');
+const { wantsEmailCleanup, MAX_DELETE_PER_REQUEST, CLEANUP_DELETE_MAX, countCleanupTargets } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 
 /** Cleanup runs without "yes proceed" when fewer than this many trash targets. */
@@ -23,8 +23,10 @@ function formatPermissionBlock({ totalMatched, cleanupTargets, limit, dateRangeL
   if (isCleanup && cleanupTargets > 0 && cleanupTargets !== totalMatched) {
     lines.push(`${cleanupTargets} of the fetched batch are cleanup targets (news, promos, dev mail, bank statements).`);
   }
-  if (cleanupTargets > MAX_DELETE_PER_REQUEST) {
-    lines.push(`Each run can move at most ${MAX_DELETE_PER_REQUEST} messages per batch.`);
+  if (cleanupTargets >= PERMISSION_CLEANUP_THRESHOLD) {
+    lines.push(`Each confirmed run can move up to ${CLEANUP_DELETE_MAX} messages.`);
+  } else if (cleanupTargets > MAX_DELETE_PER_REQUEST) {
+    lines.push(`Each run can move up to ${CLEANUP_DELETE_MAX} messages (no confirm under ${PERMISSION_CLEANUP_THRESHOLD} targets).`);
   }
   if (isCleanup && cleanupTargets >= PERMISSION_CLEANUP_THRESHOLD) {
     lines.push(`${cleanupTargets} cleanup targets — confirm required at ${PERMISSION_CLEANUP_THRESHOLD}+.`);
@@ -55,7 +57,7 @@ function evaluateOverLimitPermission({
   const isMove = !!moveRequested;
   const cleanupTargets = isCleanup ? countCleanupTargets(messages) : 0;
 
-  // Inbox cleanups under 500 targets run immediately (still max 100 per path per batch).
+  // Inbox cleanups under 500 targets run immediately (up to 500 moved per run).
   if (isCleanup && cleanupTargets > 0 && cleanupTargets < PERMISSION_CLEANUP_THRESHOLD) {
     return null;
   }
@@ -80,10 +82,25 @@ function evaluateOverLimitPermission({
   };
 }
 
+/** Trash cap for this request (500 for waived cleanups, else 100). */
+function resolveDeleteCap({ message, messages, permission }) {
+  if (!wantsEmailCleanup(message)) return MAX_DELETE_PER_REQUEST;
+  const targets = countCleanupTargets(messages);
+  if (!permission && targets > 0 && targets < PERMISSION_CLEANUP_THRESHOLD) {
+    return Math.min(CLEANUP_DELETE_MAX, targets);
+  }
+  if (!permission && hasBulkActionConfirm(message) && targets > 0) {
+    return Math.min(CLEANUP_DELETE_MAX, targets);
+  }
+  return MAX_DELETE_PER_REQUEST;
+}
+
 module.exports = {
   hasBulkActionConfirm,
   evaluateOverLimitPermission,
   formatPermissionBlock,
+  resolveDeleteCap,
   MAX_DELETE_PER_REQUEST,
   PERMISSION_CLEANUP_THRESHOLD,
+  CLEANUP_DELETE_MAX,
 };

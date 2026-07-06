@@ -8,6 +8,8 @@ const { selectJunkUids, triageMessages } = require('./emailTriage');
 const execFileAsync = promisify(execFile);
 
 const MAX_DELETE_PER_REQUEST = 100;
+/** Max move-to-Trash per cleanup run when permission is waived (<500 targets). */
+const CLEANUP_DELETE_MAX = 500;
 const DELETE_BATCH_SIZE = 25;
 
 const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
@@ -108,7 +110,7 @@ function matchesCleanupTarget(row, email) {
   return false;
 }
 
-function resolveCleanupUids(emails) {
+function resolveCleanupUids(emails, maxCap = MAX_DELETE_PER_REQUEST) {
   if (!Array.isArray(emails) || emails.length === 0) return [];
 
   const triaged = triageMessages(emails);
@@ -118,7 +120,7 @@ function resolveCleanupUids(emails) {
     const email = emails[i];
     if (matchesCleanupTarget(row, email)) uids.push(Number(row.uid));
   }
-  return uids.slice(0, MAX_DELETE_PER_REQUEST);
+  return uids.slice(0, maxCap);
 }
 
 function countCleanupTargets(emails) {
@@ -240,7 +242,7 @@ function parseExplicitUids(message) {
   return Array.from(uids);
 }
 
-function resolveDeleteUids(message, emails, listOffset = 0) {
+function resolveDeleteUids(message, emails, listOffset = 0, maxCap = MAX_DELETE_PER_REQUEST) {
   if (!Array.isArray(emails) || emails.length === 0) return [];
 
   const text = message || '';
@@ -291,12 +293,12 @@ function resolveDeleteUids(message, emails, listOffset = 0) {
   }
 
   if (wantsEmailCleanup(text)) {
-    for (const uid of resolveCleanupUids(emails)) uids.add(uid);
+    for (const uid of resolveCleanupUids(emails, maxCap)) uids.add(uid);
   }
 
   if (JUNK_INTENT.test(text) && (DELETE_INTENT.test(text) || /\b(trash|move)\b/i.test(text))) {
     const includeGithub = !/\b(keep|exclude|without|no)\s+github\b/i.test(text);
-    const { uids: junkUids } = selectJunkUids(emails, { includeGithub });
+    const { uids: junkUids } = selectJunkUids(emails, { includeGithub, max: maxCap });
     for (const uid of junkUids) uids.add(uid);
   }
 
@@ -316,15 +318,15 @@ function resolveDeleteUids(message, emails, listOffset = 0) {
 
   const candidates = Array.from(uids).filter((uid) => Number.isFinite(uid));
   const verified = filterToFetchedUids(candidates, emails);
-  return verified.slice(0, MAX_DELETE_PER_REQUEST);
+  return verified.slice(0, maxCap);
 }
 
-async function runImapDelete(imapScript, uids) {
+async function runImapDelete(imapScript, uids, timeoutMs = 120000) {
   const skillRoot = path.dirname(path.dirname(imapScript));
   const args = [imapScript, 'delete', ...uids.map(String)];
 
   const { stdout, stderr } = await execFileAsync('node', args, {
-    timeout: 120000,
+    timeout: timeoutMs,
     maxBuffer: 1024 * 1024,
     cwd: skillRoot,
     env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
@@ -347,8 +349,9 @@ async function runImapDeleteBatched(imapScript, uids) {
     chunks.push(uids.slice(i, i + DELETE_BATCH_SIZE));
   }
   const results = [];
+  const batchTimeout = Math.min(600000, 60000 + uids.length * 2500);
   for (const chunk of chunks) {
-    results.push(await runImapDelete(imapScript, chunk));
+    results.push(await runImapDelete(imapScript, chunk, batchTimeout));
   }
   return {
     success: results.every((r) => r.success !== false),
@@ -422,12 +425,12 @@ function mergeDeleteResults(autoResult, manualResult, emails) {
   };
 }
 
-async function maybeAutoTrashJunk(emails, imapScript, { enabled = false, includeGithub = false } = {}) {
+async function maybeAutoTrashJunk(emails, imapScript, { enabled = false, includeGithub = false, max = MAX_DELETE_PER_REQUEST } = {}) {
   if (!enabled || !imapScript || !Array.isArray(emails) || emails.length === 0) {
     return { executed: false, summary: null, error: null, uids: [], skippedUids: [], auto: true };
   }
 
-  const { uids } = selectJunkUids(emails, { includeGithub, max: MAX_DELETE_PER_REQUEST });
+  const { uids } = selectJunkUids(emails, { includeGithub, max });
   if (uids.length === 0) {
     return { executed: false, summary: null, error: null, uids: [], skippedUids: [], auto: true };
   }
@@ -455,13 +458,13 @@ async function maybeAutoTrashJunk(emails, imapScript, { enabled = false, include
   }
 }
 
-async function maybeDeleteEmails(message, emails, imapScript, { enabled = false, listOffset = 0 } = {}) {
+async function maybeDeleteEmails(message, emails, imapScript, { enabled = false, listOffset = 0, maxDelete = MAX_DELETE_PER_REQUEST } = {}) {
   if (!enabled || !wantsEmailDelete(message) || !imapScript) {
     return { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
   }
 
   const requestedUids = parseExplicitUids(message);
-  const uids = resolveDeleteUids(message, emails, listOffset);
+  const uids = resolveDeleteUids(message, emails, listOffset, maxDelete);
   const fetchedSet = new Set(emails.map((e) => Number(e.uid)));
   const skippedUids = requestedUids.filter((uid) => !fetchedSet.has(uid));
 
@@ -510,6 +513,7 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false,
 
 module.exports = {
   MAX_DELETE_PER_REQUEST,
+  CLEANUP_DELETE_MAX,
   wantsEmailDelete,
   wantsEmailCleanup,
   resolveDeleteUids,
