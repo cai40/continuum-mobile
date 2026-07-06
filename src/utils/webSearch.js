@@ -33,12 +33,21 @@ export function wantsWebSearch(message) {
     return true;
   }
 
-  const live = /\b(latest|current|today|tonight|yesterday|live|score|scores|result|results|standings|who won|who beat|match|matches|game|games|weather|news|price|election)\b/i;
-  const topic = /\b(soccer|football|nba|nfl|mlb|nhl|premier league|world cup|euro|olympics|tennis|formula 1|f1|norway|la liga|champions league)\b/i;
+  const topic = /\b(soccer|football|nba|nfl|mlb|nhl|premier league|world cup|euro|olympics|tennis|formula 1|f1|norway|la liga|champions league|national team)\b/i;
+  const live = /\b(latest|current|today|tonight|last night|yesterday|last week|this week|this weekend|live|score|scores|result|results|standings|who won|who beat|match|matches|game|games|weather|news|price|election)\b/i;
+  const sportsOutcome = /\b(win|won|lose|lost|beat|beats|beating|played|playing|defeat|defeated)\b/i;
 
   if (live.test(text) && (topic.test(text) || /\?\s*$/.test(text))) return true;
 
-  if (/\b(what is|what's|who is|who's|when is|how did|did .+ win|tell me about)\b/i.test(text) && live.test(text)) {
+  if (topic.test(text) && sportsOutcome.test(text)) return true;
+
+  if (/\bdid\b/i.test(text) && sportsOutcome.test(text) && topic.test(text)) return true;
+
+  if (/\bwhat happened\b/i.test(text) && topic.test(text)) return true;
+
+  if (/\blast night\b/i.test(text) && topic.test(text)) return true;
+
+  if (/\b(what is|what's|who is|who's|when is|how did|tell me about)\b/i.test(text) && live.test(text)) {
     return true;
   }
 
@@ -54,14 +63,21 @@ export function buildSearchQuery(message) {
   q = q.replace(/^(please\s+)?(search the web for|web search for|search for|look up|lookup|google)\s+/i, '');
   q = q.replace(/\?+$/, '').trim();
   if (!q) q = String(message || '').trim();
-  if (/\b(latest|current|today|score|result|match|news|standing)\b/i.test(q) && !/\b20\d{2}\b/.test(q)) {
+
+  if (/\blast night\b/i.test(q)) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    q = q.replace(/\blast night\b/i, d.toISOString().slice(0, 10));
+  }
+
+  if (/\b(latest|current|today|score|result|match|news|standing|yesterday|win|won|lose|lost)\b/i.test(q) && !/\b20\d{2}\b/.test(q)) {
     q += ` ${new Date().getFullYear()}`;
   }
   return q;
 }
 
 function isLiveQuery(query) {
-  return /\b(latest|current|today|tonight|yesterday|live|score|scores|result|results|standings|news|weather|match|matches|who won|who beat)\b/i.test(query);
+  return /\b(latest|current|today|tonight|last night|yesterday|last week|this week|live|score|scores|result|results|standings|news|weather|match|matches|who won|who beat|win|won|lose|lost|beat)\b/i.test(query);
 }
 
 async function fetchJson(url, headers = {}) {

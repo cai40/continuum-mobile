@@ -47,8 +47,8 @@ const EMAIL_LIVE_INBOX_MOVE_APPEND = [
 const WEB_SEARCH_APPEND = [
   'WEB SEARCH: Live web results were fetched on the OpenClaw VPS bridge for this turn.',
   'Use ONLY the [Web search] block for current events, scores, news, and weather.',
-  'Do NOT claim you lack internet or real-time data when that block is present.',
-  'Cite source titles and URLs from the search block. If results are thin, say so honestly.',
+  'Do NOT claim you lack internet, cannot search the web, or recommend ESPN/BBC/social media when that block is present.',
+  'Answer directly from the search results. Cite source titles and URLs. If results are thin, say so honestly.',
 ].join(' ');
 
 function appendGroundingPersona(persona, extraBlocks = []) {

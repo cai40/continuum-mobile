@@ -5,6 +5,7 @@ const path = require('path');
 
 const EMAIL_BLOCK = /\b(emails?|inbox|yahoo|imap|smtp|uid\b|clean\s*up|move\s+all\s+emails|from\s+\d{1,2}[\/\-]\d{1,2})\b/i;
 const SEARCH_TIMEOUT_MS = 20000;
+const PAGE_SCRAPE_MAX_CHARS = 2500;
 const USER_AGENT = 'Mozilla/5.0 (compatible; ContinuumBridge/1.0; +https://github.com/cai40/continuum-mobile)';
 
 function loadBraveApiKey() {
@@ -30,12 +31,21 @@ function wantsWebSearch(message) {
     return true;
   }
 
-  const live = /\b(latest|current|today|tonight|yesterday|live|score|scores|result|results|standings|who won|who beat|match|matches|game|games|weather|news|price|election)\b/i;
-  const topic = /\b(soccer|football|nba|nfl|mlb|nhl|premier league|world cup|euro|olympics|tennis|formula 1|f1|norway|la liga|champions league)\b/i;
+  const topic = /\b(soccer|football|nba|nfl|mlb|nhl|premier league|world cup|euro|olympics|tennis|formula 1|f1|norway|la liga|champions league|national team)\b/i;
+  const live = /\b(latest|current|today|tonight|last night|yesterday|last week|this week|this weekend|live|score|scores|result|results|standings|who won|who beat|match|matches|game|games|weather|news|price|election)\b/i;
+  const sportsOutcome = /\b(win|won|lose|lost|beat|beats|beating|played|playing|defeat|defeated)\b/i;
 
   if (live.test(text) && (topic.test(text) || /\?\s*$/.test(text))) return true;
 
-  if (/\b(what is|what's|who is|who's|when is|how did|did .+ win|tell me about)\b/i.test(text) && live.test(text)) {
+  if (topic.test(text) && sportsOutcome.test(text)) return true;
+
+  if (/\bdid\b/i.test(text) && sportsOutcome.test(text) && topic.test(text)) return true;
+
+  if (/\bwhat happened\b/i.test(text) && topic.test(text)) return true;
+
+  if (/\blast night\b/i.test(text) && topic.test(text)) return true;
+
+  if (/\b(what is|what's|who is|who's|when is|how did|tell me about)\b/i.test(text) && live.test(text)) {
     return true;
   }
 
@@ -51,10 +61,21 @@ function buildSearchQuery(message) {
   q = q.replace(/^(please\s+)?(search the web for|web search for|search for|look up|lookup|google)\s+/i, '');
   q = q.replace(/\?+$/, '').trim();
   if (!q) q = String(message || '').trim();
-  if (/\b(latest|current|today|score|result|match|news|standing)\b/i.test(q) && !/\b20\d{2}\b/.test(q)) {
+
+  if (/\blast night\b/i.test(q)) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    q = q.replace(/\blast night\b/i, d.toISOString().slice(0, 10));
+  }
+
+  if (/\b(latest|current|today|score|result|match|news|standing|yesterday|win|won|lose|lost)\b/i.test(q) && !/\b20\d{2}\b/.test(q)) {
     q += ` ${new Date().getFullYear()}`;
   }
   return q;
+}
+
+function isLiveQuery(query) {
+  return /\b(latest|current|today|tonight|last night|yesterday|last week|this week|live|score|scores|result|results|standings|news|weather|match|matches|who won|who beat|win|won|lose|lost|beat)\b/i.test(query);
 }
 
 function stripHtml(html) {
@@ -69,21 +90,114 @@ function stripHtml(html) {
     .trim();
 }
 
+function decodeXmlEntities(text) {
+  return String(text || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'");
+}
+
 async function fetchJson(url, headers = {}) {
   const res = await fetch(url, {
-    headers: { 'User-Agent': USER_AGENT, ...headers },
+    headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', ...headers },
     signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
   });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} for ${url}`);
-  }
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   return res.json();
+}
+
+async function fetchText(url, headers = {}) {
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': USER_AGENT,
+      Accept: 'text/html,application/xhtml+xml,application/xml,text/xml,*/*',
+      ...headers,
+    },
+    signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+  return res.text();
+}
+
+function parseRssItems(xml) {
+  const results = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null && results.length < 6) {
+    const block = match[1];
+    const title = block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i)?.[1]?.trim();
+    const link = block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/i)?.[1]?.trim();
+    const pubDate = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/i)?.[1]?.trim();
+    const desc = block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i)?.[1]?.trim();
+    if (title && link) {
+      const decodedDesc = decodeXmlEntities(desc || '');
+      const snippet = stripHtml(decodedDesc).replace(/\s+/g, ' ').trim().slice(0, 400);
+      results.push({
+        title: decodeXmlEntities(stripHtml(title)),
+        url: link.trim(),
+        snippet,
+        source: 'google_news',
+        updated: pubDate,
+      });
+    }
+  }
+  return results;
+}
+
+async function searchGoogleNewsRss(query) {
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-US&gl=US&ceid=US:en`;
+  const xml = await fetchText(url);
+  const results = parseRssItems(xml);
+  return { provider: 'google_news', results, query };
+}
+
+async function searchDuckDuckGoInstant(query) {
+  const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+  const data = await fetchJson(url);
+  const results = [];
+
+  if (data.AbstractText && data.AbstractURL) {
+    results.push({
+      title: data.Heading || query,
+      url: data.AbstractURL,
+      snippet: String(data.AbstractText).slice(0, 500),
+      source: 'duckduckgo',
+    });
+  }
+
+  for (const topic of data.RelatedTopics || []) {
+    if (results.length >= 4) break;
+    if (topic.Text && topic.FirstURL) {
+      results.push({
+        title: String(topic.Text).split(' - ')[0] || topic.Text,
+        url: topic.FirstURL,
+        snippet: topic.Text,
+        source: 'duckduckgo',
+      });
+    } else if (topic.Topics) {
+      for (const sub of topic.Topics) {
+        if (results.length >= 4) break;
+        if (sub.Text && sub.FirstURL) {
+          results.push({
+            title: sub.Text,
+            url: sub.FirstURL,
+            snippet: sub.Text,
+            source: 'duckduckgo',
+          });
+        }
+      }
+    }
+  }
+
+  return { provider: 'duckduckgo', results, query };
 }
 
 async function searchBrave(query, apiKey) {
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=6`;
   const data = await fetchJson(url, {
-    Accept: 'application/json',
     'X-Subscription-Token': apiKey,
   });
   const results = (data.web?.results || []).map((row) => ({
@@ -106,9 +220,7 @@ async function searchWikipedia(query) {
     try {
       const titleEnc = encodeURIComponent(hit.title.replace(/ /g, '_'));
       const summary = await fetchJson(`https://en.wikipedia.org/api/rest_v1/page/summary/${titleEnc}`);
-      if (summary.extract) {
-        extract = summary.extract.slice(0, 500);
-      }
+      if (summary.extract) extract = summary.extract.slice(0, 500);
     } catch {
       // snippet only
     }
@@ -124,17 +236,99 @@ async function searchWikipedia(query) {
   return { provider: 'wikipedia', results, query };
 }
 
+function isScrapeableUrl(url) {
+  const u = String(url || '').toLowerCase();
+  if (!u.startsWith('http')) return false;
+  if (/news\.google\.com/.test(u)) return false;
+  if (/duckduckgo\.com/.test(u)) return false;
+  return true;
+}
+
+async function fetchPageExcerpt(url) {
+  const target = String(url || '').trim();
+  if (!isScrapeableUrl(target)) return '';
+
+  try {
+    const html = await fetchText(target);
+    const metaDesc =
+      html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+      || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i)
+      || html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
+
+    let text = metaDesc ? decodeXmlEntities(metaDesc[1]) : '';
+    if (text.length < 200) {
+      const cleaned = html
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+        .replace(/<footer[\s\S]*?<\/footer>/gi, '');
+      text = stripHtml(cleaned);
+    }
+
+    return text.slice(0, PAGE_SCRAPE_MAX_CHARS);
+  } catch (err) {
+    console.error('[continuum-bridge] page fetch failed:', target, err.message);
+    return '';
+  }
+}
+
+async function enrichResultsWithPageText(data, maxPages = 1) {
+  if (!data?.results?.length) return data;
+
+  const results = [...data.results];
+  let scraped = false;
+  let scrapedCount = 0;
+
+  for (let i = 0; i < results.length && scrapedCount < maxPages; i++) {
+    const row = results[i];
+    if (row.pageExcerpt || !isScrapeableUrl(row.url)) continue;
+    const excerpt = await fetchPageExcerpt(row.url);
+    if (!excerpt || excerpt.length < 80) continue;
+    scraped = true;
+    scrapedCount += 1;
+    results[i] = {
+      ...row,
+      pageExcerpt: excerpt,
+      snippet: stripHtml(row.snippet || excerpt.slice(0, 400)),
+    };
+  }
+
+  return {
+    ...data,
+    provider: scraped ? `${data.provider}+scrape` : data.provider,
+    results,
+  };
+}
+
 async function searchWeb(query) {
   const braveKey = loadBraveApiKey();
   if (braveKey) {
     try {
       const brave = await searchBrave(query, braveKey);
-      if (brave.results.length > 0) return brave;
+      if (brave.results.length > 0) return enrichResultsWithPageText(brave);
     } catch (err) {
       console.error('[continuum-bridge] brave search failed:', err.message);
     }
   }
-  return searchWikipedia(query);
+
+  if (isLiveQuery(query)) {
+    try {
+      const news = await searchGoogleNewsRss(query);
+      if (news.results.length > 0) return enrichResultsWithPageText(news);
+    } catch (err) {
+      console.error('[continuum-bridge] Google News RSS failed:', err.message);
+    }
+  }
+
+  try {
+    const ddg = await searchDuckDuckGoInstant(query);
+    if (ddg.results.length > 0) return enrichResultsWithPageText(ddg);
+  } catch (err) {
+    console.error('[continuum-bridge] DuckDuckGo failed:', err.message);
+  }
+
+  const wiki = await searchWikipedia(query);
+  return enrichResultsWithPageText(wiki);
 }
 
 function formatSearchResults({ provider, results, query }) {
@@ -142,7 +336,7 @@ function formatSearchResults({ provider, results, query }) {
     return [
       '[Web search — no results]',
       `Query: ${query}`,
-      'No results returned. Try rephrasing, add BRAVE_SEARCH_API_KEY for broader news search, or ask a more specific question.',
+      'No results returned. Try rephrasing or ask a more specific question.',
     ].join('\n');
   }
 
@@ -160,6 +354,9 @@ function formatSearchResults({ provider, results, query }) {
     lines.push(`   URL: ${row.url}`);
     if (row.updated) lines.push(`   Updated: ${row.updated}`);
     if (row.snippet) lines.push(`   ${row.snippet}`);
+    if (row.pageExcerpt && row.pageExcerpt !== row.snippet) {
+      lines.push(`   Page excerpt: ${row.pageExcerpt}`);
+    }
     lines.push('');
   });
 
