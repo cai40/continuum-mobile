@@ -400,6 +400,10 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         Say “clean up inbox” to trash news, newsletters, promos, ads, GitHub/dev mail, and bank statements (not OTP/security). Supports “June 2026”, “for 2026”, etc. Say “move all emails from Min Zhang to Min folder” to file mail by sender. If matches exceed the limit, you’ll be asked to confirm before trashing/moving. Requires delete permission above.
       </Text>
 
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Live sports/news/weather: ask via bridge chat (e.g. “Norway soccer latest result”). Uses Wikipedia search; optional Brave API key on VPS for richer news (`BRAVE_SEARCH_API_KEY` in `~/.config/continuum-openclaw/.env`).
+      </Text>
+
       <View style={[styles.groupedCard, { marginTop: 24, padding: 16 }]}>
         <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black, marginBottom: 8 }}>
           Status checklist

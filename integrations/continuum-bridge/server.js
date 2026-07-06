@@ -15,6 +15,7 @@ const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
+const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
 const { wantsEmailMoveToFolder } = require('./emailMove');
@@ -24,6 +25,7 @@ const {
   EMAIL_LIVE_INBOX_DELETE_APPEND,
   EMAIL_LIVE_INBOX_MOVE_APPEND,
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
+  WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
@@ -105,6 +107,14 @@ function buildContinuumForm(payload) {
   return form;
 }
 
+async function maybeFetchWebContext(message) {
+  const result = await fetchWebContext(message);
+  if (!result.matched) return null;
+  if (result.context) return result.context;
+  if (result.error) return `[Web search not available]\n${result.error}`;
+  return null;
+}
+
 async function maybeFetchEmailContext(message, payloadOptions = {}) {
   const result = await fetchEmailContext(message, payloadOptions);
   if (!result.matched) return null;
@@ -169,6 +179,9 @@ async function handleChatStream(req, res, config) {
   const sse = beginSse(res);
   sse.write('status', { detail: 'Starting…' });
 
+  sse.write('status', { detail: 'Searching the web (if needed)…' });
+  const webContext = await maybeFetchWebContext(message);
+
   sse.write('status', { detail: 'Fetching Yahoo inbox (if requested)…' });
   const emailContext = await maybeFetchEmailContext(message, {
     email_limit: payload.email_limit,
@@ -180,6 +193,24 @@ async function handleChatStream(req, res, config) {
     email_auto_trash_junk: payload.email_auto_trash_junk,
   });
   const hasLiveInbox = emailContext && !emailContext.startsWith('[Yahoo email not available]');
+  const hasWebSearch = !!webContext && !webContext.startsWith('[Web search not available]');
+
+  if (webContext) {
+    message = [
+      'IMPORTANT: Live web search results are provided below (OpenClaw VPS bridge).',
+      'Use these results for current scores, news, weather, and live facts.',
+      'Do NOT say you lack internet access or cannot search the web when this block is present.',
+      'Cite source titles/URLs when summarizing. If results are insufficient, say what is missing.',
+      '',
+      webContext,
+      '',
+      '---',
+      'User request:',
+      message,
+    ].join('\n');
+    payload.message = message;
+    if (!emailContext) payload.history = [];
+  }
 
   if (emailContext) {
     const deleteEnabled = !!payload.email_delete_enabled;
@@ -217,6 +248,8 @@ async function handleChatStream(req, res, config) {
         : EMAIL_LIVE_INBOX_DELETE_APPEND;
     }
     payload.persona = appendGroundingPersona(payload.persona || '', [inboxAppend]);
+  } else if (hasWebSearch) {
+    payload.persona = appendGroundingPersona(payload.persona || '', [WEB_SEARCH_APPEND]);
   } else {
     payload.persona = appendGroundingPersona(payload.persona || '');
   }

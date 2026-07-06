@@ -44,6 +44,13 @@ const EMAIL_LIVE_INBOX_MOVE_APPEND = [
   'If no [Email move executed] block is present, do NOT claim mail was filed — tell the user the move did not run yet.',
 ].join(' ');
 
+const WEB_SEARCH_APPEND = [
+  'WEB SEARCH: Live web results were fetched on the OpenClaw VPS bridge for this turn.',
+  'Use ONLY the [Web search] block for current events, scores, news, and weather.',
+  'Do NOT claim you lack internet or real-time data when that block is present.',
+  'Cite source titles and URLs from the search block. If results are thin, say so honestly.',
+].join(' ');
+
 function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);
@@ -59,5 +66,6 @@ module.exports = {
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
   EMAIL_LIVE_INBOX_DELETE_APPEND,
   EMAIL_LIVE_INBOX_MOVE_APPEND,
+  WEB_SEARCH_APPEND,
   appendGroundingPersona,
 };

@@ -86,6 +86,7 @@ If `bridge_version` is **missing**, the VPS is still on old code — do not debu
 | Month / year ranges | `parseMonthRangeFromMessage`, `parseYearRangeFromMessage` in `emailDateRange.js` |
 | Clean up inbox | `emailDelete.js` (`CLEANUP_INTENT`, `resolveCleanupUids`) + `email-triage` classifier |
 | Move to folder | `emailMove.js` + `imap.js move --to <folder>` |
+| Web search | `webSearch.js` — Wikipedia (default) or Brave API if `BRAVE_SEARCH_API_KEY` set |
 | Over-limit permission | `emailPermission.js` — blocks trash/move until `yes proceed` / `confirm` |
 | Lite fetch (large batches) | `--lite` on IMAP check (headers + snippet only) |
 | Lookback window | Settings **Email Lookback** (`7d`, `30d`) — **ignored** when user gives explicit dates |
@@ -97,6 +98,8 @@ Chat examples that must work:
 - `Clean up inbox from 4/1/2026 to 6/15/2026`
 - `Clean up June 2026` / `Clean up for 2026`
 - `Move all emails from Min Zhang (njsgas@gmail.com) to Min folder`
+- `What was Norway's latest soccer match result?` (web search via bridge)
+- `Search the web for ...`
 - Over limit → user replies `yes proceed` before trash/move runs
 
 ---
