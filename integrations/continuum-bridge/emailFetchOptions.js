@@ -5,7 +5,7 @@ const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 
 const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 1000;
+const MAX_LIMIT = 5000;
 const DEFAULT_RECENT = '7d';
 
 const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary|clean|clean(?:up|ing)?)\b/i;
@@ -101,7 +101,7 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const dateRangeFromMessage = parseDateRangeFromMessage(message);
   const cleanup = wantsEmailCleanup(message);
   const moveToFolder = wantsEmailMoveToFolder(message);
-  const defaultLimit = dateRangeFromMessage ? 250 : (moveToFolder ? 250 : (cleanup ? 100 : DEFAULT_LIMIT));
+  const defaultLimit = dateRangeFromMessage ? 1000 : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
   const limit = clampLimit(
     limitFromMessage ?? payloadOptions.email_limit,
     defaultLimit,
