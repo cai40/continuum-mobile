@@ -53,6 +53,24 @@ const PROTECTED_PATTERNS = [
 const PROTECTED_BANK_NON_STATEMENT = /\b(bank of america|fidelity|greenwood credit|peoplesbank|charles schwab|chase|wells fargo|capital one|citi|american express)\b/i;
 const STATEMENT_PATTERNS = /\b(e-?statement|account statement|monthly statement|statement ready|statement available|your statement|credit card statement|bank statement)\b/i;
 
+const ORDER_RECEIPT_KEEP = /\b(receipt|invoice|order confirm|confirmation number|your order|shipped|delivery confirm|payment received|tracking number|out for delivery|has shipped|pickup ready|pick.?up|delivered)\b/i;
+
+/** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
+const MARKETING_SENDER_PATTERNS = [
+  /mattressfirm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot/i,
+  /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
+  /yahoo@daily\.comms\.yahoo\.net|bingjing6699@gmail\.com/i,
+  /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
+];
+
+function isMarketingSender(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
+  const subject = String(email.subject || '');
+  const blob = `${from} ${subject}`;
+  if (ORDER_RECEIPT_KEEP.test(emailBlob(email))) return false;
+  return MARKETING_SENDER_PATTERNS.some((re) => re.test(blob));
+}
+
 const TRUSTED_SENDERS = [
   /security@/i, /billing@/i, /support@/i, /alert@/i, /notifications@/i,
 ];
@@ -155,6 +173,11 @@ function classifyEmail(email) {
 
   if (newsletterHits.length === 1) {
     reasons.push(`newsletter signal: ${newsletterHits[0]}`);
+    return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
+  }
+
+  if (isMarketingSender(email)) {
+    reasons.push('retail/marketing sender');
     return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
   }
 

@@ -288,7 +288,12 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
       '**Cleanup:** Not run — check that **Allow move to Trash** is ON in app Setup.',
     );
   } else if (cleanupRequested && cleanupCount === 0) {
-    lines.push('', '**Cleanup:** No newsletter/promo targets in this batch.');
+    lines.push(
+      '',
+      '**Cleanup:** Nothing trashed — no newsletter/promo targets in this batch.',
+      'Most mail was classified informational (alerts, receipts, account mail).',
+      'For a specific retailer: *"Mattress firm promotional should be trashed unless receipt or invoice"*.',
+    );
   }
   lines.push('', '[/PREFILLED SUMMARY]');
   return lines.join('\n');

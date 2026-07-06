@@ -102,6 +102,7 @@ function matchesCleanupTarget(row, email) {
   if (CLEANUP_BANK.test(fullBlob) && /\bstatement|estatement\b/i.test(fullBlob)) return true;
 
   if (row.selectable_as_junk) return true;
+  if (row.category === 'newsletter' || row.category === 'spam') return true;
   if (CLEANUP_NEWS.test(fullBlob)) return true;
   if (CLEANUP_DEV.test(fullBlob)) return true;
   if (CLEANUP_ADS.test(fullBlob)) return true;
