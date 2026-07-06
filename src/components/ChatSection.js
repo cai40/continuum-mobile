@@ -509,7 +509,10 @@ const ChatSection = () => {
 
       const finishSuccess = (finalText, voiceTranscript) => {
         if (!finalText.trim() && bridgeAttempted && !renderFallbackUsed) {
-          finishError("Bridge returned empty reply");
+          const hint = useRenderEmail
+            ? "Email bridge returned no reply. Check Render email secret, your API key for the selected model (Gemini / 4o MINI), and turn ON Allow email delete for cleanup. Large fetches can take 1–2 minutes — retry with “Fetch and clean Apr 2026 emails limit 50”."
+            : "Bridge returned empty reply. Check VPS bridge secret, HTTPS URL, and API key for your selected model.";
+          finishError(hint);
           return;
         }
         if (isHandled) return;

@@ -76,16 +76,20 @@ function parseMonthToken(monthRaw, yearRaw) {
 function parseMonthRangeFromMessage(message) {
   const text = message || '';
   const monthPat = monthNamePattern();
+  const defaultYear = String(new Date().getFullYear());
   const patterns = [
     new RegExp(String.raw`\b(?:for|in|during)\s+(?:the\s+)?(?:month\s+of\s+)?(${monthPat})\s+(20\d{2})\b`, 'i'),
-    new RegExp(String.raw`\b(?:clean\s*up|cleanup|fetch|get|show|list|trash|delete|remove|move)(?:\s+(?:my|the)\s+inbox)?\s+(?:for\s+)?(${monthPat})\s+(20\d{2})\b`, 'i'),
+    new RegExp(String.raw`\b(?:clean\s*up|cleanup|fetch|get|show|list|trash|delete|remove|move|clean)(?:\s+(?:and|my|the))*\s+(?:\w+\s+){0,4}?\b(${monthPat})\s+(20\d{2})\b`, 'i'),
+    new RegExp(String.raw`\b(?:clean\s*up|cleanup|fetch|get|show|list|clean)(?:\s+(?:and|my|the))*\s+(?:\w+\s+){0,4}?\b(${monthPat})\s+emails?\b`, 'i'),
     /\b(?:for|in|during|clean\s*up|cleanup)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i,
     new RegExp(String.raw`\b(${monthPat})\s+(20\d{2})\b`, 'i'),
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
-    const parsed = parseMonthToken(match[1], match[2]);
+    const monthRaw = match[1];
+    const yearRaw = match[2] || defaultYear;
+    const parsed = parseMonthToken(monthRaw, yearRaw);
     if (parsed) return parsed;
   }
   return null;
