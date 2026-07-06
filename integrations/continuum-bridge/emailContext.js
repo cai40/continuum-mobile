@@ -6,7 +6,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
-const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, MAX_DELETE_PER_REQUEST } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
@@ -227,6 +227,54 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
       lines.push(`- "${String(msg.subject || '(no subject)').slice(0, 100)}"`);
     }
   }
+  return lines.join('\n');
+}
+
+function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult }) {
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+
+  const triaged = triageMessages(messages);
+  const byCategory = {};
+  const bySender = {};
+  let unread = 0;
+  for (let i = 0; i < messages.length; i += 1) {
+    const row = triaged[i];
+    const cat = row?.category || 'other';
+    byCategory[cat] = (byCategory[cat] || 0) + 1;
+    const from = String(messages[i].from?.text || messages[i].from || messages[i].fromAddress || 'Unknown')
+      .replace(/\s+/g, ' ').slice(0, 72);
+    bySender[from] = (bySender[from] || 0) + 1;
+    if (Array.isArray(messages[i].flags) && !messages[i].flags.includes('\\Seen')) unread += 1;
+  }
+  const topSenders = Object.entries(bySender).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const matched = scanMeta?.matched ?? messages.length;
+  const loaded = messages.length;
+  const cleanupCount = countCleanupTargets(messages);
+  const trashHeader = deleteResult?.executed && deleteResult.summary
+    ? deleteResult.summary.split('\n')[0]
+    : null;
+
+  const lines = [
+    '[PREFILLED SUMMARY — your ENTIRE reply must be ONLY the text between these markers; copy verbatim]',
+    '',
+    `## ${dateRangeLabel || 'Inbox'} Summary`,
+    '',
+    `- **Matched:** ${matched}`,
+    `- **Loaded for analysis:** ${loaded}`,
+    `- **Unread:** ${unread}. **Read:** ${loaded - unread}.`,
+    '',
+    '**By Category:**',
+    ...Object.entries(byCategory).sort((a, b) => b[1] - a[1]).map(([c, n]) => `- ${c}: ${n}`),
+    '',
+    '**Top Senders:**',
+    ...topSenders.map(([s, n]) => `- ${s}: ${n}`),
+    '',
+    `**Cleanup targets:** ${cleanupCount}`,
+  ];
+  if (trashHeader) {
+    lines.push('', '**Cleanup Results:**', `- ${trashHeader}`);
+  }
+  lines.push('', '[/PREFILLED SUMMARY]');
   return lines.join('\n');
 }
 
@@ -508,12 +556,9 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     });
 
     const deleteCap = resolveDeleteCap({ message: effectiveMessage, messages, permission });
-    const fullCleanupRun = wantsEmailCleanup(effectiveMessage)
-      && deleteRequested
-      && !permission
-      && deleteCap > MAX_DELETE_PER_REQUEST;
+    const skipAutoTrashForCleanup = wantsEmailCleanup(effectiveMessage) && deleteRequested && !permission;
 
-    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested && !fullCleanupRun) {
+    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested && !skipAutoTrashForCleanup) {
       deleteResult = await maybeAutoTrashJunk(messages, imapScript, {
         enabled: true,
         includeGithub: false,
@@ -589,6 +634,18 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       finalContext = [finalContext, '', '[Email move executed]', moveResult.summary].join('\n');
     } else if (moveResult.error) {
       finalContext = [finalContext, '', `[Email move] ${moveResult.error}`].filter(Boolean).join('\n');
+    }
+
+    if (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '')) {
+      const prefilled = buildPrefilledSummaryReply({
+        dateRangeLabel: fetchOptions.dateRangeLabel,
+        scanMeta,
+        messages,
+        deleteResult,
+      });
+      if (prefilled) {
+        finalContext = [finalContext, '', prefilled].join('\n');
+      }
     }
 
     return {

@@ -268,11 +268,16 @@ function pushUidBatches(plan, uids, labelPrefix, batchSize = 100) {
   }
 }
 
+function rangeWidthDays(sinceStr, beforeStr) {
+  const sinceMs = imapDateFromIso(sinceStr).getTime();
+  const beforeMs = imapDateFromIso(beforeStr).getTime();
+  return Math.max(1, Math.ceil((beforeMs - sinceMs) / (24 * 60 * 60 * 1000)));
+}
+
 // Yahoo SEARCH caps at ~1000 UIDs. Walk older mail with UID range FETCH (sparse-safe).
-function buildDateRangeScanPlan(sinceUids, recentUids) {
+function buildDateRangeScanPlan(sinceUids, recentUids, { maxOlderRanges = 25 } = {}) {
   const plan = [];
   const UID_BLOCK = 2000;
-  const MAX_OLDER_RANGES = 25;
 
   if (sinceUids.length) pushUidBatches(plan, sinceUids, 'since');
 
@@ -280,7 +285,7 @@ function buildDateRangeScanPlan(sinceUids, recentUids) {
     const minRecent = Math.min(...recentUids);
     let uidHigh = minRecent - 1;
     let rangeCount = 0;
-    while (uidHigh > 0 && rangeCount < MAX_OLDER_RANGES) {
+    while (uidHigh > 0 && rangeCount < maxOlderRanges) {
       const uidLow = Math.max(1, uidHigh - UID_BLOCK + 1);
       plan.push({ type: 'range', label: `${uidLow}:${uidHigh}`, low: uidLow, high: uidHigh });
       console.error(
@@ -730,18 +735,26 @@ function mergeRowsByUid(rows) {
 
 // Try Yahoo IMAP SINCE+BEFORE first — only fetch headers for matching UIDs (no Jan–Jun lookback scan).
 async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
+  const searchAttempts = [
+    { unreadOnly, useImapBefore: true, label: 'since-before' },
+    { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
+    { unreadOnly, useImapBefore: false, label: 'since-only' },
+    { unreadOnly: false, useImapBefore: false, label: 'since-only-all' },
+  ];
+
   try {
-    let uids = await searchUidsLogged(
-      imap,
-      buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, useImapBefore: true }),
-      `direct-${sinceStr}-${beforeStr}`,
-      45000,
-    );
-    if (uids.length === 0 && unreadOnly) {
+    let uids = [];
+    for (const attempt of searchAttempts) {
+      if (uids.length > 0) break;
       uids = await searchUidsLogged(
         imap,
-        buildSearchCriteria({ unreadOnly: false, sinceStr, beforeStr, useImapBefore: true }),
-        `direct-${sinceStr}-${beforeStr}-all`,
+        buildSearchCriteria({
+          unreadOnly: attempt.unreadOnly,
+          sinceStr,
+          beforeStr: attempt.useImapBefore ? beforeStr : null,
+          useImapBefore: attempt.useImapBefore,
+        }),
+        `direct-${sinceStr}-${attempt.label}`,
         45000,
       );
     }
@@ -786,7 +799,9 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
-  console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset} lookback=${days}d`);
+  const rangeDays = rangeWidthDays(sinceStr, beforeStr);
+  const maxOlderRanges = rangeDays <= 31 ? 2 : (rangeDays <= 93 ? 6 : 25);
+  console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset} lookback=${days}d maxOlderRanges=${maxOlderRanges}`);
 
   // NEVER search ALL on Yahoo — hangs on large mailboxes. Use relative SINCE like "fetch last 100".
   let recentUids = await searchUidsLogged(
@@ -829,7 +844,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     );
   }
 
-  const scanPlan = buildDateRangeScanPlan(sinceUids, recentUids);
+  const scanPlan = buildDateRangeScanPlan(sinceUids, recentUids, { maxOlderRanges });
   console.error(
     `[imap] date-range scan: since=${sinceUids.length} recent=${recentUids.length}`
     + ` steps=${scanPlan.length}`,
