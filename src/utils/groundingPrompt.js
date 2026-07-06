@@ -10,6 +10,13 @@ export const DOCUMENT_ATTACHMENT_APPEND = [
   'Do NOT open with weather, persona boilerplate, or unrelated strategic summaries unless the file content supports them.',
 ].join(' ');
 
+export const WEB_SEARCH_APPEND = [
+  'WEB SEARCH: Live web results were fetched in the Continuum app for this turn.',
+  'Use ONLY the [Web search] block for current events, scores, news, and weather.',
+  'Do NOT claim you lack internet or real-time data when that block is present.',
+  'Cite source titles and URLs from the search block. If results are thin, say so honestly.',
+].join(' ');
+
 export function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);

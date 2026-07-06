@@ -22,7 +22,8 @@ import {
   documentIconName,
   normalizePickedAsset,
 } from '../utils/documentTypes';
-import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND } from '../utils/groundingPrompt';
+import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND } from '../utils/groundingPrompt';
+import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
@@ -378,6 +379,9 @@ const ChatSection = () => {
         return;
       }
 
+      const isWebSearchQuery =
+        wantsWebSearch(finalInput) && !isEmailQuery && !activeAttachments.length;
+
       const displayInput = isFromVoice ? finalInput : (input || (activeAttachments.some((f) => f.type?.startsWith('audio')) ? "🎤 Processing..." : (activeAttachments.length ? `📎 ${activeAttachments.length} file(s) attached` : "")));
       const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachments: activeAttachments };
 
@@ -398,6 +402,16 @@ const ChatSection = () => {
             shouldRouteThroughEarpieceIOS: false,
           });
         } catch (e) { console.log("Audio Mode Setup Error:", e); }
+      }
+
+      let webSearchContext = '';
+      if (isWebSearchQuery && !useOpenClawBridge) {
+        setStreamingContent('Searching the web…');
+        try {
+          webSearchContext = (await fetchWebSearchContext(finalInput, null)) || '';
+        } catch (e) {
+          console.warn('[webSearch]', e?.message || e);
+        }
       }
 
       const formData = new FormData();
@@ -434,15 +448,21 @@ const ChatSection = () => {
         }
       }
 
+      if (webSearchContext) {
+        chatMessage = `${webSearchContext}\n\n${chatMessage}`;
+      }
+
+      const personaExtras = [
+        ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
+        ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
+      ];
+
       formData.append('message', chatMessage);
       formData.append('provider', provider);
-      formData.append('persona', appendGroundingPersona(
-        persona,
-        documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : [],
-      ));
-      // Fresh file analysis: drop chat history so prior "can't read file" replies
-      // and unrelated memory context cannot override the extracted attachment text.
-      formData.append('history', JSON.stringify(documentTextInjected ? [] : messages.slice(-20)));
+      formData.append('persona', appendGroundingPersona(persona, personaExtras));
+      // Fresh file analysis or web search: drop chat history so prior replies
+      // cannot override injected attachment text or live search results.
+      formData.append('history', JSON.stringify(documentTextInjected || webSearchContext ? [] : messages.slice(-20)));
       if (activeKey) formData.append('api_key', activeKey.trim());
       if (isVoiceMode) {
         formData.append('synthesize_voice', 'True');
@@ -468,7 +488,7 @@ const ChatSection = () => {
       const typingSafetyTimer = setTimeout(() => {
         setIsTyping(false);
         setStreamingContent('');
-      }, isEmailQuery ? 180000 : 130000);
+      }, isEmailQuery ? 180000 : (isWebSearchQuery ? 150000 : 130000));
 
       const clearTypingSafety = () => clearTimeout(typingSafetyTimer);
 

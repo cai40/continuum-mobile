@@ -401,7 +401,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       </Text>
 
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Live sports/news/weather: ask via bridge chat (e.g. “Norway soccer latest result”). Uses Wikipedia search; optional Brave API key on VPS for richer news (`BRAVE_SEARCH_API_KEY` in `~/.config/continuum-openclaw/.env`).
+        Live sports/news/weather works in any chat (e.g. “Norway soccer latest result”) — Wikipedia search on the device when bridge is off, or on the VPS when bridge is on. Optional Brave API key on VPS for richer news (`BRAVE_SEARCH_API_KEY` in `~/.config/continuum-openclaw/.env`).
       </Text>
 
       <View style={[styles.groupedCard, { marginTop: 24, padding: 16 }]}>
