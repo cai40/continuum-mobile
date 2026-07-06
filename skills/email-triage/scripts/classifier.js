@@ -57,7 +57,7 @@ const ORDER_RECEIPT_KEEP = /\b(receipt|invoice|order confirm|confirmation number
 
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
-  /mattressfirm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot/i,
+  /mattressfirm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
   /yahoo@daily\.comms\.yahoo\.net|bingjing6699@gmail\.com/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
@@ -146,6 +146,11 @@ function classifyEmail(email) {
     return { category: 'informational', score: CATEGORY_SCORE.informational, reasons, selectable_as_junk: true };
   }
 
+  if (isMarketingSender(email)) {
+    reasons.push('retail/marketing sender');
+    return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
+  }
+
   const newsletterHits = NEWSLETTER_KEYWORDS.filter((kw) => text.includes(kw));
   if (newsletterHits.length >= 2) {
     reasons.push(`newsletter signals: ${newsletterHits.slice(0, 3).join(', ')}`);
@@ -173,11 +178,6 @@ function classifyEmail(email) {
 
   if (newsletterHits.length === 1) {
     reasons.push(`newsletter signal: ${newsletterHits[0]}`);
-    return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
-  }
-
-  if (isMarketingSender(email)) {
-    reasons.push('retail/marketing sender');
     return { category: 'newsletter', score: CATEGORY_SCORE.newsletter, reasons, selectable_as_junk: true };
   }
 
