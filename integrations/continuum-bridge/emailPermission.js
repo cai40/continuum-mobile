@@ -57,17 +57,12 @@ function evaluateOverLimitPermission({
   const isMove = !!moveRequested;
   const cleanupTargets = isCleanup ? countCleanupTargets(messages) : 0;
 
-  // Inbox cleanups under 500 targets run immediately (up to 500 moved per run).
-  if (isCleanup && cleanupTargets > 0 && cleanupTargets < PERMISSION_CLEANUP_THRESHOLD) {
-    return null;
-  }
+  // Inbox cleanups run without a separate confirm — "fetch and clean" is already consent.
+  // Target count alone never blocks cleanup (only fetch/range caps below).
 
   const overRange = totalMatched > limit;
   const overFetchCap = fetchedCount >= limit && totalMatched > fetchedCount;
-  const overActionCap = (isCleanup || isMove) && fetchedCount >= MAX_DELETE_PER_REQUEST
-    && (isCleanup
-      ? cleanupTargets >= PERMISSION_CLEANUP_THRESHOLD
-      : fetchedCount >= MAX_DELETE_PER_REQUEST);
+  const overActionCap = isMove && fetchedCount >= MAX_DELETE_PER_REQUEST;
 
   if (!overRange && !overFetchCap && !overActionCap) return null;
 
@@ -82,11 +77,11 @@ function evaluateOverLimitPermission({
   };
 }
 
-/** Trash cap for this request (500 for waived cleanups, else 100). */
+/** Trash cap for this request (500 for cleanups, else 100). */
 function resolveDeleteCap({ message, messages, permission }) {
   if (!wantsEmailCleanup(message)) return MAX_DELETE_PER_REQUEST;
   const targets = countCleanupTargets(messages);
-  if (!permission && targets > 0 && targets < PERMISSION_CLEANUP_THRESHOLD) {
+  if (!permission && targets > 0) {
     return Math.min(CLEANUP_DELETE_MAX, targets);
   }
   if (!permission && hasBulkActionConfirm(message) && targets > 0) {

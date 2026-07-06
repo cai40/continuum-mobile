@@ -230,7 +230,7 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
   return lines.join('\n');
 }
 
-function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult }) {
+function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult, permission, cleanupRequested }) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
   const triaged = triageMessages(messages);
@@ -275,6 +275,20 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
   ];
   if (trashHeader) {
     lines.push('', '**Cleanup Results:**', `- ${trashHeader}`);
+  } else if (permission && cleanupRequested) {
+    lines.push(
+      '',
+      '**Cleanup:** Not run yet.',
+      `- ${permission.cleanupTargets || cleanupCount} cleanup target(s) found but more mail matched than loaded, or fetch cap hit.`,
+      '- Reply **yes proceed** to move up to 500 newsletters/promos to Trash per run.',
+    );
+  } else if (cleanupRequested && cleanupCount > 0) {
+    lines.push(
+      '',
+      '**Cleanup:** Not run — check that **Allow move to Trash** is ON in app Setup.',
+    );
+  } else if (cleanupRequested && cleanupCount === 0) {
+    lines.push('', '**Cleanup:** No newsletter/promo targets in this batch.');
   }
   lines.push('', '[/PREFILLED SUMMARY]');
   return lines.join('\n');
@@ -309,7 +323,9 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   const maxChars = Math.min(1_000_000, Math.max(10000, limit * 200));
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
   const fetchedCount = parsed.length;
-  const summaryOnly = options.summaryOnly || wantsEmailSummaryOnly(options.message || '') || fetchedCount > 250;
+  const cleanupRequested = wantsEmailCleanup(options.message || '');
+  const summaryOnly = (options.summaryOnly || wantsEmailSummaryOnly(options.message || '') || fetchedCount > 250)
+    && !cleanupRequested;
 
   if (summaryOnly) {
     return {
@@ -414,7 +430,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
     fetchOptions.offset || 0,
     fetchOptions.dateRangeLabel || null,
     scanMeta,
-    { summaryOnly: wantsEmailSummaryOnly(message), message },
+    { summaryOnly: wantsEmailSummaryOnly(message) && !wantsEmailCleanup(message), message },
   );
   console.error(
     '[continuum-bridge] email fetch result:',
@@ -638,12 +654,15 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       finalContext = [finalContext, '', `[Email move] ${moveResult.error}`].filter(Boolean).join('\n');
     }
 
-    if (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '')) {
+    const cleanupRequested = wantsEmailCleanup(effectiveMessage);
+    if (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '') || cleanupRequested) {
       const prefilled = buildPrefilledSummaryReply({
         dateRangeLabel: fetchOptions.dateRangeLabel,
         scanMeta,
         messages,
         deleteResult,
+        permission,
+        cleanupRequested,
       });
       if (prefilled) {
         finalContext = [finalContext, '', prefilled].join('\n');
