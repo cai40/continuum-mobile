@@ -41,6 +41,7 @@ export const AppProvider = ({ children }) => {
   const [openclawVpsIp, setOpenclawVpsIp] = useState("135.181.155.197");
   const [openclawBridgeHttpsUrl, setOpenclawBridgeHttpsUrl] = useState("");
   const [openclawBridgeSecret, setOpenclawBridgeSecret] = useState("");
+  const [renderEmailBridgeSecret, setRenderEmailBridgeSecret] = useState("");
   const [openclawChatEnabled, setOpenclawChatEnabled] = useState(false);
   const [openclawEmailLimit, setOpenclawEmailLimit] = useState(String(DEFAULT_OPENCLAW_EMAIL_LIMIT));
   const [openclawEmailRecent, setOpenclawEmailRecent] = useState(DEFAULT_OPENCLAW_EMAIL_RECENT);
@@ -223,6 +224,7 @@ export const AppProvider = ({ children }) => {
           "@openclaw_vps_ip",
           "@openclaw_bridge_https_url",
           "@openclaw_bridge_secret",
+          "@render_email_bridge_secret",
           "@openclaw_chat_enabled",
           "@openclaw_email_limit",
           "@openclaw_email_recent",
@@ -244,6 +246,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@openclaw_vps_ip") setOpenclawVpsIp(value);
           if (key === "@openclaw_bridge_https_url") setOpenclawBridgeHttpsUrl(value);
           if (key === "@openclaw_bridge_secret") setOpenclawBridgeSecret(value);
+          if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
           if (key === "@openclaw_chat_enabled") setOpenclawChatEnabled(value === "true");
           if (key === "@openclaw_email_limit") setOpenclawEmailLimit(value);
           if (key === "@openclaw_email_recent") setOpenclawEmailRecent(value);
@@ -373,6 +376,7 @@ export const AppProvider = ({ children }) => {
         ["@openclaw_vps_ip", openclawVpsIp.trim()],
         ["@openclaw_bridge_https_url", openclawBridgeHttpsUrl.trim()],
         ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
+        ["@render_email_bridge_secret", renderEmailBridgeSecret.trim()],
         ["@openclaw_chat_enabled", openclawChatEnabled ? "true" : "false"],
         ["@openclaw_email_limit", limit],
         ["@openclaw_email_recent", recent],
@@ -556,6 +560,8 @@ export const AppProvider = ({ children }) => {
         setOpenclawBridgeHttpsUrl,
         openclawBridgeSecret,
         setOpenclawBridgeSecret,
+        renderEmailBridgeSecret,
+        setRenderEmailBridgeSecret,
         openclawChatEnabled,
         setOpenclawChatEnabled,
         openclawEmailLimit,

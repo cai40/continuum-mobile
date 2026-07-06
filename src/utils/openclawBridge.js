@@ -5,6 +5,11 @@ export function resolveBridgeSecret(storedSecret) {
   return trimmed || DEFAULT_OPENCLAW_BRIDGE_SECRET;
 }
 
+/** Render email bridge has its own BRIDGE_SECRET on Render — no VPS default. */
+export function resolveRenderEmailBridgeSecret(storedSecret) {
+  return storedSecret?.trim() || "";
+}
+
 /**
  * Prefer HTTPS tunnel URL (Cloudflare) — iPhone blocks plain HTTP to VPS IP.
  */
