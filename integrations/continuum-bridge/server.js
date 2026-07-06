@@ -16,6 +16,7 @@ const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
 const { wantsEmailFetch, wantsEmailSummaryOnly, resolveEmailFetchOptions, formatPreEmailFetchStatus, formatPostEmailFetchStatus } = require('./emailFetchOptions');
+const { wantsSenderRuleTrash } = require('./emailSenderRule');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
@@ -241,12 +242,15 @@ async function handleChatStream(req, res, config) {
 
   if (emailContext) {
     const deleteEnabled = !!payload.email_delete_enabled;
-    const summaryOnly = wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext);
+    const senderRuleAction = wantsSenderRuleTrash(message);
+    const summaryOnly = (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext)) && !senderRuleAction;
     message = [
       'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
-      summaryOnly
-        ? 'SUMMARY MODE: Your ENTIRE reply must be ONLY the text inside [PREFILLED SUMMARY]…[/PREFILLED SUMMARY] — copy verbatim. Do NOT invent "6728 headers", "1000 UID window", or Jan–Jun scan spans. Do NOT rephrase counts.'
-        : 'Summarize ONLY the emails explicitly listed below with their UIDs.',
+      senderRuleAction
+        ? 'SENDER RULE MODE: Answer the user\'s sender-specific trash rule first. Your ENTIRE reply must be ONLY the text inside [SENDER RULE RESULT]…[/SENDER RULE RESULT] — copy verbatim. Do NOT reply with a generic inbox summary.'
+        : summaryOnly
+          ? 'SUMMARY MODE: Your ENTIRE reply must be ONLY the text inside [PREFILLED SUMMARY]…[/PREFILLED SUMMARY] — copy verbatim. Do NOT invent "6728 headers", "1000 UID window", or Jan–Jun scan spans. Do NOT rephrase counts.'
+          : 'Summarize ONLY the emails explicitly listed below with their UIDs.',
       'If a MAILBOX SCAN block appears below, copy its Date filter / Matched / Emails loaded lines — do not mention wide inbox scan spans or internal UID windows.',
       'If [EMAIL TRASH RESULT] appears below, copy its trash line verbatim — do not paraphrase as a rounded number.',
       'NEVER invent, simulate, reconstruct, or guess any email, UID, sender, or subject.',
