@@ -23,9 +23,10 @@ ALLOWED_READ_DIRS=${HOME}/Downloads,${HOME}/Documents
 ALLOWED_WRITE_DIRS=${HOME}/Downloads
 EOF
 chmod 600 "${CONFIG_DIR}/.env"
-mkdir -p -m 700 "${HOME}/.config/imap-smtp-email"
-cp "${CONFIG_DIR}/.env" "${HOME}/.config/imap-smtp-email/.env"
-echo "Wrote Yahoo IMAP config"
+# imap.js prefers ~/.config/imap-smtp-email/.env when present but expects LEGACY keys
+# (IMAP_USER/IMAP_PASS). Our shared format uses USERNAME/PASSWORD — keep only mail-skills.
+rm -f "${HOME}/.config/imap-smtp-email/.env"
+echo "Wrote Yahoo IMAP config at ${CONFIG_DIR}/.env"
 
 bash "$REPO_ROOT/integrations/continuum-bridge/sync-imap-skill.sh"
 
