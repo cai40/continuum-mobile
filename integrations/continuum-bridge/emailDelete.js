@@ -12,7 +12,7 @@ const MAX_DELETE_PER_REQUEST = 100;
 const CLEANUP_DELETE_MAX = 500;
 const DELETE_BATCH_SIZE = 25;
 
-const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
+const DELETE_INTENT = /\b(delete(?:d|ing)?|remove(?:d|ing)?|trash(?:ed|ing)?|purge(?:d|ing)?|discard(?:ed|ing)?|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
 const DELETE_BLOCKED = /\b(don'?t|do not|never|without|not)\s+(delete|remove|trash|purge|move\s+.*\s+trash)\b/i;
 const CLEANUP_INTENT = /\b(clean\s+up|cleanup|cleaning\s+up|clean\s+(?:my|the)\s+inbox|declutter|tidy\s+(?:up\s+)?(?:my\s+)?inbox)\b/i;
 const JUNK_INTENT = /\b(junk|spam|promo(?:tional)?|marketing|newsletter|selectable|news\b|advertis(?:e|ing|ement)?s?)\b/i;

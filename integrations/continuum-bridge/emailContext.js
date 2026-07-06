@@ -6,6 +6,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
+const { maybeSenderRuleTrash, wantsSenderRuleTrash, parseSenderTrashRule, buildPrefilledSenderRuleReply } = require('./emailSenderRule');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
@@ -309,7 +310,8 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   const maxChars = Math.min(1_000_000, Math.max(10000, limit * 200));
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
   const fetchedCount = parsed.length;
-  const summaryOnly = options.summaryOnly || wantsEmailSummaryOnly(options.message || '') || fetchedCount > 250;
+  const summaryOnly = (options.summaryOnly || wantsEmailSummaryOnly(options.message || ''))
+    && !wantsSenderRuleTrash(options.message || '');
 
   if (summaryOnly) {
     return {
@@ -381,9 +383,10 @@ function imapCheckArgs(fetchOptions) {
 async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
   const isDateRange = !!(fetchOptions.since && fetchOptions.before);
+  const rule = parseSenderTrashRule(message);
   const sender = isDateRange
     ? null
-    : (parseMoveSenderFromMessage(message) || parseSenderFromMessage(message));
+    : (parseMoveSenderFromMessage(message) || parseSenderFromMessage(message) || (rule ? rule.senderLabel : null));
   const skillRoot = path.dirname(path.dirname(imapScript));
   const args = sender
     ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
@@ -414,7 +417,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
     fetchOptions.offset || 0,
     fetchOptions.dateRangeLabel || null,
     scanMeta,
-    { summaryOnly: wantsEmailSummaryOnly(message), message },
+    { summaryOnly: wantsEmailSummaryOnly(message) && !wantsSenderRuleTrash(message), message },
   );
   console.error(
     '[continuum-bridge] email fetch result:',
@@ -487,7 +490,8 @@ async function fetchEmailContext(message, payloadOptions = {}) {
   const moveRequested = wantsEmailMoveToFolder(effectiveMessage);
   const triageRequested = wantsTriage(effectiveMessage);
   const memoryIngestRequested = wantsEmailMemoryIngest(effectiveMessage);
-  if (!wantsEmailFetch(effectiveMessage, payloadOptions) && !deleteRequested && !moveRequested && !triageRequested && !memoryIngestRequested) {
+  const senderRuleRequested = wantsSenderRuleTrash(effectiveMessage);
+  if (!wantsEmailFetch(effectiveMessage, payloadOptions) && !deleteRequested && !moveRequested && !triageRequested && !memoryIngestRequested && !senderRuleRequested) {
     return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null, moveResult: null };
   }
 
@@ -527,7 +531,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     };
   }
 
-  if ((deleteRequested || moveRequested) && !payloadOptions.email_delete_enabled) {
+  if ((deleteRequested || moveRequested) && !senderRuleRequested && !payloadOptions.email_delete_enabled) {
     return {
       matched: true,
       context: null,
@@ -559,8 +563,9 @@ async function fetchEmailContext(message, payloadOptions = {}) {
 
     const deleteCap = resolveDeleteCap({ message: effectiveMessage, messages, permission });
     const skipAutoTrashForCleanup = wantsEmailCleanup(effectiveMessage) && deleteRequested && !permission;
+    const skipAutoTrashForSenderRule = senderRuleRequested;
 
-    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested && !skipAutoTrashForCleanup) {
+    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested && !skipAutoTrashForCleanup && !skipAutoTrashForSenderRule) {
       deleteResult = await maybeAutoTrashJunk(messages, imapScript, {
         enabled: true,
         includeGithub: false,
@@ -568,7 +573,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       });
     }
 
-    if (deleteRequested && !permission) {
+    if (deleteRequested && !permission && !senderRuleRequested) {
       const manualResult = await maybeDeleteEmails(effectiveMessage, messages, imapScript, {
         enabled: !!payloadOptions.email_delete_enabled,
         listOffset: fetchOptions.offset || 0,
@@ -581,6 +586,14 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       } else if (manualResult.error && !deleteResult.executed) {
         deleteResult = manualResult;
       }
+    }
+
+    if (senderRuleRequested && !permission) {
+      const senderResult = await maybeSenderRuleTrash(effectiveMessage, messages, imapScript, {
+        enabled: !!payloadOptions.email_delete_enabled,
+        maxDelete: deleteCap,
+      });
+      deleteResult = { ...senderResult, auto: false };
     }
 
     if (moveRequested && !permission) {
@@ -610,11 +623,13 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       ].join('\n');
     }
     if (deleteResult.executed && deleteResult.summary) {
-      const label = deleteResult.auto && !deleteRequested
-        ? '[Email auto-trash executed]'
-        : wantsEmailCleanup(effectiveMessage)
-          ? '[Email cleanup executed — moved to Trash]'
-          : '[Email trash executed]';
+      const label = senderRuleRequested
+        ? '[Sender rule trash executed]'
+        : deleteResult.auto && !deleteRequested
+          ? '[Email auto-trash executed]'
+          : wantsEmailCleanup(effectiveMessage)
+            ? '[Email cleanup executed — moved to Trash]'
+            : '[Email trash executed]';
       finalContext = [finalContext, '', label, deleteResult.summary, formatTrashReportBlock(deleteResult)].filter(Boolean).join('\n');
     } else if (deleteResult.error) {
       let errBlock = `[Email trash] ${deleteResult.error}`;
@@ -638,7 +653,22 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       finalContext = [finalContext, '', `[Email move] ${moveResult.error}`].filter(Boolean).join('\n');
     }
 
-    if (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '')) {
+    if (senderRuleRequested) {
+      const rule = parseSenderTrashRule(effectiveMessage);
+      const senderPrefilled = buildPrefilledSenderRuleReply(rule, deleteResult, {
+        deleteEnabled: !!payloadOptions.email_delete_enabled,
+      });
+      if (senderPrefilled) {
+        finalContext = [
+          `Sender rule: trash ${rule.senderLabel} promotional mail${rule.keepReceipt ? ' (keep receipts/invoices/orders)' : ''}.`,
+          `Fetched ${messages?.length ?? 0} message(s) from ${rule.senderLabel} (90-day lookback).`,
+          '',
+          finalContext,
+          '',
+          senderPrefilled,
+        ].join('\n');
+      }
+    } else if (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '')) {
       const prefilled = buildPrefilledSummaryReply({
         dateRangeLabel: fetchOptions.dateRangeLabel,
         scanMeta,

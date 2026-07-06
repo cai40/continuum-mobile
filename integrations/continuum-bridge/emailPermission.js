@@ -2,6 +2,7 @@
 
 const { wantsEmailCleanup, MAX_DELETE_PER_REQUEST, CLEANUP_DELETE_MAX, countCleanupTargets } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
+const { wantsSenderRuleTrash, parseSenderTrashRule, countSenderRuleTrashTargets } = require('./emailSenderRule');
 
 /** Cleanup runs without "yes proceed" when fewer than this many trash targets. */
 const PERMISSION_CLEANUP_THRESHOLD = 500;
@@ -55,7 +56,16 @@ function evaluateOverLimitPermission({
   const totalMatched = scanMeta?.matched ?? fetchedCount;
   const isCleanup = wantsEmailCleanup(message);
   const isMove = !!moveRequested;
+  const senderRule = wantsSenderRuleTrash(message);
   const cleanupTargets = isCleanup ? countCleanupTargets(messages) : 0;
+
+  if (senderRule) {
+    const rule = parseSenderTrashRule(message);
+    const senderTargets = countSenderRuleTrashTargets(messages, rule);
+    if (senderTargets > 0 && senderTargets < PERMISSION_CLEANUP_THRESHOLD) {
+      return null;
+    }
+  }
 
   // Inbox cleanups under 500 targets run immediately (up to 500 moved per run).
   if (isCleanup && cleanupTargets > 0 && cleanupTargets < PERMISSION_CLEANUP_THRESHOLD) {
@@ -84,6 +94,16 @@ function evaluateOverLimitPermission({
 
 /** Trash cap for this request (500 for waived cleanups, else 100). */
 function resolveDeleteCap({ message, messages, permission }) {
+  if (wantsSenderRuleTrash(message)) {
+    const rule = parseSenderTrashRule(message);
+    const targets = countSenderRuleTrashTargets(messages, rule);
+    if (!permission && targets > 0 && targets < PERMISSION_CLEANUP_THRESHOLD) {
+      return Math.min(CLEANUP_DELETE_MAX, targets);
+    }
+    if (!permission && targets > 0) {
+      return Math.min(CLEANUP_DELETE_MAX, targets);
+    }
+  }
   if (!wantsEmailCleanup(message)) return MAX_DELETE_PER_REQUEST;
   const targets = countCleanupTargets(messages);
   if (!permission && targets > 0 && targets < PERMISSION_CLEANUP_THRESHOLD) {

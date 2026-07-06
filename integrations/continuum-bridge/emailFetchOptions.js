@@ -3,6 +3,7 @@
 const { parseDateRangeFromMessage, addDays } = require('./emailDateRange');
 const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
+const { wantsSenderRuleTrash } = require('./emailSenderRule');
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 5000;
@@ -111,12 +112,18 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const dateRangeFromMessage = parseDateRangeFromMessage(message);
   const cleanup = wantsEmailCleanup(message);
   const moveToFolder = wantsEmailMoveToFolder(message);
-  const defaultLimit = dateRangeFromMessage ? MONTH_RANGE_MIN_LIMIT : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
+  const senderRule = wantsSenderRuleTrash(message);
+  const defaultLimit = dateRangeFromMessage
+    ? MONTH_RANGE_MIN_LIMIT
+    : (senderRule ? 500 : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT)));
   let limit = limitFromMessage != null
     ? clampLimit(limitFromMessage, defaultLimit)
     : clampLimit(payloadOptions.email_limit, defaultLimit);
   // App-stored limits (e.g. 500) must not cap month/year range fetches below the bridge default.
   if (dateRangeFromMessage && limitFromMessage == null) {
+    limit = Math.max(limit, defaultLimit);
+  }
+  if (senderRule && limitFromMessage == null) {
     limit = Math.max(limit, defaultLimit);
   }
   let offset = clampOffset(
@@ -131,6 +138,7 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const recent = dateRangeFromMessage
     ? null
     : (parseRecentFromMessage(message)
+      || (senderRule ? '90d' : null)
       || (moveToFolder ? (/\ball\b/i.test(message || '') ? '365d' : '90d') : null)
       || (cleanup ? '30d' : null)
       || payloadOptions.email_recent
@@ -185,6 +193,7 @@ function formatPostEmailFetchStatus({ fetchOptions, scanMeta, loadedCount } = {}
 
 function wantsEmailFetch(message, payloadOptions = {}) {
   const text = message || '';
+  if (wantsSenderRuleTrash(text)) return true;
   if (EMAIL_TRIGGER.test(text)) return true;
   if (parseDateRangeFromMessage(text)) return true;
   if (parseOffsetFromMessage(text) != null) return true;

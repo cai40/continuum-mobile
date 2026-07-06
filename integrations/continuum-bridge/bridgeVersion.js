@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = {
-  version: '2026.07.06p',
+  version: '2026.07.06q',
   features: {
     date_range: true,
     date_range_mode: 'recent_lookback_filter',
@@ -10,5 +10,6 @@ module.exports = {
     max_limit: 5000,
     move_to_folder: true,
     web_search: true,
+    sender_rule_trash: true,
   },
 };
