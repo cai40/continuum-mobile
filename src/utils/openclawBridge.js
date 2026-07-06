@@ -29,3 +29,23 @@ export function resolveBridgeBaseUrl({ httpsUrl, vpsIp, defaultVpsIp }) {
 export function isHttpsBridgeUrl(url) {
   return /^https:\/\//i.test(url || '');
 }
+
+/** Last user message that requested inbox fetch/cleanup (for "yes proceed" confirm). */
+export function findPriorEmailUserMessage(messages) {
+  if (!Array.isArray(messages)) return null;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const row = messages[i];
+    if (row?.role !== 'user') continue;
+    const text = String(row.content || '').trim();
+    if (!text) continue;
+    if (/\b(emails?|inbox|yahoo|mail|clean|fetch|apr|april)\b/i.test(text)) return text;
+  }
+  return null;
+}
+
+export function isEmailConfirmMessage(text) {
+  const input = String(text || '').trim();
+  if (input.length > 120) return false;
+  return /\b(yes|yeah|yep|confirm|confirmed|proceed|go ahead|do it|approved|approve)\b/i.test(input)
+    && !/\b(emails?|inbox|clean|fetch|apr|april|yahoo)\b/i.test(input);
+}

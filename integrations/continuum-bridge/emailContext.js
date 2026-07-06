@@ -11,6 +11,8 @@ const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder,
 const { evaluateOverLimitPermission, formatPermissionBlock } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
 
+const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
+
 const execFileAsync = promisify(execFile);
 
 async function probeImapDeleteCommand(imapScript) {
@@ -370,11 +372,12 @@ function formatImapError(err, fetchOptions = {}) {
 }
 
 async function fetchEmailContext(message, payloadOptions = {}) {
-  const deleteRequested = wantsEmailDelete(message);
-  const moveRequested = wantsEmailMoveToFolder(message);
-  const triageRequested = wantsTriage(message);
-  const memoryIngestRequested = wantsEmailMemoryIngest(message);
-  if (!wantsEmailFetch(message, payloadOptions) && !deleteRequested && !moveRequested && !triageRequested && !memoryIngestRequested) {
+  const effectiveMessage = buildEffectiveEmailMessage(message, payloadOptions.history);
+  const deleteRequested = wantsEmailDelete(effectiveMessage);
+  const moveRequested = wantsEmailMoveToFolder(effectiveMessage);
+  const triageRequested = wantsTriage(effectiveMessage);
+  const memoryIngestRequested = wantsEmailMemoryIngest(effectiveMessage);
+  if (!wantsEmailFetch(effectiveMessage, payloadOptions) && !deleteRequested && !moveRequested && !triageRequested && !memoryIngestRequested) {
     return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null, moveResult: null };
   }
 
@@ -425,17 +428,17 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     };
   }
 
-  const resolvedFetchOptions = resolveEmailFetchOptions(message, payloadOptions);
-  const destFolder = moveRequested ? parseDestinationFolder(message) : null;
+  const resolvedFetchOptions = resolveEmailFetchOptions(effectiveMessage, payloadOptions);
+  const destFolder = moveRequested ? parseDestinationFolder(effectiveMessage) : null;
 
   try {
-    const { context, messages, fetchOptions, scanMeta } = await runImapCheck(imapScript, message, payloadOptions);
+    const { context, messages, fetchOptions, scanMeta } = await runImapCheck(imapScript, effectiveMessage, payloadOptions);
 
     let deleteResult = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
     let moveResult = { executed: false, summary: null, error: null, uids: [], destFolder: null, sender: null };
 
     const permission = evaluateOverLimitPermission({
-      message,
+      message: effectiveMessage,
       fetchOptions,
       scanMeta,
       messages,
@@ -452,7 +455,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     }
 
     if (deleteRequested && !permission) {
-      const manualResult = await maybeDeleteEmails(message, messages, imapScript, {
+      const manualResult = await maybeDeleteEmails(effectiveMessage, messages, imapScript, {
         enabled: !!payloadOptions.email_delete_enabled,
         listOffset: fetchOptions.offset || 0,
       });
@@ -470,7 +473,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     }
 
     if (moveRequested && !permission) {
-      moveResult = await maybeMoveEmailsToFolder(message, messages, imapScript, {
+      moveResult = await maybeMoveEmailsToFolder(effectiveMessage, messages, imapScript, {
         enabled: !!payloadOptions.email_delete_enabled,
       });
     }
@@ -484,7 +487,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       ].join('\n');
     }
     if (triageRequested) {
-      const triage = buildTriageContext(messages, message);
+      const triage = buildTriageContext(messages, effectiveMessage);
       finalContext = [
         context,
         '',
@@ -498,13 +501,13 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     if (deleteResult.executed && deleteResult.summary) {
       const label = deleteResult.auto && !deleteRequested
         ? '[Email auto-trash executed]'
-        : wantsEmailCleanup(message)
+        : wantsEmailCleanup(effectiveMessage)
           ? '[Email cleanup executed — moved to Trash]'
           : '[Email trash executed]';
       finalContext = [finalContext, '', label, deleteResult.summary].join('\n');
     } else if (deleteResult.error) {
       let errBlock = `[Email trash] ${deleteResult.error}`;
-      if (CHURCH_COMMUNITY_INTENT.test(message)) {
+      if (CHURCH_COMMUNITY_INTENT.test(effectiveMessage)) {
         const churchUids = resolveChurchCommunityUids(messages);
         if (churchUids.length) {
           errBlock += [
