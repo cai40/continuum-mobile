@@ -164,7 +164,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     return { text, messages: [], fetchedCount: 0 };
   }
 
-  const maxChars = Math.min(200000, Math.max(10000, limit * 500));
+  const maxChars = Math.min(1_000_000, Math.max(10000, limit * 200));
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
   const uidList = uids.join(', ');
   const fetchedCount = parsed.length;
@@ -238,8 +238,8 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     : [imapScript, ...imapCheckArgs(fetchOptions)];
   console.error('[continuum-bridge] imap args:', args.slice(1).join(' '));
   const timeoutMs = fetchOptions.since && fetchOptions.before
-    ? Math.min(300000, 120000 + fetchOptions.limit * 3000)
-    : Math.min(180000, 60000 + fetchOptions.limit * 2500);
+    ? Math.min(600000, 120000 + fetchOptions.limit * 2000)
+    : Math.min(360000, 60000 + fetchOptions.limit * 2000);
   const maxBuffer = Math.min(128 * 1024 * 1024, 16 * 1024 * 1024 + fetchOptions.limit * 256 * 1024);
 
   const { stdout, stderr } = await execFileAsync(
