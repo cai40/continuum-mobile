@@ -189,7 +189,10 @@ export function resolveEmailFetchPayload({ limit, recent, message }) {
   const fromMessageLimit = message ? parseEmailLimitFromMessage(message) : null;
   const fromMessageOffset = message ? parseEmailOffsetFromMessage(message) : null;
   const dateRange = message ? parseEmailDateRangeFromMessage(message) : null;
-  const resolvedLimit = fromMessageLimit ?? clampEmailLimit(limit);
+  let resolvedLimit = fromMessageLimit ?? clampEmailLimit(limit);
+  if (dateRange && fromMessageLimit == null) {
+    resolvedLimit = Math.max(resolvedLimit, 1000);
+  }
   let resolvedOffset = fromMessageOffset ?? 0;
 
   const pageMatch = message?.match(/\b(?:page|batch)\s+(\d{1,4})\b/i);

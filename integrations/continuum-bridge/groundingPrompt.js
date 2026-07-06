@@ -31,6 +31,7 @@ const EMAIL_LIVE_INBOX_DELETE_APPEND = [
   'NEVER invent fake commands like "delete uid ..." in code blocks.',
   'If [Permission required] appears below, do NOT say emails were trashed — ask the user to reply "yes proceed" or raise the limit.',
   'If [Email trash executed], [Email cleanup executed], or [Email auto-trash executed] appears below, confirm exactly what was moved to Trash from that block only.',
+  'If [EMAIL TRASH RESULT] appears below, copy its trash line verbatim — it may show a combined total (auto-trash + cleanup), not just 100.',
   'Cleanup ("clean up inbox") moves news, newsletters, promos, ads, GitHub/dev notifications, and bank statements to Trash — never OTP or security alerts.',
   'If no trash-executed block is present, do NOT say emails were moved — tell the user trashing did not run yet and ask them to resend with explicit UIDs or "move category 1 and 3 to trash".',
   'If trashing failed or was disabled, explain using the error text — do not claim you lack all execution ability.',
