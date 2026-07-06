@@ -3,6 +3,9 @@
 const { wantsEmailCleanup, MAX_DELETE_PER_REQUEST, countCleanupTargets } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 
+/** Cleanup runs without "yes proceed" when fewer than this many trash targets. */
+const PERMISSION_CLEANUP_THRESHOLD = 500;
+
 const BULK_CONFIRM = /\b(yes|yeah|yep|confirm|confirmed|proceed|go ahead|do it|approved|approve|clean all|trash all|delete all matching|move all)\b/i;
 
 function hasBulkActionConfirm(message) {
@@ -22,6 +25,9 @@ function formatPermissionBlock({ totalMatched, cleanupTargets, limit, dateRangeL
   }
   if (cleanupTargets > MAX_DELETE_PER_REQUEST) {
     lines.push(`Each run can move at most ${MAX_DELETE_PER_REQUEST} messages per batch.`);
+  }
+  if (isCleanup && cleanupTargets >= PERMISSION_CLEANUP_THRESHOLD) {
+    lines.push(`${cleanupTargets} cleanup targets — confirm required at ${PERMISSION_CLEANUP_THRESHOLD}+.`);
   }
   lines.push(
     `Reply "yes proceed" or "confirm" to ${action} matching mail in batches,`,
@@ -49,10 +55,17 @@ function evaluateOverLimitPermission({
   const isMove = !!moveRequested;
   const cleanupTargets = isCleanup ? countCleanupTargets(messages) : 0;
 
+  // Inbox cleanups under 500 targets run immediately (still max 100 per path per batch).
+  if (isCleanup && cleanupTargets > 0 && cleanupTargets < PERMISSION_CLEANUP_THRESHOLD) {
+    return null;
+  }
+
   const overRange = totalMatched > limit;
   const overFetchCap = fetchedCount >= limit && totalMatched > fetchedCount;
   const overActionCap = (isCleanup || isMove) && fetchedCount >= MAX_DELETE_PER_REQUEST
-    && (isCleanup ? cleanupTargets > MAX_DELETE_PER_REQUEST : fetchedCount >= MAX_DELETE_PER_REQUEST);
+    && (isCleanup
+      ? cleanupTargets >= PERMISSION_CLEANUP_THRESHOLD
+      : fetchedCount >= MAX_DELETE_PER_REQUEST);
 
   if (!overRange && !overFetchCap && !overActionCap) return null;
 
@@ -72,4 +85,5 @@ module.exports = {
   evaluateOverLimitPermission,
   formatPermissionBlock,
   MAX_DELETE_PER_REQUEST,
+  PERMISSION_CLEANUP_THRESHOLD,
 };
