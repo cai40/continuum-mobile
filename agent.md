@@ -86,7 +86,7 @@ If `bridge_version` is **missing**, the VPS is still on old code — do not debu
 | Month / year ranges | `parseMonthRangeFromMessage`, `parseYearRangeFromMessage` in `emailDateRange.js` |
 | Clean up inbox | `emailDelete.js` (`CLEANUP_INTENT`, `resolveCleanupUids`) + `email-triage` classifier |
 | Move to folder | `emailMove.js` + `imap.js move --to <folder>` |
-| Web search | `src/utils/webSearch.js` (direct chat) or bridge `webSearch.js` — Wikipedia (default) or Brave API if `BRAVE_SEARCH_API_KEY` set on VPS |
+| Web search | `src/utils/webSearch.js` (direct chat: Google News RSS + DuckDuckGo + Wikipedia + page scrape) or bridge `webSearch.js` |
 | Over-limit permission | `emailPermission.js` — blocks trash/move until `yes proceed` / `confirm` |
 | Lite fetch (large batches) | `--lite` on IMAP check (headers + snippet only) |
 | Lookback window | Settings **Email Lookback** (`7d`, `30d`) — **ignored** when user gives explicit dates |

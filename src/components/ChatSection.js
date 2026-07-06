@@ -488,7 +488,7 @@ const ChatSection = () => {
       const typingSafetyTimer = setTimeout(() => {
         setIsTyping(false);
         setStreamingContent('');
-      }, isEmailQuery ? 180000 : (isWebSearchQuery ? 150000 : 130000));
+      }, isEmailQuery ? 180000 : (isWebSearchQuery ? 180000 : 130000));
 
       const clearTypingSafety = () => clearTimeout(typingSafetyTimer);
 
