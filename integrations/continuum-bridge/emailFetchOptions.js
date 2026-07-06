@@ -2,6 +2,7 @@
 
 const { parseDateRangeFromMessage, addDays } = require('./emailDateRange');
 const { wantsEmailCleanup } = require('./emailDelete');
+const { wantsEmailMoveToFolder } = require('./emailMove');
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 1000;
@@ -99,7 +100,8 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const offsetFromMessage = parseOffsetFromMessage(message);
   const dateRangeFromMessage = parseDateRangeFromMessage(message);
   const cleanup = wantsEmailCleanup(message);
-  const defaultLimit = dateRangeFromMessage ? 250 : (cleanup ? 100 : DEFAULT_LIMIT);
+  const moveToFolder = wantsEmailMoveToFolder(message);
+  const defaultLimit = dateRangeFromMessage ? 250 : (moveToFolder ? 250 : (cleanup ? 100 : DEFAULT_LIMIT));
   const limit = clampLimit(
     limitFromMessage ?? payloadOptions.email_limit,
     defaultLimit,
@@ -116,6 +118,7 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const recent = dateRangeFromMessage
     ? null
     : (parseRecentFromMessage(message)
+      || (moveToFolder ? (/\ball\b/i.test(message || '') ? '365d' : '90d') : null)
       || (cleanup ? '30d' : null)
       || payloadOptions.email_recent
       || DEFAULT_RECENT);

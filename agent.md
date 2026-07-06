@@ -85,7 +85,8 @@ If `bridge_version` is **missing**, the VPS is still on old code — do not debu
 | Date range fetch | `emailDateRange.js`, `--since` / `--before` on IMAP |
 | Month / year ranges | `parseMonthRangeFromMessage`, `parseYearRangeFromMessage` in `emailDateRange.js` |
 | Clean up inbox | `emailDelete.js` (`CLEANUP_INTENT`, `resolveCleanupUids`) + `email-triage` classifier |
-| Over-limit permission | `emailPermission.js` — blocks trash until `yes proceed` / `confirm cleanup` |
+| Move to folder | `emailMove.js` + `imap.js move --to <folder>` |
+| Over-limit permission | `emailPermission.js` — blocks trash/move until `yes proceed` / `confirm` |
 | Lite fetch (large batches) | `--lite` on IMAP check (headers + snippet only) |
 | Lookback window | Settings **Email Lookback** (`7d`, `30d`) — **ignored** when user gives explicit dates |
 
@@ -95,7 +96,8 @@ Chat examples that must work:
 - `Fetch emails from 6/20/2026 back to 4/1/2026`
 - `Clean up inbox from 4/1/2026 to 6/15/2026`
 - `Clean up June 2026` / `Clean up for 2026`
-- Over limit → user replies `yes proceed` before trash runs
+- `Move all emails from Min Zhang (njsgas@gmail.com) to Min folder`
+- Over limit → user replies `yes proceed` before trash/move runs
 
 ---
 

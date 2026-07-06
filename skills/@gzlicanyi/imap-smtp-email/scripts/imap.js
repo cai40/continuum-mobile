@@ -1051,6 +1051,75 @@ async function resolveTrashMailbox(imap) {
   return findTrashMailboxName(boxes) || 'Trash';
 }
 
+function findMailboxByName(boxes, targetName, prefix = '') {
+  const want = String(targetName || '').trim().toLowerCase();
+  if (!want) return null;
+  let partial = null;
+  for (const [name, info] of Object.entries(boxes)) {
+    const fullName = prefix ? `${prefix}${info.delimiter}${name}` : name;
+    const leaf = name.toLowerCase();
+    if (leaf === want || fullName.toLowerCase() === want) return fullName;
+    if (leaf.includes(want) || want.includes(leaf)) partial = partial || fullName;
+    if (info.children) {
+      const nested = findMailboxByName(info.children, targetName, fullName);
+      if (nested) return nested;
+    }
+  }
+  return partial;
+}
+
+async function resolveDestinationMailbox(imap, destName) {
+  const boxes = await getBoxesAsync(imap);
+  const resolved = findMailboxByName(boxes, destName);
+  if (!resolved) {
+    const names = formatMailboxTree(boxes).map((b) => b.name).slice(0, 30);
+    throw new Error(
+      `Folder not found: "${destName}". Available: ${names.join(', ')}${names.length >= 30 ? '…' : ''}`,
+    );
+  }
+  return resolved;
+}
+
+// Move message(s) to a named mailbox/folder (Yahoo IMAP MOVE)
+async function moveMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) {
+  if (!uids || uids.length === 0) {
+    throw new Error('At least one UID is required');
+  }
+  if (!destName) {
+    throw new Error('Destination folder required: node imap.js move <uid>... --to <folder>');
+  }
+
+  const normalizedUids = uids.map((uid) => parseInt(uid, 10)).filter((uid) => !Number.isNaN(uid));
+  if (normalizedUids.length === 0) {
+    throw new Error('No valid UIDs provided');
+  }
+
+  const imap = await connect();
+
+  try {
+    await openBox(imap, mailbox, false);
+    const destBox = await resolveDestinationMailbox(imap, destName);
+
+    return new Promise((resolve, reject) => {
+      imap.move(normalizedUids, destBox, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve({
+          success: true,
+          uids: normalizedUids,
+          action: 'moved_to_folder',
+          destination_mailbox: destBox,
+          count: normalizedUids.length,
+        });
+      });
+    });
+  } finally {
+    imap.end();
+  }
+}
+
 // Move message(s) to Trash (Yahoo/Gmail standard) or permanently delete with permanent=true
 async function deleteMessages(uids, mailbox = DEFAULT_MAILBOX, options = {}) {
   if (!uids || uids.length === 0) {
@@ -1257,6 +1326,16 @@ async function main() {
         });
         break;
 
+      case 'move':
+        if (positional.length === 0) {
+          throw new Error('UID(s) required: node imap.js move <uid> [uid2...] --to <folder>');
+        }
+        if (!options.to) {
+          throw new Error('Destination folder required: --to <folder>');
+        }
+        result = await moveMessagesToMailbox(positional, options.to, options.mailbox);
+        break;
+
       case 'list-mailboxes':
         result = await listMailboxes();
         break;
@@ -1271,7 +1350,7 @@ async function main() {
 
       default:
         console.error('Unknown command:', command);
-        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, list-mailboxes, list-accounts');
+        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, move, list-mailboxes, list-accounts');
         process.exit(1);
     }
 

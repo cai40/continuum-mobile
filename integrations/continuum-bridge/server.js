@@ -17,10 +17,12 @@ const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
+const { wantsEmailMoveToFolder } = require('./emailMove');
 const {
   appendGroundingPersona,
   EMAIL_LIVE_INBOX_APPEND,
   EMAIL_LIVE_INBOX_DELETE_APPEND,
+  EMAIL_LIVE_INBOX_MOVE_APPEND,
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
 } = require('./groundingPrompt');
 
@@ -209,7 +211,11 @@ async function handleChatStream(req, res, config) {
       || (parseSenderFromMessage(message) && /\b(memory|continuum|remember|feed|ingest)\b/i.test(message));
     let inboxAppend = EMAIL_LIVE_INBOX_APPEND;
     if (memoryIngest && !payload.email_delete_enabled) inboxAppend = EMAIL_LIVE_INBOX_MEMORY_APPEND;
-    if (payload.email_delete_enabled) inboxAppend = EMAIL_LIVE_INBOX_DELETE_APPEND;
+    if (payload.email_delete_enabled) {
+      inboxAppend = wantsEmailMoveToFolder(message)
+        ? EMAIL_LIVE_INBOX_MOVE_APPEND
+        : EMAIL_LIVE_INBOX_DELETE_APPEND;
+    }
     payload.persona = appendGroundingPersona(payload.persona || '', [inboxAppend]);
   } else {
     payload.persona = appendGroundingPersona(payload.persona || '');

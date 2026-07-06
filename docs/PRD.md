@@ -137,6 +137,7 @@ Continuum chat can route through a user-hosted **OpenClaw bridge** on a VPS (HTT
     - GitHub & dev/code notifications (GitLab, CI/CD, Dependabot, etc.)
     - Bank & financial **statements** (e-statements)
     - **Never** trashes OTP, security alerts, fraud warnings, DocuSign, or Cash App alerts
+*   **Move to folder**: Move mail from a sender to a Yahoo folder (e.g. `Move all emails from Min Zhang to Min folder`). Requires **Allow email delete** (mailbox write permission). Resolves folder by name; max 100 per batch; over-limit permission prompt applies.
 *   **Over-limit permission**: If matches exceed the default fetch limit (250 for date/month/year ranges; 100 for plain cleanup), the bridge **does not trash** until the user replies `yes proceed` / `confirm cleanup`, or raises the limit (e.g. `limit 500`).
 *   **Auto-trash (optional)**: Settings toggle to move newsletter/promo/spam on every inbox fetch (max 100; banks/OTP protected).
 *   **Anti-hallucination**: Live inbox UIDs injected into the LLM prompt; fresh fetch drops chat history for email turns; grounding rules forbid inventing messages.

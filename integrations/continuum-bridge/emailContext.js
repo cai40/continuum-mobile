@@ -7,6 +7,7 @@ const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
+const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
 
@@ -228,7 +229,9 @@ function imapCheckArgs(fetchOptions) {
 async function runImapCheck(imapScript, message, payloadOptions = {}) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
   const isDateRange = !!(fetchOptions.since && fetchOptions.before);
-  const sender = isDateRange ? null : parseSenderFromMessage(message);
+  const sender = isDateRange
+    ? null
+    : (parseMoveSenderFromMessage(message) || parseSenderFromMessage(message));
   const skillRoot = path.dirname(path.dirname(imapScript));
   const args = sender
     ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
@@ -298,10 +301,11 @@ function formatImapError(err, fetchOptions = {}) {
 
 async function fetchEmailContext(message, payloadOptions = {}) {
   const deleteRequested = wantsEmailDelete(message);
+  const moveRequested = wantsEmailMoveToFolder(message);
   const triageRequested = wantsTriage(message);
   const memoryIngestRequested = wantsEmailMemoryIngest(message);
-  if (!wantsEmailFetch(message, payloadOptions) && !deleteRequested && !triageRequested && !memoryIngestRequested) {
-    return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null };
+  if (!wantsEmailFetch(message, payloadOptions) && !deleteRequested && !moveRequested && !triageRequested && !memoryIngestRequested) {
+    return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null, moveResult: null };
   }
 
   const imapScript = findImapScript();
@@ -312,6 +316,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       error: 'Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
       fetchOptions: null,
       deleteResult: null,
+      moveResult: null,
     };
   }
 
@@ -335,25 +340,29 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       error: 'Yahoo credentials missing. Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
       fetchOptions: null,
       deleteResult: null,
+      moveResult: null,
     };
   }
 
-  if (deleteRequested && !payloadOptions.email_delete_enabled) {
+  if ((deleteRequested || moveRequested) && !payloadOptions.email_delete_enabled) {
     return {
       matched: true,
       context: null,
-      error: 'Email delete is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow email delete", Save, then try again.',
+      error: 'Email delete/move is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow email delete", Save, then try again.',
       fetchOptions: null,
       deleteResult: null,
+      moveResult: null,
     };
   }
 
   const resolvedFetchOptions = resolveEmailFetchOptions(message, payloadOptions);
+  const destFolder = moveRequested ? parseDestinationFolder(message) : null;
 
   try {
     const { context, messages, fetchOptions, scanMeta } = await runImapCheck(imapScript, message, payloadOptions);
 
     let deleteResult = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
+    let moveResult = { executed: false, summary: null, error: null, uids: [], destFolder: null, sender: null };
 
     const permission = evaluateOverLimitPermission({
       message,
@@ -361,9 +370,11 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       scanMeta,
       messages,
       deleteRequested,
+      moveRequested,
+      destFolder,
     });
 
-    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission) {
+    if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested) {
       deleteResult = await maybeAutoTrashJunk(messages, imapScript, {
         enabled: true,
         includeGithub: false,
@@ -386,6 +397,12 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       } else if (manualResult.error && !deleteResult.executed) {
         deleteResult = manualResult;
       }
+    }
+
+    if (moveRequested && !permission) {
+      moveResult = await maybeMoveEmailsToFolder(message, messages, imapScript, {
+        enabled: !!payloadOptions.email_delete_enabled,
+      });
     }
 
     let finalContext = context;
@@ -431,6 +448,11 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       }
       finalContext = [finalContext, '', errBlock].filter(Boolean).join('\n');
     }
+    if (moveResult.executed && moveResult.summary) {
+      finalContext = [finalContext, '', '[Email move executed]', moveResult.summary].join('\n');
+    } else if (moveResult.error) {
+      finalContext = [finalContext, '', `[Email move] ${moveResult.error}`].filter(Boolean).join('\n');
+    }
 
     return {
       matched: true,
@@ -438,6 +460,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       error: null,
       fetchOptions,
       deleteResult,
+      moveResult,
     };
   } catch (err) {
     return {
@@ -446,6 +469,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       error: formatImapError(err, resolvedFetchOptions),
       fetchOptions: null,
       deleteResult: null,
+      moveResult: null,
     };
   }
 }
