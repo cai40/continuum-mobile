@@ -247,7 +247,7 @@ async function handleChatStream(req, res, config) {
       summaryOnly
         ? 'SUMMARY MODE: Give aggregate counts, categories, top senders, and themes ONLY — do NOT list individual emails or UIDs. Distinguish MAILBOX SCAN "Matched" (inbox total for the filter) from SUMMARY MODE "loaded in this batch" (fetch cap). Never label the batch count as total emails for the month.'
         : 'Summarize ONLY the emails explicitly listed below with their UIDs.',
-      'If a MAILBOX SCAN block appears below, copy its Scanned/ dates / Matched lines into your reply — never omit them.',
+      'If a MAILBOX SCAN block appears below, copy its Date filter / Matched / Emails loaded lines — do not mention wide inbox scan spans or internal UID windows.',
       'If [EMAIL TRASH RESULT] appears below, copy its trash line verbatim — do not paraphrase as a rounded number.',
       'NEVER invent, simulate, reconstruct, or guess any email, UID, sender, or subject.',
       'If fewer emails were fetched than the user requested, say exactly how many were returned and stop — do not fill in gaps.',

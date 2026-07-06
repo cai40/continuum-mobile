@@ -456,6 +456,10 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
 
     if (sinceStr && beforeStr) {
       console.error(`[imap] date-range check ${sinceStr}..${beforeStr} limit=${limit} offset=${offset}`);
+      const direct = await tryFetchDateRangeDirect(imap, {
+        sinceStr, beforeStr, limit, offset, lite, unreadOnly,
+      });
+      if (direct != null) return direct;
       return await fetchDateRangeViaRecentLookback(imap, {
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
@@ -724,6 +728,61 @@ function mergeRowsByUid(rows) {
   return [...byUid.values()];
 }
 
+// Try Yahoo IMAP SINCE+BEFORE first — only fetch headers for matching UIDs (no Jan–Jun lookback scan).
+async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
+  try {
+    let uids = await searchUidsLogged(
+      imap,
+      buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, useImapBefore: true }),
+      `direct-${sinceStr}-${beforeStr}`,
+      45000,
+    );
+    if (uids.length === 0 && unreadOnly) {
+      uids = await searchUidsLogged(
+        imap,
+        buildSearchCriteria({ unreadOnly: false, sinceStr, beforeStr, useImapBefore: true }),
+        `direct-${sinceStr}-${beforeStr}-all`,
+        45000,
+      );
+    }
+    if (uids.length === 0) return null;
+
+    console.error(`[imap] date-range direct: ${uids.length} uid(s) from SINCE+BEFORE — header fetch only`);
+    const allRows = [];
+    for (let i = 0; i < uids.length; i += 100) {
+      const batch = uids.slice(i, i + 100);
+      const batchRows = await fetchHeaderRowsByUids(imap, batch);
+      allRows.push(...batchRows);
+    }
+
+    let { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
+    if (filtered.length === 0) {
+      console.error('[imap] date-range direct: 0 matched after JS filter; falling back to lookback');
+      return null;
+    }
+
+    const span = scanDateSpan(filtered);
+    const sorted = sortRowsNewestFirst(filtered);
+    console.error(
+      `[imap] date-range direct: scanned ${allRows.length} header(s), matched ${filtered.length}`
+      + ` for ${usedSince}..${usedBefore}`,
+    );
+    console.error(`SCAN_META:${JSON.stringify({
+      scanned: allRows.length,
+      totalUids: uids.length,
+      scanMode: 'direct',
+      span,
+      matched: filtered.length,
+      wanted: { since: sinceStr, before: beforeStr },
+      used: { since: usedSince, before: usedBefore },
+    })}`);
+    return compactRows(sorted.slice(offset, offset + limit), lite);
+  } catch (err) {
+    console.error(`[imap] date-range direct failed (${err.message}); falling back to lookback`);
+    return null;
+  }
+}
+
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
@@ -822,8 +881,8 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     if (batchFiltered.length >= offset + limit) break;
   }
 
-  let span = scanDateSpan(results);
   let { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
+  const span = filtered.length > 0 ? scanDateSpan(filtered) : scanDateSpan(results);
 
   const sampleDates = filtered.length === 0
     ? sortRowsNewestFirst([...results]).slice(0, 5).map((row) => {
@@ -842,6 +901,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
   console.error(`SCAN_META:${JSON.stringify({
     scanned: scannedRows,
     totalUids: buildDateRangeScanUids(sinceUids, recentUids).length,
+    scanMode: 'lookback',
     scanSteps: scanPlan.length,
     sinceWindow: sinceUids.length,
     recentWindow: recentUids.length,

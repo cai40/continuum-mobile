@@ -120,35 +120,42 @@ function parseScanMeta(stderr) {
 
 function formatScanDiagnostic(scanMeta, dateRangeLabel, loadedCount = null) {
   if (!scanMeta) return null;
-  const span = scanMeta.span
-    ? `dates in scanned mail: ${scanMeta.span.oldest} through ${scanMeta.span.newest}`
-    : 'no parseable dates in scanned mail';
-  const samples = Array.isArray(scanMeta.sampleDates) && scanMeta.sampleDates.length
-    ? ` Sample newest dates: ${scanMeta.sampleDates.join(', ')}.`
-    : '';
+  const matched = scanMeta.matched ?? 0;
   const used = scanMeta.used?.since && scanMeta.used?.before
     && scanMeta.wanted?.since && scanMeta.wanted?.before
     && (scanMeta.used.since !== scanMeta.wanted.since || scanMeta.used.before !== scanMeta.wanted.before)
-    ? ` (year-adjusted filter: ${scanMeta.used.since} .. ${scanMeta.used.before})`
+    ? ` (year-adjusted: ${scanMeta.used.since} .. ${scanMeta.used.before})`
     : '';
-  const matched = scanMeta.matched ?? 0;
-  let scanLine;
-  if (scanMeta.recentWindow != null || scanMeta.parsed != null) {
-    const headers = scanMeta.scanned ?? scanMeta.parsed ?? 0;
-    const recent = scanMeta.recentWindow ?? '?';
-    scanLine = `- Scanned ${headers} INBOX header(s) for filtering. Yahoo IMAP UID search window: ${recent} (internal IMAP limit — NOT emails loaded). ${span}.${samples}`;
-  } else {
-    scanLine = `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.${samples}`;
-  }
   const loadedLine = loadedCount != null
     ? `- Emails loaded for this reply: ${loadedCount}${matched ? ` of ${matched} matched` : ''}.`
     : null;
+
+  let scanLine;
+  if (dateRangeLabel && scanMeta.scanMode === 'direct') {
+    const span = scanMeta.span;
+    const spanNote = span ? ` Mail dates: ${span.oldest} through ${span.newest}.` : '';
+    scanLine = `- Date filter: ${dateRangeLabel}. Matched: ${matched}.${spanNote} Headers scanned: ${scanMeta.scanned ?? matched} (direct search — no wide inbox lookback).`;
+  } else if (dateRangeLabel) {
+    scanLine = `- Date filter: ${dateRangeLabel}. Matched: ${matched}${used}. Headers scanned: ${scanMeta.scanned ?? '?'}.`;
+  } else if (scanMeta.recentWindow != null || scanMeta.parsed != null) {
+    const headers = scanMeta.scanned ?? scanMeta.parsed ?? 0;
+    const span = scanMeta.span
+      ? `dates: ${scanMeta.span.oldest} through ${scanMeta.span.newest}`
+      : 'no parseable dates';
+    scanLine = `- Scanned ${headers} INBOX header(s). ${span}.`;
+  } else {
+    const span = scanMeta.span
+      ? `dates: ${scanMeta.span.oldest} through ${scanMeta.span.newest}`
+      : 'no parseable dates';
+    scanLine = `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.`;
+  }
+
   return [
-    'MAILBOX SCAN (you MUST include all lines below in your reply):',
+    'MAILBOX SCAN (include these lines; do NOT mention unrelated months or a "1000 UID window"):',
     scanLine,
     loadedLine,
-    `- Requested range: ${dateRangeLabel || 'unknown'}. Matched: ${matched}${used}.`,
-    'NEVER say "1000 emails fetched" — the UID window is not the load count; use "Emails loaded" and Matched above.',
+    dateRangeLabel ? null : `- Matched: ${matched}${used}.`,
+    'Use Matched and Emails loaded only — never claim the whole inbox was scanned.',
   ].filter(Boolean).join('\n');
 }
 
