@@ -760,6 +760,12 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
     }
     if (uids.length === 0) return null;
 
+    // Yahoo SEARCH caps at ~1000 UIDs — incomplete for large months; use lookback instead.
+    if (uids.length >= 1000) {
+      console.error('[imap] date-range direct: hit Yahoo ~1000 UID search cap; falling back to lookback');
+      return null;
+    }
+
     console.error(`[imap] date-range direct: ${uids.length} uid(s) from SINCE+BEFORE — header fetch only`);
     const allRows = [];
     for (let i = 0; i < uids.length; i += 100) {
@@ -800,7 +806,7 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
   const rangeDays = rangeWidthDays(sinceStr, beforeStr);
-  const maxOlderRanges = rangeDays <= 31 ? 2 : (rangeDays <= 93 ? 6 : 25);
+  const maxOlderRanges = rangeDays <= 31 ? 12 : (rangeDays <= 93 ? 8 : 25);
   console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset} lookback=${days}d maxOlderRanges=${maxOlderRanges}`);
 
   // NEVER search ALL on Yahoo — hangs on large mailboxes. Use relative SINCE like "fetch last 100".
@@ -817,9 +823,10 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     );
   }
 
-  // Absolute SINCE on Yahoo often hangs; recent lookback + JS date filter is enough when it returns UIDs.
+  // For month-sized ranges, also run SINCE search (recent window may miss early-month mail).
+  const runSinceSearch = recentUids.length === 0 || rangeDays <= 31;
   let sinceUids = [];
-  if (recentUids.length === 0) {
+  if (runSinceSearch) {
     try {
       sinceUids = await searchUidsLogged(
         imap,

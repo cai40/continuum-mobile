@@ -253,6 +253,7 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
   const trashHeader = deleteResult?.executed && deleteResult.summary
     ? deleteResult.summary.split('\n')[0]
     : null;
+  const shortfall = matched > loaded ? matched - loaded : 0;
 
   const lines = [
     '[PREFILLED SUMMARY — your ENTIRE reply must be ONLY the text between these markers; copy verbatim]',
@@ -261,6 +262,7 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
     '',
     `- **Matched:** ${matched}`,
     `- **Loaded for analysis:** ${loaded}`,
+    shortfall > 0 ? `- **Not loaded this batch:** ${shortfall} more matched — say "fetch Mar 2026 limit 5000" or rerun after cleanup.` : null,
     `- **Unread:** ${unread}. **Read:** ${loaded - unread}.`,
     '',
     '**By Category:**',
