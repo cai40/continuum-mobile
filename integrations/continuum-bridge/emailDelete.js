@@ -18,7 +18,11 @@ const CATEGORY_DELETE = /\bcategor(?:y|ies)\s*#?\s*\d|github\s*\/?\s*cursor|curs
 const CHURCH_COMMUNITY_INTENT = /\b(church|grace chapel|grace\.org|@grace\.org|community|grace wilmington|wilmington campus|men'?s breakfast|e-?news|blue village|cogswell\.doug)\b/i;
 
 function wantsEmailCleanup(message) {
-  return CLEANUP_INTENT.test(message || '');
+  const text = message || '';
+  if (CLEANUP_INTENT.test(text)) return true;
+  if (/\bfetch\s+and\s+clean\b/i.test(text)) return true;
+  if (/\bclean\b/i.test(text) && /\b(emails?|inbox|mail)\b/i.test(text)) return true;
+  return false;
 }
 
 function wantsEmailDelete(message) {

@@ -15,6 +15,7 @@ const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
+const { wantsEmailFetch } = require('./emailFetchOptions');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
@@ -179,9 +180,13 @@ async function handleChatStream(req, res, config) {
   const sse = beginSse(res);
   sse.write('status', { detail: 'Starting…' });
 
-  sse.write('status', { detail: 'Searching the web (if needed)…' });
-  const alreadyHasWebSearch = /\[Web search\s*[—-]/i.test(message);
-  const webContext = alreadyHasWebSearch ? null : await maybeFetchWebContext(message);
+  const isEmailRequest = wantsEmailFetch(message);
+  let webContext = null;
+  if (!isEmailRequest) {
+    sse.write('status', { detail: 'Searching the web (if needed)…' });
+    const alreadyHasWebSearch = /\[Web search\s*[—-]/i.test(message);
+    webContext = alreadyHasWebSearch ? null : await maybeFetchWebContext(message);
+  }
 
   sse.write('status', { detail: 'Fetching Yahoo inbox (if requested)…' });
   const emailContext = await maybeFetchEmailContext(message, {

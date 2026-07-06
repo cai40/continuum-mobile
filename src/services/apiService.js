@@ -304,6 +304,9 @@ export const openClawChatStream = (
   let fullText = "";
   let userTranscript = "";
   let currentEvent = "";
+  let lastStreamError = "";
+
+  const pullToken = (json) => json.token ?? json.content ?? json.text ?? json.delta ?? "";
 
   const finish = (errorMsg) => {
     if (doneCalled) return;
@@ -321,7 +324,7 @@ export const openClawChatStream = (
     const responseText = xhr.responseText || "";
     const trimmed = responseText.trim();
     if (!trimmed) {
-      finish(fullText ? null : "Empty response from OpenClaw bridge.");
+      finish(fullText ? null : (lastStreamError || "Empty response from OpenClaw bridge."));
       return;
     }
     if (trimmed.startsWith("{") && !trimmed.includes("event:")) {
@@ -388,12 +391,17 @@ export const openClawChatStream = (
           try {
             const json = JSON.parse(rawData);
             onUpdate(currentEvent, json);
-            if (currentEvent === "text" && json.token) {
-              fullText += json.token;
+            const token = pullToken(json);
+            if (currentEvent === "text" && token) {
+              fullText += token;
+            } else if (!currentEvent && token) {
+              onUpdate("text", { token });
+              fullText += token;
             } else if (currentEvent === "transcript" && json.text) {
               userTranscript = json.text;
             } else if (currentEvent === "error") {
-              finish(sanitizeBridgeErrorMessage(json.detail || "OpenClaw bridge error", xhr.status));
+              lastStreamError = sanitizeBridgeErrorMessage(json.detail || json.message || "OpenClaw bridge error", xhr.status);
+              finish(lastStreamError);
             }
           } catch (e) {}
         }

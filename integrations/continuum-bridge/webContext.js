@@ -1,5 +1,6 @@
 'use strict';
 
+const { wantsEmailFetch } = require('./emailFetchOptions');
 const {
   wantsWebSearch,
   buildSearchQueries,
@@ -8,6 +9,9 @@ const {
 } = require('./webSearch');
 
 async function fetchWebContext(message) {
+  if (wantsEmailFetch(message)) {
+    return { matched: false, context: null, error: null, query: null };
+  }
   if (!wantsWebSearch(message)) {
     return { matched: false, context: null, error: null, query: null };
   }

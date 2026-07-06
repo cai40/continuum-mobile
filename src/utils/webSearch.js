@@ -1,4 +1,4 @@
-const EMAIL_BLOCK = /\b(emails?|inbox|yahoo|imap|smtp|uid\b|clean\s*up|move\s+all\s+emails|from\s+\d{1,2}[\/\-]\d{1,2})\b/i;
+const EMAIL_BLOCK = /\b(emails?|inbox|yahoo|mail|imap|smtp|uid\b|clean\s*up|clean\b.*\b(emails?|inbox|mail)\b|\bfetch\b.*\b(emails?|mail|inbox)\b|move\s+all\s+emails|from\s+\d{1,2}[\/\-]\d{1,2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:\d{4}\s+)?emails?)\b/i;
 const SEARCH_TIMEOUT_MS = 20000;
 const PAGE_SCRAPE_MAX_CHARS = 2500;
 const USER_AGENT = 'Mozilla/5.0 (compatible; ContinuumApp/1.0; +https://github.com/cai40/continuum-mobile)';

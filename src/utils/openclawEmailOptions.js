@@ -44,16 +44,18 @@ const MONTHS = {
 function parseMonthRangeFromMessage(message) {
   const text = message || '';
   const monthPat = Object.keys(MONTHS).sort((a, b) => b.length - a.length).join('|');
+  const defaultYear = new Date().getFullYear();
   const patterns = [
     new RegExp(`\\b(?:for|in|during)\\s+(?:the\\s+)?(?:month\\s+of\\s+)?(${monthPat})\\s+(20\\d{2})\\b`, 'i'),
-    new RegExp(`\\b(?:clean\\s*up|cleanup|fetch|get|show|list|trash|delete|remove|move)(?:\\s+(?:my|the)\\s+inbox)?\\s+(?:for\\s+)?(${monthPat})\\s+(20\\d{2})\\b`, 'i'),
+    new RegExp(`\\b(?:clean\\s*up|cleanup|fetch|get|show|list|trash|delete|remove|move|clean)(?:\\s+(?:and|my|the))*\\s+(?:\\w+\\s+){0,4}?\\b(${monthPat})\\s+(20\\d{2})\\b`, 'i'),
+    new RegExp(`\\b(?:clean\\s*up|cleanup|fetch|get|show|list|clean)(?:\\s+(?:and|my|the))*\\s+(?:\\w+\\s+){0,4}?\\b(${monthPat})\\s+emails?\\b`, 'i'),
     /\b(?:for|in|during|clean\s*up|cleanup)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i,
     new RegExp(`\\b(${monthPat})\\s+(20\\d{2})\\b`, 'i'),
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (!match) continue;
-    const year = parseInt(match[2], 10);
+    const year = parseInt(match[2] || String(defaultYear), 10);
     if (year < 1970 || year > 2100) continue;
     let month;
     if (/^\d{1,2}$/.test(match[1])) month = parseInt(match[1], 10);
