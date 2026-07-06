@@ -72,9 +72,10 @@ function parseMonthRangeFromMessage(message) {
 function parseYearRangeFromMessage(message) {
   const text = message || '';
   const patterns = [
-    /\b(?:for|in|during)\s+(?:the\s+)?(?:year\s+)?(20\d{2})\b/i,
-    /\b(?:clean\s*up|cleanup)(?:\s+(?:my|the)\s+inbox)?\s+(?:for\s+)?(20\d{2})\b/i,
-    /\b(?:fetch|get|show|list|trash|delete|remove|move)\s+(?:emails?\s+)?(?:for|in)\s+(20\d{2})\b/i,
+    /\b(?:for|in|during)\s+(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
+    /\b(?:clean\s*up|cleanup|clean)(?:\s+(?:my|the))?\s+(?:inbox\s+)?(?:for\s+)?(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
+    /\b(?:fetch\s+and\s+clean|fetch|get|show|list|trash|delete|remove|move)\s+(?:(?:and\s+)?clean\s+)?(?:emails?\s+)?(?:for\s+)?(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
+    /\b(?:whole|full)\s+year\s+(20\d{2})\b/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -133,7 +134,7 @@ export function normalizeEmailRecent(value) {
 
 export function parseEmailRangeFromMessage(message) {
   const text = message || '';
-  const match = text.match(/\bemails?\s+(\d{1,4})\s*[-–]\s*(\d{1,4})\b/i);
+  const match = text.match(/\bemails?\s+(\d{1,5})\s*[-–]\s*(\d{1,5})\b/i);
   if (!match) return null;
   const start = parseInt(match[1], 10);
   const end = parseInt(match[2], 10);
@@ -150,16 +151,20 @@ export function parseEmailLimitFromMessage(message) {
 
   const text = message || '';
   const patterns = [
-    /\b(?:up\s+to|process\s+up\s+to|max|maximum)\s+(\d{1,4})\s+emails?\b/i,
-    /\b(?:last|top|read|fetch|get|show|list)\s+(\d{1,4})\s+emails?\b/i,
-    /\b(?:latest|recent|newest)\s+(\d{1,4})\s+emails?\b/i,
-    /\b(\d{1,4})\s+(?:recent|latest|newest)\s+emails?\b/i,
-    /\bnext\s+(\d{1,4})\s+emails?\b/i,
-    /\b(\d{1,4})\s+emails?\b/i,
+    /\b(?:up\s+to|process\s+up\s+to|max|maximum)\s+(\d{1,5})\s+emails?\b/i,
+    /\b(?:last|top|read|fetch|get|show|list)\s+(\d{1,5})\s+emails?\b/i,
+    /\b(?:latest|recent|newest)\s+(\d{1,5})\s+emails?\b/i,
+    /\b(\d{1,5})\s+(?:recent|latest|newest)\s+emails?\b/i,
+    /\bnext\s+(\d{1,5})\s+emails?\b/i,
+    /\b(\d{1,5})\s+emails?\b/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match) return clampEmailLimit(match[1]);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n >= 2000 && n <= 2099 && parseYearRangeFromMessage(text)) return null;
+      return clampEmailLimit(match[1]);
+    }
   }
   return null;
 }
@@ -189,9 +194,10 @@ export function resolveEmailFetchPayload({ limit, recent, message }) {
   const fromMessageLimit = message ? parseEmailLimitFromMessage(message) : null;
   const fromMessageOffset = message ? parseEmailOffsetFromMessage(message) : null;
   const dateRange = message ? parseEmailDateRangeFromMessage(message) : null;
+  const yearRange = message ? parseYearRangeFromMessage(message) : null;
   let resolvedLimit = fromMessageLimit ?? clampEmailLimit(limit);
   if (dateRange && fromMessageLimit == null) {
-    resolvedLimit = Math.max(resolvedLimit, 5000);
+    resolvedLimit = Math.max(resolvedLimit, yearRange ? 50000 : 5000);
   }
   let resolvedOffset = fromMessageOffset ?? 0;
 

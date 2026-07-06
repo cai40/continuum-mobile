@@ -8,8 +8,8 @@ const { selectJunkUids, triageMessages } = require('./emailTriage');
 const execFileAsync = promisify(execFile);
 
 const MAX_DELETE_PER_REQUEST = 100;
-/** Max move-to-Trash per cleanup run when permission is waived (<500 targets). */
-const CLEANUP_DELETE_MAX = 500;
+/** Max move-to-Trash per cleanup run. */
+const CLEANUP_DELETE_MAX = 10000;
 const DELETE_BATCH_SIZE = 25;
 
 const DELETE_INTENT = /\b(delete|remove|trash|purge|discard|move\s+(?:them|these|those|it|all)?\s*(?:to\s+)?(?:trash|bin)|clear\s+(?:out|my)?\s*(?:inbox|mail|junk))\b/i;
@@ -350,7 +350,7 @@ async function runImapDeleteBatched(imapScript, uids) {
     chunks.push(uids.slice(i, i + DELETE_BATCH_SIZE));
   }
   const results = [];
-  const batchTimeout = Math.min(600000, 60000 + uids.length * 2500);
+  const batchTimeout = Math.min(3600000, 120000 + uids.length * 3000);
   for (const chunk of chunks) {
     results.push(await runImapDelete(imapScript, chunk, batchTimeout));
   }

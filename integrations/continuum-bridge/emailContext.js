@@ -199,7 +199,7 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
     ? `${parsed.length} of ${matched} matched email(s) loaded in this batch (fetch limit ${limit}, offset ${offset}).`
     : `${parsed.length} email(s) loaded (fetch limit ${limit}, offset ${offset}).`;
   const shortfallNote = matched != null && matched > parsed.length
-    ? `${matched - parsed.length} more matched email(s) were not loaded — raise Email Fetch Limit or say "limit 5000".`
+    ? `${matched - parsed.length} more matched email(s) were not loaded — raise Email Fetch Limit or say "limit 50000".`
     : null;
 
   const lines = [
@@ -217,7 +217,7 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
     'Top senders:',
     ...topSenders.map(([s, n]) => `- ${s}: ${n}`),
     '',
-    `Cleanup targets in this batch (news/promo/junk): ${cleanupCount} (under 500: up to ${Math.min(500, cleanupCount)} moved to Trash per run without confirm).`,
+    `Cleanup targets in this batch (news/promo/junk): ${cleanupCount} (fetch-and-clean moves up to 10,000 to Trash per run).`,
     'Give counts and high-level themes only. Confirm trash results only from [Email cleanup executed] blocks.',
   ].filter(Boolean);
 
@@ -262,7 +262,7 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
     '',
     `- **Matched:** ${matched}`,
     `- **Loaded for analysis:** ${loaded}`,
-    shortfall > 0 ? `- **Not loaded this batch:** ${shortfall} more matched — say "fetch Mar 2026 limit 5000" or rerun after cleanup.` : null,
+    shortfall > 0 ? `- **Not loaded this batch:** ${shortfall} more matched — say "fetch 2025 limit 50000" or rerun after cleanup.` : null,
     `- **Unread:** ${unread}. **Read:** ${loaded - unread}.`,
     '',
     '**By Category:**',
@@ -411,8 +411,8 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
     : [imapScript, ...imapCheckArgs(fetchOptions)];
   console.error('[continuum-bridge] imap args:', args.slice(1).join(' '));
   const timeoutMs = fetchOptions.since && fetchOptions.before
-    ? Math.min(600000, 120000 + fetchOptions.limit * 2000)
-    : Math.min(360000, 60000 + fetchOptions.limit * 2000);
+    ? Math.min(3600000, 180000 + fetchOptions.limit * 1500)
+    : Math.min(3600000, 90000 + fetchOptions.limit * 1500);
   const maxBuffer = Math.min(128 * 1024 * 1024, 16 * 1024 * 1024 + fetchOptions.limit * 256 * 1024);
 
   const { stdout, stderr } = await execFileAsync(

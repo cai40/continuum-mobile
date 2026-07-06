@@ -1,13 +1,15 @@
 'use strict';
 
-const { parseDateRangeFromMessage, addDays } = require('./emailDateRange');
+const { parseDateRangeFromMessage, parseYearRangeFromMessage, addDays } = require('./emailDateRange');
 const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 
 const DEFAULT_LIMIT = 25;
-const MAX_LIMIT = 5000;
-/** Minimum fetch cap for month/year date-range queries (no explicit limit in message). */
+const MAX_LIMIT = 50000;
+/** Minimum fetch cap for month date-range queries (no explicit limit in message). */
 const MONTH_RANGE_MIN_LIMIT = 5000;
+/** Minimum fetch cap for full-year date-range queries. */
+const YEAR_RANGE_MIN_LIMIT = 50000;
 const DEFAULT_RECENT = '7d';
 
 const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary|clean|clean(?:up|ing)?)\b/i;
@@ -37,23 +39,27 @@ function parseLimitFromMessage(message) {
   if (range) return range.limit;
 
   const patterns = [
-    /\b(?:up\s+to|process\s+up\s+to|max|maximum)\s+(\d{1,4})\s+emails?\b/i,
-    /\b(?:last|top|read|fetch|get|show|list)\s+(\d{1,4})\s+emails?\b/i,
-    /\b(?:latest|recent|newest)\s+(\d{1,4})\s+emails?\b/i,
-    /\b(\d{1,4})\s+(?:recent|latest|newest)\s+emails?\b/i,
-    /\bnext\s+(\d{1,4})\s+emails?\b/i,
-    /\b(\d{1,4})\s+emails?\b/i,
+    /\b(?:up\s+to|process\s+up\s+to|max|maximum)\s+(\d{1,5})\s+emails?\b/i,
+    /\b(?:last|top|read|fetch|get|show|list)\s+(\d{1,5})\s+emails?\b/i,
+    /\b(?:latest|recent|newest)\s+(\d{1,5})\s+emails?\b/i,
+    /\b(\d{1,5})\s+(?:recent|latest|newest)\s+emails?\b/i,
+    /\bnext\s+(\d{1,5})\s+emails?\b/i,
+    /\b(\d{1,5})\s+emails?\b/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match) return clampLimit(match[1], null);
+    if (match) {
+      const n = parseInt(match[1], 10);
+      if (n >= 2000 && n <= 2099 && parseYearRangeFromMessage(text)) return null;
+      return clampLimit(match[1], null);
+    }
   }
   return null;
 }
 
 function parseRangeFromMessage(message) {
   const text = message || '';
-  const match = text.match(/\bemails?\s+(\d{1,4})\s*[-–]\s*(\d{1,4})\b/i);
+  const match = text.match(/\bemails?\s+(\d{1,5})\s*[-–]\s*(\d{1,5})\b/i);
   if (!match) return null;
   const start = parseInt(match[1], 10);
   const end = parseInt(match[2], 10);
@@ -109,9 +115,11 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const limitFromMessage = parseLimitFromMessage(message);
   const offsetFromMessage = parseOffsetFromMessage(message);
   const dateRangeFromMessage = parseDateRangeFromMessage(message);
+  const yearRange = parseYearRangeFromMessage(message);
   const cleanup = wantsEmailCleanup(message);
   const moveToFolder = wantsEmailMoveToFolder(message);
-  const defaultLimit = dateRangeFromMessage ? MONTH_RANGE_MIN_LIMIT : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
+  const rangeMinLimit = yearRange ? YEAR_RANGE_MIN_LIMIT : (dateRangeFromMessage ? MONTH_RANGE_MIN_LIMIT : null);
+  const defaultLimit = rangeMinLimit ?? (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
   let limit = limitFromMessage != null
     ? clampLimit(limitFromMessage, defaultLimit)
     : clampLimit(payloadOptions.email_limit, defaultLimit);
@@ -153,8 +161,11 @@ function formatPreEmailFetchStatus(fetchOptions) {
   if (!fetchOptions) return 'Fetching Yahoo inbox (if requested)…';
   const { limit = 0, dateRangeLabel } = fetchOptions;
   if (dateRangeLabel) {
+    if (limit >= 10000) {
+      return `Scanning ${dateRangeLabel}… (load cap ${limit}; full-year scan — may take 15–45 minutes)`;
+    }
     if (limit >= 1500) {
-      return `Scanning ${dateRangeLabel}… (load cap ${limit}; large month scan — may take 5–12 minutes)`;
+      return `Scanning ${dateRangeLabel}… (load cap ${limit}; large scan — may take 5–15 minutes)`;
     }
     if (limit >= 500) {
       return `Scanning ${dateRangeLabel}… (load cap ${limit}; may take 3–8 minutes)`;
@@ -198,6 +209,7 @@ module.exports = {
   DEFAULT_LIMIT,
   MAX_LIMIT,
   MONTH_RANGE_MIN_LIMIT,
+  YEAR_RANGE_MIN_LIMIT,
   clampLimit,
   clampOffset,
   parseLimitFromMessage,

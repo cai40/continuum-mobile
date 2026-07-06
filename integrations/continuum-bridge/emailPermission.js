@@ -3,8 +3,8 @@
 const { wantsEmailCleanup, MAX_DELETE_PER_REQUEST, CLEANUP_DELETE_MAX, countCleanupTargets } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 
-/** Cleanup runs without "yes proceed" when fewer than this many trash targets. */
-const PERMISSION_CLEANUP_THRESHOLD = 500;
+/** Bulk confirm hint threshold in permission messages (fetch-and-clean bypasses target count). */
+const PERMISSION_CLEANUP_THRESHOLD = 10000;
 
 const BULK_CONFIRM = /\b(yes|yeah|yep|confirm|confirmed|proceed|go ahead|do it|approved|approve|clean all|trash all|delete all matching|move all)\b/i;
 
@@ -77,7 +77,7 @@ function evaluateOverLimitPermission({
   };
 }
 
-/** Trash cap for this request (500 for cleanups, else 100). */
+/** Trash cap for this request (10000 for cleanups, else 100). */
 function resolveDeleteCap({ message, messages, permission }) {
   if (!wantsEmailCleanup(message)) return MAX_DELETE_PER_REQUEST;
   const targets = countCleanupTargets(messages);

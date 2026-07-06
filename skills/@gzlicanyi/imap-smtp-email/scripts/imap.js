@@ -320,7 +320,7 @@ async function fetchCheckRowsByUids(imap, uids, lite) {
   return results;
 }
 
-function buildDateRangeScanUids(sinceUids, recentUids, maxScan = 25000) {
+function buildDateRangeScanUids(sinceUids, recentUids, maxScan = 50000) {
   const seen = new Set();
   const out = [];
   const add = (uid) => {
@@ -686,7 +686,7 @@ function scanDateSpan(rows) {
 function recentDaysForRange(sinceStr) {
   const sinceMs = imapDateFromIso(sinceStr).getTime();
   const days = Math.ceil((Date.now() - sinceMs) / (24 * 60 * 60 * 1000)) + 14;
-  return Math.min(365, Math.max(7, days));
+  return Math.min(730, Math.max(7, days));
 }
 
 async function fetchRowsByUids(imap, uids, { lite = false, compactNow = true } = {}) {
@@ -806,7 +806,7 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
   const rangeDays = rangeWidthDays(sinceStr, beforeStr);
-  const maxOlderRanges = rangeDays <= 31 ? 12 : (rangeDays <= 93 ? 8 : 25);
+  const maxOlderRanges = rangeDays <= 31 ? 12 : (rangeDays <= 93 ? 8 : (rangeDays <= 366 ? 50 : 25));
   console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset} lookback=${days}d maxOlderRanges=${maxOlderRanges}`);
 
   // NEVER search ALL on Yahoo — hangs on large mailboxes. Use relative SINCE like "fetch last 100".
@@ -823,8 +823,8 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     );
   }
 
-  // For month-sized ranges, also run SINCE search (recent window may miss early-month mail).
-  const runSinceSearch = recentUids.length === 0 || rangeDays <= 31;
+  // For month/year ranges, run SINCE search (recent window may miss early mail).
+  const runSinceSearch = recentUids.length === 0 || rangeDays <= 31 || rangeDays >= 300;
   let sinceUids = [];
   if (runSinceSearch) {
     try {
