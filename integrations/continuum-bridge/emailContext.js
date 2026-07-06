@@ -125,13 +125,23 @@ function formatScanDiagnostic(scanMeta, dateRangeLabel) {
     ? ` Sample newest dates: ${scanMeta.sampleDates.join(', ')}.`
     : '';
   const used = scanMeta.used?.since && scanMeta.used?.before
-    && (scanMeta.used.since !== scanMeta.wanted?.since || scanMeta.used.before !== scanMeta.wanted?.before)
+    && scanMeta.wanted?.since && scanMeta.wanted?.before
+    && (scanMeta.used.since !== scanMeta.wanted.since || scanMeta.used.before !== scanMeta.wanted.before)
     ? ` (year-adjusted filter: ${scanMeta.used.since} .. ${scanMeta.used.before})`
     : '';
+  const matched = scanMeta.matched ?? 0;
+  let scanLine;
+  if (scanMeta.recentWindow != null || scanMeta.parsed != null) {
+    const headers = scanMeta.scanned ?? scanMeta.parsed ?? 0;
+    const recent = scanMeta.recentWindow ?? '?';
+    scanLine = `- Scanned ${headers} message header(s) across inbox; Yahoo recent search window: ${recent} UID(s). ${span}.${samples}`;
+  } else {
+    scanLine = `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.${samples}`;
+  }
   return [
     'MAILBOX SCAN (you MUST include all lines below in your reply):',
-    `- Scanned ${scanMeta.scanned} of ${scanMeta.totalUids} INBOX message(s); ${span}.${samples}`,
-    `- Requested range: ${dateRangeLabel || 'unknown'}. Matched: ${scanMeta.matched}${used}.`,
+    scanLine,
+    `- Requested range: ${dateRangeLabel || 'unknown'}. Matched: ${matched}${used}.`,
   ].join('\n');
 }
 
