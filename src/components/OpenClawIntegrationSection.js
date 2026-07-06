@@ -14,7 +14,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "../context/AppContext";
-import { testOpenClawBridge } from "../services/apiService";
+import { testOpenClawBridge, testRenderEmailHealth } from "../services/apiService";
 import {
   API_URL,
   DEFAULT_OPENCLAW_BRIDGE_SECRET,
@@ -107,6 +107,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     setOpenclawEmailDeleteEnabled,
     openclawEmailAutoTrashJunk,
     setOpenclawEmailAutoTrashJunk,
+    renderEmailEnabled,
+    setRenderEmailEnabled,
     saveOpenClawSettings,
   } = useAppContext();
 
@@ -241,17 +243,36 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       </View>
 
       <Text style={{ fontSize: 13, color: theme.colors.gray, lineHeight: 20, marginBottom: 20 }}>
-        Use Continuum app as your chat UI. When enabled, messages route through your
-        OpenClaw VPS (Continuum memory + Yahoo email). No SSH needed.
+        Yahoo email and optional VPS routing. Render cloud email uses Continuum on Render — no VPS or Cloudflare tunnel. Turn on Route chat through OpenClaw only if you prefer your own VPS.
       </Text>
 
+      <Text style={[styles.categoryTitle, { marginTop: 0 }]}>RENDER CLOUD EMAIL</Text>
+      <View style={[styles.groupedCard, { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: theme.colors.black }}>
+            Use Render for Yahoo email (no VPS)
+          </Text>
+          <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
+            Inbox fetch, date ranges, cleanup, and move-to-folder via {API_URL.replace("https://", "")}/integrations/email — requires one-time Render deploy (see repo docs).
+          </Text>
+        </View>
+        <Switch
+          value={renderEmailEnabled}
+          onValueChange={async (value) => {
+            setRenderEmailEnabled(value);
+            await AsyncStorage.setItem("@render_email_enabled", value ? "true" : "false");
+          }}
+        />
+      </View>
+
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>VPS BRIDGE (OPTIONAL)</Text>
       <View style={[styles.groupedCard, { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
         <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={{ fontSize: 15, fontWeight: "700", color: theme.colors.black }}>
             Route chat through OpenClaw
           </Text>
           <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
-            Chat tab uses VPS bridge instead of Render only
+            Non-email chat uses VPS bridge instead of Render only
           </Text>
         </View>
         <Switch
@@ -413,6 +434,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         </Text>
         <Text style={{ fontSize: 12, color: geminiKey ? theme.colors.success : theme.colors.danger, marginTop: 4 }}>
           {geminiKey ? "✓" : "✗"} Gemini API key saved
+        </Text>
+        <Text style={{ fontSize: 12, color: renderEmailEnabled ? theme.colors.success : theme.colors.gray, marginTop: 4 }}>
+          Render cloud email: {renderEmailEnabled ? "enabled" : "disabled"}
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           VPS IP: {openclawVpsIp || DEFAULT_VPS_IP}

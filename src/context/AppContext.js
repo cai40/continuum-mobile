@@ -46,6 +46,7 @@ export const AppProvider = ({ children }) => {
   const [openclawEmailRecent, setOpenclawEmailRecent] = useState(DEFAULT_OPENCLAW_EMAIL_RECENT);
   const [openclawEmailDeleteEnabled, setOpenclawEmailDeleteEnabled] = useState(false);
   const [openclawEmailAutoTrashJunk, setOpenclawEmailAutoTrashJunk] = useState(false);
+  const [renderEmailEnabled, setRenderEmailEnabled] = useState(true);
 
   const [messages, setMessages] = useState([]);
   const [semanticProfile, setSemanticProfile] = useState([]);
@@ -227,6 +228,7 @@ export const AppProvider = ({ children }) => {
           "@openclaw_email_recent",
           "@openclaw_email_delete_enabled",
           "@openclaw_email_auto_trash_junk",
+          "@render_email_enabled",
         ]);
 
         keys.forEach(([key, value]) => {
@@ -247,6 +249,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@openclaw_email_recent") setOpenclawEmailRecent(value);
           if (key === "@openclaw_email_delete_enabled") setOpenclawEmailDeleteEnabled(value === "true");
           if (key === "@openclaw_email_auto_trash_junk") setOpenclawEmailAutoTrashJunk(value === "true");
+          if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
@@ -375,6 +378,7 @@ export const AppProvider = ({ children }) => {
         ["@openclaw_email_recent", recent],
         ["@openclaw_email_delete_enabled", openclawEmailDeleteEnabled ? "true" : "false"],
         ["@openclaw_email_auto_trash_junk", openclawEmailAutoTrashJunk ? "true" : "false"],
+        ["@render_email_enabled", renderEmailEnabled ? "true" : "false"],
       ]);
     } catch (e) {
       console.warn("OpenClaw settings save failed:", e);
@@ -562,6 +566,8 @@ export const AppProvider = ({ children }) => {
         setOpenclawEmailDeleteEnabled,
         openclawEmailAutoTrashJunk,
         setOpenclawEmailAutoTrashJunk,
+        renderEmailEnabled,
+        setRenderEmailEnabled,
         saveOpenClawSettings,
         messages,
         setMessages,

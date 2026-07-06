@@ -123,7 +123,7 @@ Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to
 *   **Neural Voice**: Six high-fidelity neural voices for AI response.
 
 ### 2.11 OpenClaw VPS Bridge & Yahoo Email [NEW]
-Continuum chat can route through a user-hosted **OpenClaw bridge** on a VPS (HTTPS via Cloudflare tunnel) for live Yahoo IMAP access and Continuum memory, without SSH from the phone.
+Continuum chat can route through a user-hosted **OpenClaw bridge** on a VPS (HTTPS via Cloudflare tunnel) or via **Render cloud email** (`/integrations/email` on continuum-backend + Node email bridge on Render — no user VPS).
 
 *   **Bridge service**: Node HTTP server (`continuum-bridge`) on port 8787 — `GET /health`, `POST /chat/stream`.
 *   **Email fetch**: Lite IMAP check (headers + snippet) with pagination (`offset`, `limit` up to 1000).

@@ -57,6 +57,22 @@ Tell the user to run commands **one line at a time** if paste breaks on iPhone/T
 
 ---
 
+## Render cloud email (no user VPS)
+
+App route: `POST {API_URL}/integrations/email/chat/stream` when **Render cloud email** is ON in Settings.
+
+1. Deploy Node bridge: `integrations/render-email-bridge/README.md` (Render Web Service + `YAHOO_EMAIL` / `YAHOO_APP_PASSWORD` secrets).
+2. Copy `integrations/continuum-backend/email_router.py` into continuum-backend; mount router.
+3. On main Render service set `CONTINUUM_EMAIL_BRIDGE_URL` + `CONTINUUM_EMAIL_BRIDGE_SECRET`.
+
+Verify:
+
+```bash
+curl -s https://continuum-backend-0q9j.onrender.com/integrations/email/status
+```
+
+---
+
 ## Verify bridge deploy (required after bridge changes)
 
 After any bridge/IMAP change, ensure `/health` reports the new build:
@@ -86,7 +102,8 @@ If `bridge_version` is **missing**, the VPS is still on old code — do not debu
 | Month / year ranges | `parseMonthRangeFromMessage`, `parseYearRangeFromMessage` in `emailDateRange.js` |
 | Clean up inbox | `emailDelete.js` (`CLEANUP_INTENT`, `resolveCleanupUids`) + `email-triage` classifier |
 | Move to folder | `emailMove.js` + `imap.js move --to <folder>` |
-| Web search | `src/utils/webSearch.js` (direct chat: Google News RSS + DuckDuckGo + Wikipedia + page scrape) or bridge `webSearch.js` |
+| Web search | `src/utils/webSearch.js` (direct chat) or bridge / Render email bridge |
+| Render cloud email | `email_router.py` + `render-email-bridge/`; app `renderEmailChatStream` |
 | Over-limit permission | `emailPermission.js` — blocks trash/move until `yes proceed` / `confirm` |
 | Lite fetch (large batches) | `--lite` on IMAP check (headers + snippet only) |
 | Lookback window | Settings **Email Lookback** (`7d`, `30d`) — **ignored** when user gives explicit dates |

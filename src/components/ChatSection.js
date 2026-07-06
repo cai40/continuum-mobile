@@ -12,7 +12,7 @@ import {
   useSpeechRecognitionEvent
 } from 'expo-speech-recognition';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, openClawChatStream } from '../services/apiService';
+import { chatStream, openClawChatStream, renderEmailChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
@@ -47,6 +47,7 @@ const ChatSection = () => {
     openclawEmailRecent,
     openclawEmailDeleteEnabled,
     openclawEmailAutoTrashJunk,
+    renderEmailEnabled,
     dailyMessageCount,
     incrementDailyCount,
     getTierLimits,
@@ -364,20 +365,24 @@ const ChatSection = () => {
         vpsIp: openclawVpsIp,
         defaultVpsIp: "135.181.155.197",
       });
-      const useOpenClawBridge =
+      const useRenderEmail = renderEmailEnabled && isEmailQuery;
+      const useVpsBridge =
+        !useRenderEmail &&
         openclawChatEnabled &&
         bridgeUrl &&
         isHttpsBridgeUrl(bridgeUrl) &&
         !activeAttachments.length &&
         !isVoiceMode;
 
-      if (isEmailQuery && !useOpenClawBridge) {
+      if (isEmailQuery && !renderEmailEnabled && !useVpsBridge) {
         Alert.alert(
-          "Yahoo email needs OpenClaw bridge",
-          "Setup → OpenClaw Gateway:\n• Route chat through OpenClaw: ON\n• HTTPS Bridge URL: your trycloudflare.com URL\n• Save, then ask again.",
+          "Yahoo email needs a mail bridge",
+          "Setup → OpenClaw Gateway:\n• Turn ON Render cloud email (no VPS), or\n• Turn ON Route chat through OpenClaw + HTTPS bridge URL.",
         );
         return;
       }
+
+      const useOpenClawBridge = useVpsBridge;
 
       const isWebSearchQuery =
         wantsWebSearch(finalInput) && !isEmailQuery && !activeAttachments.length;
@@ -482,7 +487,7 @@ const ChatSection = () => {
       const clientTime = new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
       let isHandled = false;
-      let bridgeAttempted = useOpenClawBridge;
+      let bridgeAttempted = useOpenClawBridge || useRenderEmail;
       let renderFallbackUsed = false;
 
       const typingSafetyTimer = setTimeout(() => {
@@ -566,12 +571,14 @@ const ChatSection = () => {
         }
       };
 
-      if (useOpenClawBridge) {
-        const emailFetch = resolveEmailFetchPayload({
-          limit: openclawEmailLimit,
-          recent: openclawEmailRecent,
-          message: finalInput,
-        });
+      if (useRenderEmail || useOpenClawBridge) {
+        const emailFetch = isEmailQuery
+          ? resolveEmailFetchPayload({
+              limit: openclawEmailLimit,
+              recent: openclawEmailRecent,
+              message: finalInput,
+            })
+          : {};
         const payload = {
           message: webSearchContext ? `${webSearchContext}\n\n${finalInput}` : finalInput,
           provider,
@@ -587,15 +594,23 @@ const ChatSection = () => {
           email_delete_enabled: openclawEmailDeleteEnabled,
           email_auto_trash_junk: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled,
         };
-        const xhr = openClawChatStream(
-          bridgeUrl,
-          bridgeSecret,
-          payload,
-          onStreamUpdate,
-          finishSuccess,
-          finishError,
-          activeToken,
-        );
+        const xhr = useRenderEmail
+          ? renderEmailChatStream(
+              payload,
+              onStreamUpdate,
+              finishSuccess,
+              finishError,
+              activeToken,
+            )
+          : openClawChatStream(
+              bridgeUrl,
+              bridgeSecret,
+              payload,
+              onStreamUpdate,
+              finishSuccess,
+              finishError,
+              activeToken,
+            );
         abortControllerRef.current = { abort: () => xhr.abort() };
       } else {
         startRenderStream();
