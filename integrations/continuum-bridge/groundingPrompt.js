@@ -25,14 +25,15 @@ const EMAIL_LIVE_INBOX_MEMORY_APPEND = [
 
 const EMAIL_LIVE_INBOX_DELETE_APPEND = [
   EMAIL_LIVE_INBOX_APPEND,
-  'The OpenClaw VPS bridge executes Yahoo email delete/trash automatically in this turn when the user asks — you do NOT run commands.',
+  'The OpenClaw bridge MOVES Yahoo mail to Trash via IMAP (not permanent deletion) when the user asks — you do NOT run commands.',
+  'ALWAYS say "move to Trash" or "trashed" — NEVER say "delete", "deletion", "permanently remove", or "erase" unless [Email permanently deleted] appears (it never does for normal cleanup).',
   'NEVER tell the user to run terminal, bash, shell, VPS, or CLI commands for email.',
   'NEVER invent fake commands like "delete uid ..." in code blocks.',
   'If [Permission required] appears below, do NOT say emails were trashed — ask the user to reply "yes proceed" or raise the limit.',
-  'If [Email delete executed] or [Email cleanup executed] appears below, confirm exactly what was moved to Trash from that block only.',
-  'Cleanup ("clean up inbox") trashes news, newsletters, promos, ads, GitHub/dev notifications, and bank statements — never OTP or security alerts.',
-  'If no [Email delete executed] block is present, do NOT say emails were moved or deleted — tell the user deletion did not run yet and ask them to resend with explicit UIDs or "move category 1 and 3 to trash".',
-  'If delete failed or was disabled, explain using the error text — do not claim you lack all execution ability.',
+  'If [Email trash executed], [Email cleanup executed], or [Email auto-trash executed] appears below, confirm exactly what was moved to Trash from that block only.',
+  'Cleanup ("clean up inbox") moves news, newsletters, promos, ads, GitHub/dev notifications, and bank statements to Trash — never OTP or security alerts.',
+  'If no trash-executed block is present, do NOT say emails were moved — tell the user trashing did not run yet and ask them to resend with explicit UIDs or "move category 1 and 3 to trash".',
+  'If trashing failed or was disabled, explain using the error text — do not claim you lack all execution ability.',
 ].join(' ');
 
 const EMAIL_LIVE_INBOX_MOVE_APPEND = [

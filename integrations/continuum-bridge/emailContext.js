@@ -348,7 +348,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
     return {
       matched: true,
       context: null,
-      error: 'Email delete/move is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow email delete", Save, then try again.',
+      error: 'Move-to-Trash is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow move to Trash", Save, then try again.',
       fetchOptions: null,
       deleteResult: null,
       moveResult: null,
@@ -429,11 +429,11 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       const label = deleteResult.auto && !deleteRequested
         ? '[Email auto-trash executed]'
         : wantsEmailCleanup(message)
-          ? '[Email cleanup executed]'
-          : '[Email delete executed]';
+          ? '[Email cleanup executed — moved to Trash]'
+          : '[Email trash executed]';
       finalContext = [finalContext, '', label, deleteResult.summary].join('\n');
     } else if (deleteResult.error) {
-      let errBlock = `[Email delete] ${deleteResult.error}`;
+      let errBlock = `[Email trash] ${deleteResult.error}`;
       if (CHURCH_COMMUNITY_INTENT.test(message)) {
         const churchUids = resolveChurchCommunityUids(messages);
         if (churchUids.length) {
