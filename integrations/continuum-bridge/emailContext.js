@@ -474,7 +474,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
   }
 }
 
-async function getEmailHealth() {
+async function getEmailHealth({ quick = false } = {}) {
   const imapScript = findImapScript();
   if (!imapScript) {
     return { ready: false, reason: 'imap skill not installed' };
@@ -492,6 +492,14 @@ async function getEmailHealth() {
   });
   if (!configPath) {
     return { ready: false, reason: 'mail config missing' };
+  }
+  if (quick) {
+    return {
+      ready: true,
+      config: configPath,
+      quick: true,
+      note: 'IMAP probe skipped for fast platform health check',
+    };
   }
   try {
     await runImapCheck(imapScript, 'check inbox', { email_limit: 3, email_recent: '24h' });

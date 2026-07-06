@@ -287,7 +287,8 @@ const server = http.createServer(async (req, res) => {
     const config = loadConfig();
 
     if (req.method === 'GET' && req.url === '/health') {
-      const emailHealth = await getEmailHealth();
+      const quickHealth = process.env.RENDER === 'true' || process.env.HEALTH_CHECK_QUICK === '1';
+      const emailHealth = await getEmailHealth({ quick: quickHealth });
       return json(res, 200, {
         success: true,
         service: 'continuum-bridge',
