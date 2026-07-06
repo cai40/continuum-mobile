@@ -306,6 +306,7 @@ export const openClawChatStream = (
   onDone,
   onError,
   authToken = null,
+  timeoutMs = 180000,
 ) => {
   const xhr = new XMLHttpRequest();
   let lastProcessedIndex = 0;
@@ -344,7 +345,7 @@ export const openClawChatStream = (
   };
 
   xhr.open("POST", `${bridgeBaseUrl.replace(/\/$/, "")}/chat/stream`);
-  xhr.timeout = 180000;
+  xhr.timeout = timeoutMs;
 
   xhr.setRequestHeader("Content-Type", "application/json");
   if (authToken) {
@@ -423,8 +424,12 @@ export const openClawChatStream = (
     }
   };
 
-  xhr.onerror = () => finish("Cannot reach OpenClaw bridge.");
-  xhr.ontimeout = () => finish("OpenClaw bridge timed out.");
+  xhr.onerror = () => finish(timeoutMs >= 600000
+    ? "Email bridge timed out after 10 minutes. Try a smaller batch (limit 500) or summary-only fetch."
+    : "Cannot reach OpenClaw bridge.");
+  xhr.ontimeout = () => finish(timeoutMs >= 600000
+    ? "Email fetch timed out (10 min). Large inbox scans take time — retry with limit 1000 or wait and try again."
+    : "OpenClaw bridge timed out.");
 
   xhr.send(JSON.stringify(payload));
 
@@ -447,6 +452,7 @@ export const renderEmailChatStream = (
     onDone,
     onError,
     authToken,
+    600000,
   );
 
 export const testRenderEmailHealth = async (bridgeSecret) =>

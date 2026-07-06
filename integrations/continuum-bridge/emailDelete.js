@@ -121,6 +121,16 @@ function resolveCleanupUids(emails) {
   return uids.slice(0, MAX_DELETE_PER_REQUEST);
 }
 
+function countCleanupTargets(emails) {
+  if (!Array.isArray(emails) || emails.length === 0) return 0;
+  const triaged = triageMessages(emails);
+  let count = 0;
+  for (let i = 0; i < triaged.length; i += 1) {
+    if (matchesCleanupTarget(triaged[i], emails[i])) count += 1;
+  }
+  return count;
+}
+
 function matchesSummaryCategory(row, catNum) {
   if (row.uid == null) return false;
   if (row.category === 'protected') return false;
@@ -462,6 +472,7 @@ module.exports = {
   wantsEmailCleanup,
   resolveDeleteUids,
   resolveCleanupUids,
+  countCleanupTargets,
   resolveChurchCommunityUids,
   parseExplicitUids,
   maybeDeleteEmails,

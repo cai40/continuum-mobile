@@ -150,6 +150,7 @@ export function parseEmailLimitFromMessage(message) {
 
   const text = message || '';
   const patterns = [
+    /\b(?:up\s+to|process\s+up\s+to|max|maximum)\s+(\d{1,4})\s+emails?\b/i,
     /\b(?:last|top|read|fetch|get|show|list)\s+(\d{1,4})\s+emails?\b/i,
     /\b(?:latest|recent|newest)\s+(\d{1,4})\s+emails?\b/i,
     /\b(\d{1,4})\s+(?:recent|latest|newest)\s+emails?\b/i,

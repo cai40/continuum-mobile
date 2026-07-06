@@ -15,7 +15,7 @@ const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
-const { wantsEmailFetch } = require('./emailFetchOptions');
+const { wantsEmailFetch, wantsEmailSummaryOnly } = require('./emailFetchOptions');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
@@ -188,7 +188,11 @@ async function handleChatStream(req, res, config) {
     webContext = alreadyHasWebSearch ? null : await maybeFetchWebContext(message);
   }
 
-  sse.write('status', { detail: 'Fetching Yahoo inbox (if requested)…' });
+  const emailLimit = parseInt(payload.email_limit, 10) || 0;
+  const emailStatus = emailLimit >= 500
+    ? `Fetching Yahoo inbox (up to ${emailLimit} — may take 3–8 minutes)…`
+    : 'Fetching Yahoo inbox (if requested)…';
+  sse.write('status', { detail: emailStatus });
   const emailContext = await maybeFetchEmailContext(message, {
     email_limit: payload.email_limit,
     email_offset: payload.email_offset,
@@ -220,9 +224,12 @@ async function handleChatStream(req, res, config) {
 
   if (emailContext) {
     const deleteEnabled = !!payload.email_delete_enabled;
+    const summaryOnly = wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext);
     message = [
       'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
-      'Summarize ONLY the emails explicitly listed below with their UIDs.',
+      summaryOnly
+        ? 'SUMMARY MODE: Give aggregate counts, categories, top senders, and themes ONLY — do NOT list individual emails or UIDs.'
+        : 'Summarize ONLY the emails explicitly listed below with their UIDs.',
       'If a MAILBOX SCAN block appears below, copy its Scanned/ dates / Matched lines into your reply — never omit them.',
       'NEVER invent, simulate, reconstruct, or guess any email, UID, sender, or subject.',
       'If fewer emails were fetched than the user requested, say exactly how many were returned and stop — do not fill in gaps.',
