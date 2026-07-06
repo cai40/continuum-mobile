@@ -15,7 +15,7 @@ const skillRoot = path.join(__dirname, '../../skills/continuum-brain');
 const { loadConfig } = require(path.join(skillRoot, 'scripts/config'));
 const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
-const { wantsEmailFetch, wantsEmailSummaryOnly } = require('./emailFetchOptions');
+const { wantsEmailFetch, wantsEmailSummaryOnly, resolveEmailFetchOptions, formatPreEmailFetchStatus, formatPostEmailFetchStatus } = require('./emailFetchOptions');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
@@ -126,10 +126,10 @@ async function maybeFetchWebContext(message) {
 
 async function maybeFetchEmailContext(message, payloadOptions = {}) {
   const result = await fetchEmailContext(message, payloadOptions);
-  if (!result.matched) return null;
-  if (result.context) return result.context;
-  if (result.error) return `[Yahoo email not available]\n${result.error}`;
-  return '[Yahoo email] No messages returned.';
+  if (!result.matched) return { context: null, result: null };
+  if (result.context) return { context: result.context, result };
+  if (result.error) return { context: `[Yahoo email not available]\n${result.error}`, result };
+  return { context: '[Yahoo email] No messages returned.', result };
 }
 
 async function handleAsk(req, res, config) {
@@ -196,12 +196,7 @@ async function handleChatStream(req, res, config) {
     webContext = alreadyHasWebSearch ? null : await maybeFetchWebContext(message);
   }
 
-  const emailLimit = parseInt(payload.email_limit, 10) || 0;
-  const emailStatus = emailLimit >= 500
-    ? `Fetching Yahoo inbox (up to ${emailLimit} — may take 3–8 minutes)…`
-    : 'Fetching Yahoo inbox (if requested)…';
-  sse.write('status', { detail: emailStatus });
-  const emailContext = await maybeFetchEmailContext(message, {
+  const emailPayloadOptions = {
     email_limit: payload.email_limit,
     email_offset: payload.email_offset,
     email_recent: payload.email_recent,
@@ -210,7 +205,20 @@ async function handleChatStream(req, res, config) {
     email_delete_enabled: payload.email_delete_enabled,
     email_auto_trash_junk: payload.email_auto_trash_junk,
     history: payload.history,
+  };
+  const preFetchOptions = isEmailRequest
+    ? resolveEmailFetchOptions(message, emailPayloadOptions)
+    : null;
+  sse.write('status', { detail: formatPreEmailFetchStatus(preFetchOptions) });
+  const { context: emailContext, result: emailResult } = await maybeFetchEmailContext(message, emailPayloadOptions);
+  const postFetchStatus = formatPostEmailFetchStatus({
+    fetchOptions: emailResult?.fetchOptions,
+    scanMeta: emailResult?.scanMeta,
+    loadedCount: emailResult?.loadedCount,
   });
+  if (postFetchStatus) {
+    sse.write('status', { detail: postFetchStatus });
+  }
   const hasLiveInbox = emailContext && !emailContext.startsWith('[Yahoo email not available]');
   const hasWebSearch = !!webContext && !webContext.startsWith('[Web search not available]');
 

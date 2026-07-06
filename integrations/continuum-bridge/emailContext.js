@@ -547,6 +547,8 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       context: finalContext,
       error: null,
       fetchOptions,
+      scanMeta,
+      loadedCount: messages?.length ?? 0,
       deleteResult,
       moveResult,
     };

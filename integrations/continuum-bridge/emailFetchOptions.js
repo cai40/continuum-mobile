@@ -147,6 +147,37 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   };
 }
 
+function formatPreEmailFetchStatus(fetchOptions) {
+  if (!fetchOptions) return 'Fetching Yahoo inbox (if requested)…';
+  const { limit = 0, dateRangeLabel } = fetchOptions;
+  if (dateRangeLabel) {
+    if (limit >= 500) {
+      return `Scanning ${dateRangeLabel}… (load cap ${limit}; may take 3–8 minutes)`;
+    }
+    return `Scanning ${dateRangeLabel}…`;
+  }
+  if (limit >= 500) {
+    return `Fetching Yahoo inbox (up to ${limit} — may take 3–8 minutes)…`;
+  }
+  return 'Fetching Yahoo inbox (if requested)…';
+}
+
+function formatPostEmailFetchStatus({ fetchOptions, scanMeta, loadedCount } = {}) {
+  const range = fetchOptions?.dateRangeLabel;
+  const matched = scanMeta?.matched;
+  const loaded = loadedCount ?? 0;
+  if (range && matched != null) {
+    if (loaded < matched) {
+      return `${range}: ${loaded} of ${matched} matched loaded (cap ${fetchOptions.limit}) — analyzing…`;
+    }
+    return `${range}: ${matched} matched — analyzing…`;
+  }
+  if (loaded > 0) {
+    return `Loaded ${loaded} email(s) — analyzing…`;
+  }
+  return null;
+}
+
 function wantsEmailFetch(message, payloadOptions = {}) {
   const text = message || '';
   if (EMAIL_TRIGGER.test(text)) return true;
@@ -169,6 +200,8 @@ module.exports = {
   parseRecentFromMessage,
   parseDateRangeFromMessage,
   resolveEmailFetchOptions,
+  formatPreEmailFetchStatus,
+  formatPostEmailFetchStatus,
   wantsEmailFetch,
   wantsEmailSummaryOnly,
 };
