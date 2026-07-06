@@ -17,7 +17,7 @@ Deploy as a **second Render Web Service** from this repo, or run locally for tes
 |----------|----------|---------|
 | `YAHOO_EMAIL` | Yes | `you@yahoo.com` |
 | `YAHOO_APP_PASSWORD` | Yes | Yahoo **app password** (Account → Security → Generate app password) |
-| `CONTINUUM_API_URL` | No | `https://continuum-backend-0q9j.onrender.com` |
+| `CONTINUUM_API_URL` | No | `https://continuum-backend-0q9j.onrender.com` **only** — do not append `/integrations/email` |
 | `BRIDGE_SECRET` or `RENDER_EMAIL_BRIDGE_SECRET` | Yes | Random string; must match `CONTINUUM_EMAIL_BRIDGE_SECRET` on main backend |
 
 ## Wire into continuum-backend (FastAPI)

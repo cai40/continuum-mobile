@@ -270,6 +270,14 @@ function sanitizeBridgeErrorMessage(raw, status) {
   return text.length > 400 ? `${text.slice(0, 400)}…` : text;
 }
 
+function friendlyBridgeError(raw, status) {
+  const text = String(raw || '').trim();
+  if (/not\s*found/i.test(text) && (status === 404 || /"detail"\s*:\s*"Not Found"/i.test(text))) {
+    return 'Continuum backend returned Not Found (404). On Render, set CONTINUUM_API_URL to https://continuum-backend-0q9j.onrender.com only — not /integrations/email. Then redeploy continuum-email-bridge.';
+  }
+  return sanitizeBridgeErrorMessage(text, status);
+}
+
 function parseBridgeHttpError(responseText, status) {
   let msg = `Bridge error (${status})`;
   if (!responseText?.trim()) return msg;
@@ -282,9 +290,10 @@ function parseBridgeHttpError(responseText, status) {
         detail = inner.detail || inner.error || detail;
       } catch (e) {}
     }
-    if (detail) msg = sanitizeBridgeErrorMessage(String(detail), status);
+    if (detail) msg = friendlyBridgeError(String(detail), status);
+    else if (status === 404) msg = friendlyBridgeError(responseText, status);
   } catch (e) {
-    msg = sanitizeBridgeErrorMessage(responseText, status);
+    msg = friendlyBridgeError(responseText, status);
   }
   return msg;
 }
@@ -400,7 +409,10 @@ export const openClawChatStream = (
             } else if (currentEvent === "transcript" && json.text) {
               userTranscript = json.text;
             } else if (currentEvent === "error") {
-              lastStreamError = sanitizeBridgeErrorMessage(json.detail || json.message || "OpenClaw bridge error", xhr.status);
+              lastStreamError = friendlyBridgeError(
+                json.detail || json.message || "OpenClaw bridge error",
+                xhr.status,
+              );
               finish(lastStreamError);
             }
           } catch (e) {}

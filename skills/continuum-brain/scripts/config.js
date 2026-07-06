@@ -26,6 +26,13 @@ function parseEnv(content) {
   return env;
 }
 
+function normalizeApiUrl(url) {
+  let u = String(url || '').trim().replace(/\/+$/, '');
+  // Render env sometimes mistakenly includes the old proxy path.
+  u = u.replace(/\/integrations\/email$/i, '');
+  return u || 'https://continuum-backend-0q9j.onrender.com';
+}
+
 function loadConfig() {
   if (!fs.existsSync(CONFIG_PATH)) {
     throw new Error(
@@ -34,7 +41,7 @@ function loadConfig() {
   }
   const raw = parseEnv(fs.readFileSync(CONFIG_PATH, 'utf8'));
   return {
-    apiUrl: raw.CONTINUUM_API_URL || 'https://continuum-backend-0q9j.onrender.com',
+    apiUrl: normalizeApiUrl(raw.CONTINUUM_API_URL),
     supabaseUrl: raw.SUPABASE_URL || 'https://yybojfgjhtrwqhtavorg.supabase.co',
     supabaseAnonKey: raw.SUPABASE_ANON_KEY || '',
     accessToken: raw.CONTINUUM_ACCESS_TOKEN || '',
@@ -63,4 +70,4 @@ function saveAccessToken(token) {
   fs.appendFileSync(CONFIG_PATH, `\nCONTINUUM_ACCESS_TOKEN=${token}\n`, { mode: 0o600 });
 }
 
-module.exports = { loadConfig, saveAccessToken, CONFIG_PATH };
+module.exports = { loadConfig, saveAccessToken, CONFIG_PATH, normalizeApiUrl };

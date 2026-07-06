@@ -270,7 +270,10 @@ async function handleChatStream(req, res, config) {
 
   if (!upstream.ok) {
     const detail = await upstream.text();
-    sse.write('error', { detail: sanitizeUpstreamError(detail, upstream.status) });
+    const hint = /not\s*found/i.test(detail) && upstream.status === 404
+      ? `${detail}\n\nFix: set CONTINUUM_API_URL=https://continuum-backend-0q9j.onrender.com on Render (no /integrations/email path) and redeploy.`
+      : detail;
+    sse.write('error', { detail: sanitizeUpstreamError(hint, upstream.status) });
     sse.end();
     return;
   }
