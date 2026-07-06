@@ -6,7 +6,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
-const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
@@ -186,7 +186,7 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
     'Top senders:',
     ...topSenders.map(([s, n]) => `- ${s}: ${n}`),
     '',
-    `Cleanup targets in this batch (news/promo/junk): ${cleanupCount} (max 100 moved to Trash per confirmed run).`,
+    `Cleanup targets in this batch (news/promo/junk): ${cleanupCount} (max 100 per path; auto-trash + cleanup report one combined total).`,
     'Give counts and high-level themes only. Confirm trash results only from [Email cleanup executed] blocks.',
   ].filter(Boolean);
 
@@ -461,11 +461,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
       });
       if (manualResult.executed) {
         deleteResult = deleteResult.executed
-          ? {
-              ...manualResult,
-              summary: [deleteResult.summary, manualResult.summary].filter(Boolean).join('\n\n'),
-              uids: [...new Set([...(deleteResult.uids || []), ...(manualResult.uids || [])])],
-            }
+          ? mergeDeleteResults(deleteResult, manualResult, messages)
           : manualResult;
       } else if (manualResult.error && !deleteResult.executed) {
         deleteResult = manualResult;

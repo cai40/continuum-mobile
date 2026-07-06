@@ -359,17 +359,21 @@ async function runImapDeleteBatched(imapScript, uids) {
   };
 }
 
-function formatDeleteResult(result, emails, deletedUids, skippedUids = []) {
-  const lines = deletedUids.map((uid) => {
+function formatDeleteUidLines(emails, deletedUids) {
+  return deletedUids.map((uid) => {
     const email = emails.find((item) => Number(item.uid) === Number(uid));
     if (!email) return `- UID ${uid}`;
     const from = email.from?.text || email.from || 'Unknown';
     const subject = email.subject || '(no subject)';
     return `- UID ${uid}: "${subject}" from ${from}`;
   });
+}
+
+function formatDeleteResult(result, emails, deletedUids, skippedUids = [], { headerLine = null } = {}) {
+  const lines = formatDeleteUidLines(emails, deletedUids);
 
   const action = result?.action === 'moved_to_trash' ? 'Moved to Trash' : 'Deleted';
-  const parts = [`${action} ${deletedUids.length} email(s) via Yahoo IMAP:`];
+  const parts = [headerLine || `${action} ${deletedUids.length} email(s) via Yahoo IMAP:`];
   if (lines.length) parts.push(...lines);
   if (skippedUids.length) {
     parts.push(`Skipped ${skippedUids.length} UID(s) not in the fetched inbox (may be invalid or already removed): ${skippedUids.slice(0, 10).join(', ')}${skippedUids.length > 10 ? '...' : ''}`);
@@ -378,6 +382,44 @@ function formatDeleteResult(result, emails, deletedUids, skippedUids = []) {
     parts.push(`(Executed in ${result.batches} batch(es).)`);
   }
   return parts.join('\n');
+}
+
+function mergeDeleteResults(autoResult, manualResult, emails) {
+  const autoUids = (autoResult?.uids || []).map(Number).filter(Number.isFinite);
+  const manualUids = (manualResult?.uids || []).map(Number).filter(Number.isFinite);
+  const autoSet = new Set(autoUids);
+  const mergedUids = [...new Set([...autoUids, ...manualUids])];
+  const cleanupAdded = manualUids.filter((uid) => !autoSet.has(uid)).length;
+  const skippedUids = [...new Set([...(autoResult?.skippedUids || []), ...(manualResult?.skippedUids || [])])];
+  const autoRan = !!(autoResult?.executed && autoUids.length);
+  const manualRan = !!(manualResult?.executed && manualUids.length);
+  const batches = (autoUids.length ? Math.ceil(autoUids.length / DELETE_BATCH_SIZE) : 0)
+    + (manualUids.length ? Math.ceil(manualUids.length / DELETE_BATCH_SIZE) : 0);
+
+  let headerLine;
+  if (autoRan && manualRan) {
+    let header = `Moved to Trash ${mergedUids.length} email(s) via Yahoo IMAP (auto-trash ${autoUids.length}`;
+    if (cleanupAdded > 0) header += ` + cleanup ${cleanupAdded}`;
+    header += '):';
+    headerLine = header;
+  }
+
+  const combinedResult = {
+    action: 'moved_to_trash',
+    batches: batches > 1 ? batches : undefined,
+  };
+
+  return {
+    executed: true,
+    summary: formatDeleteResult(combinedResult, emails, mergedUids, skippedUids, { headerLine }),
+    error: manualResult?.error || autoResult?.error || null,
+    uids: mergedUids,
+    skippedUids,
+    auto: autoRan,
+    manual: manualRan,
+    autoCount: autoUids.length,
+    cleanupAdded,
+  };
 }
 
 async function maybeAutoTrashJunk(emails, imapScript, { enabled = false, includeGithub = false } = {}) {
@@ -475,6 +517,7 @@ module.exports = {
   countCleanupTargets,
   resolveChurchCommunityUids,
   parseExplicitUids,
+  mergeDeleteResults,
   maybeDeleteEmails,
   maybeAutoTrashJunk,
   CHURCH_COMMUNITY_INTENT,
