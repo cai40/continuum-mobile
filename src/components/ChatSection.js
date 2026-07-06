@@ -14,7 +14,7 @@ import {
 import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream, renderEmailChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
-import { resolveBridgeBaseUrl, resolveBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
+import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
 import {
   DOCUMENT_MIME_TYPES,
@@ -43,6 +43,7 @@ const ChatSection = () => {
     openclawVpsIp,
     openclawBridgeHttpsUrl,
     openclawBridgeSecret,
+    renderEmailBridgeSecret,
     openclawEmailLimit,
     openclawEmailRecent,
     openclawEmailDeleteEnabled,
@@ -360,6 +361,7 @@ const ChatSection = () => {
       }
 
       const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
+      const renderEmailSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
       const bridgeUrl = resolveBridgeBaseUrl({
         httpsUrl: openclawBridgeHttpsUrl,
         vpsIp: openclawVpsIp,
@@ -378,6 +380,14 @@ const ChatSection = () => {
         Alert.alert(
           "Yahoo email needs a mail bridge",
           "Setup → OpenClaw Gateway:\n• Turn ON Render cloud email (no VPS), or\n• Turn ON Route chat through OpenClaw + HTTPS bridge URL.",
+        );
+        return;
+      }
+
+      if (useRenderEmail && !renderEmailSecret) {
+        Alert.alert(
+          "Render email secret required",
+          "Setup → OpenClaw Gateway → Render email bridge secret.\nPaste BRIDGE_SECRET from your continuum-email-bridge service on Render.",
         );
         return;
       }
@@ -596,7 +606,7 @@ const ChatSection = () => {
         };
         const xhr = useRenderEmail
           ? renderEmailChatStream(
-              bridgeSecret,
+              renderEmailSecret,
               payload,
               onStreamUpdate,
               finishSuccess,

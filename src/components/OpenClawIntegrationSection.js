@@ -28,6 +28,7 @@ import {
 import {
   resolveBridgeBaseUrl,
   resolveBridgeSecret,
+  resolveRenderEmailBridgeSecret,
   isHttpsBridgeUrl,
 } from "../utils/openclawBridge";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/openclawEmailOptions";
@@ -98,6 +99,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     setOpenclawBridgeHttpsUrl,
     openclawBridgeSecret,
     setOpenclawBridgeSecret,
+    renderEmailBridgeSecret,
+    setRenderEmailBridgeSecret,
     openclawChatEnabled,
     setOpenclawChatEnabled,
     openclawEmailLimit,
@@ -122,6 +125,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
 
   const refreshToken = session?.refresh_token || "";
   const effectiveSecret = resolveBridgeSecret(openclawBridgeSecret);
+  const effectiveRenderSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
   const bridgeBaseUrl = resolveBridgeBaseUrl({
     httpsUrl: openclawBridgeHttpsUrl,
     vpsIp: openclawVpsIp,
@@ -164,10 +168,16 @@ const OpenClawIntegrationSection = ({ onBack }) => {
   };
 
   const handleTestRenderEmail = async () => {
-    const secret = effectiveSecret;
+    if (!effectiveRenderSecret) {
+      Alert.alert(
+        "Render email secret required",
+        "Paste BRIDGE_SECRET from continuum-email-bridge on Render into Render email bridge secret below.",
+      );
+      return;
+    }
     setTestingRenderEmail(true);
     try {
-      const health = await testRenderEmailHealth(secret);
+      const health = await testRenderEmailHealth(effectiveRenderSecret);
       const emailReady = health?.email?.ready;
       Alert.alert(
         emailReady ? "Render email OK" : "Render email bridge up",
@@ -178,7 +188,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     } catch (e) {
       Alert.alert(
         "Render email unreachable",
-        `${e.message || String(e)}\n\nSet Bridge secret below to match BRIDGE_SECRET on your Render email bridge service.`,
+        `${e.message || String(e)}\n\nCheck Render email bridge secret matches BRIDGE_SECRET on continuum-email-bridge.`,
       );
     } finally {
       setTestingRenderEmail(false);
@@ -213,6 +223,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       ["@openclaw_vps_ip", (openclawVpsIp || DEFAULT_VPS_IP).trim()],
       ["@openclaw_bridge_https_url", openclawBridgeHttpsUrl.trim()],
       ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
+      ["@render_email_bridge_secret", renderEmailBridgeSecret.trim()],
       ["@openclaw_email_limit", String(clampEmailLimit(openclawEmailLimit))],
       ["@openclaw_email_recent", normalizeEmailRecent(openclawEmailRecent)],
       ["@openclaw_email_delete_enabled", openclawEmailDeleteEnabled ? "true" : "false"],
@@ -277,7 +288,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
             Use Render for Yahoo email (no VPS)
           </Text>
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
-            Inbox fetch, date ranges, cleanup, and move-to-folder via {RENDER_EMAIL_BRIDGE_URL.replace("https://", "")}. Set Bridge secret below to match BRIDGE_SECRET on Render.
+            Inbox fetch, date ranges, cleanup, and move-to-folder via {RENDER_EMAIL_BRIDGE_URL.replace("https://", "")}. Uses its own secret below (separate from VPS).
           </Text>
         </View>
         <Switch
@@ -288,6 +299,40 @@ const OpenClawIntegrationSection = ({ onBack }) => {
           }}
         />
       </View>
+
+      <Text style={[styles.categoryTitle, { marginTop: 16 }]}>RENDER EMAIL BRIDGE SECRET</Text>
+      <View style={styles.groupedCard}>
+        <TextInput
+          style={[styles.keyInput, { borderWidth: 0 }]}
+          value={renderEmailBridgeSecret}
+          onChangeText={setRenderEmailBridgeSecret}
+          placeholder="BRIDGE_SECRET from continuum-email-bridge"
+          autoCapitalize="none"
+          autoCorrect={false}
+          clearButtonMode="while-editing"
+          secureTextEntry
+        />
+      </View>
+      <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+        Render → continuum-email-bridge → Environment → BRIDGE_SECRET. Not the same as VPS bridge secret.
+      </Text>
+
+      <TouchableOpacity
+        onPress={handleTestRenderEmail}
+        disabled={testingRenderEmail}
+        style={{
+          backgroundColor: theme.colors.light,
+          paddingVertical: 14,
+          borderRadius: 16,
+          marginTop: 12,
+          alignItems: "center",
+          opacity: testingRenderEmail ? 0.6 : 1,
+        }}
+      >
+        <Text style={{ color: theme.colors.primary, fontWeight: "700", fontSize: 14 }}>
+          {testingRenderEmail ? "Testing Render email..." : "Test Render email bridge"}
+        </Text>
+      </TouchableOpacity>
 
       <Text style={[styles.categoryTitle, { marginTop: 24 }]}>VPS BRIDGE (OPTIONAL)</Text>
       <View style={[styles.groupedCard, { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
@@ -349,7 +394,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         </Text>
       </TouchableOpacity>
 
-      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>BRIDGE SECRET</Text>
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>VPS BRIDGE SECRET</Text>
       <View style={styles.groupedCard}>
         <TextInput
           style={[styles.keyInput, { borderWidth: 0 }]}
@@ -362,7 +407,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         />
       </View>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Clear the field and type {DEFAULT_OPENCLAW_BRIDGE_SECRET} if unsure. Leave blank to use that default.
+        Secret for your VPS / Cloudflare tunnel bridge only. Default {DEFAULT_OPENCLAW_BRIDGE_SECRET} if blank.
       </Text>
 
       <Text style={[styles.categoryTitle, { marginTop: 24 }]}>EMAIL FETCH LIMIT</Text>
@@ -462,6 +507,9 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         <Text style={{ fontSize: 12, color: renderEmailEnabled ? theme.colors.success : theme.colors.gray, marginTop: 4 }}>
           Render cloud email: {renderEmailEnabled ? "enabled" : "disabled"}
         </Text>
+        <Text style={{ fontSize: 12, color: effectiveRenderSecret ? theme.colors.success : theme.colors.danger, marginTop: 4 }}>
+          {effectiveRenderSecret ? "✓" : "✗"} Render email secret {effectiveRenderSecret ? "set" : "(required)"}
+        </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           VPS IP: {openclawVpsIp || DEFAULT_VPS_IP}
         </Text>
@@ -469,7 +517,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
           {openclawBridgeHttpsUrl?.trim() ? "✓" : "✗"} HTTPS bridge URL {openclawBridgeHttpsUrl?.trim() ? "set" : "(required on iPhone)"}
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
-          Bridge secret: {effectiveSecret}
+          VPS bridge secret: {effectiveSecret}
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           Email fetch: {effectiveEmailLimit} messages / {effectiveEmailRecent}
@@ -494,23 +542,6 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       >
         <Text style={{ color: "white", fontWeight: "800", fontSize: 15 }}>
           {copied ? "COMMANDS COPIED — PASTE ON VPS" : "COPY VPS SETUP COMMANDS"}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={handleTestRenderEmail}
-        disabled={testingRenderEmail}
-        style={{
-          backgroundColor: theme.colors.light,
-          paddingVertical: 14,
-          borderRadius: 16,
-          marginTop: 12,
-          alignItems: "center",
-          opacity: testingRenderEmail ? 0.6 : 1,
-        }}
-      >
-        <Text style={{ color: theme.colors.primary, fontWeight: "700", fontSize: 14 }}>
-          {testingRenderEmail ? "Testing Render email..." : "Test Render email bridge"}
         </Text>
       </TouchableOpacity>
 
