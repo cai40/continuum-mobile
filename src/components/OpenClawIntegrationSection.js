@@ -17,6 +17,7 @@ import { useAppContext } from "../context/AppContext";
 import { testOpenClawBridge, testRenderEmailHealth } from "../services/apiService";
 import {
   API_URL,
+  RENDER_EMAIL_BRIDGE_URL,
   DEFAULT_OPENCLAW_BRIDGE_SECRET,
   DEFAULT_OPENCLAW_EMAIL_LIMIT,
   DEFAULT_OPENCLAW_EMAIL_RECENT,
@@ -117,6 +118,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
 
   const [copied, setCopied] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [testingRenderEmail, setTestingRenderEmail] = useState(false);
 
   const refreshToken = session?.refresh_token || "";
   const effectiveSecret = resolveBridgeSecret(openclawBridgeSecret);
@@ -159,6 +161,28 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     await saveOpenClawSettings();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Saved", "OpenClaw gateway settings stored on this device.");
+  };
+
+  const handleTestRenderEmail = async () => {
+    const secret = effectiveSecret;
+    setTestingRenderEmail(true);
+    try {
+      const health = await testRenderEmailHealth(secret);
+      const emailReady = health?.email?.ready;
+      Alert.alert(
+        emailReady ? "Render email OK" : "Render email bridge up",
+        emailReady
+          ? `Yahoo mail ready via ${RENDER_EMAIL_BRIDGE_URL.replace("https://", "")}`
+          : `Bridge reachable but email not ready: ${health?.email?.error || "check Render env vars"}`,
+      );
+    } catch (e) {
+      Alert.alert(
+        "Render email unreachable",
+        `${e.message || String(e)}\n\nSet Bridge secret below to match BRIDGE_SECRET on your Render email bridge service.`,
+      );
+    } finally {
+      setTestingRenderEmail(false);
+    }
   };
 
   const handleTestBridge = async () => {
@@ -253,7 +277,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
             Use Render for Yahoo email (no VPS)
           </Text>
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
-            Inbox fetch, date ranges, cleanup, and move-to-folder via {API_URL.replace("https://", "")}/integrations/email — requires one-time Render deploy (see repo docs).
+            Inbox fetch, date ranges, cleanup, and move-to-folder via {RENDER_EMAIL_BRIDGE_URL.replace("https://", "")}. Set Bridge secret below to match BRIDGE_SECRET on Render.
           </Text>
         </View>
         <Switch
@@ -470,6 +494,23 @@ const OpenClawIntegrationSection = ({ onBack }) => {
       >
         <Text style={{ color: "white", fontWeight: "800", fontSize: 15 }}>
           {copied ? "COMMANDS COPIED — PASTE ON VPS" : "COPY VPS SETUP COMMANDS"}
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={handleTestRenderEmail}
+        disabled={testingRenderEmail}
+        style={{
+          backgroundColor: theme.colors.light,
+          paddingVertical: 14,
+          borderRadius: 16,
+          marginTop: 12,
+          alignItems: "center",
+          opacity: testingRenderEmail ? 0.6 : 1,
+        }}
+      >
+        <Text style={{ color: theme.colors.primary, fontWeight: "700", fontSize: 14 }}>
+          {testingRenderEmail ? "Testing Render email..." : "Test Render email bridge"}
         </Text>
       </TouchableOpacity>
 

@@ -596,6 +596,7 @@ const ChatSection = () => {
         };
         const xhr = useRenderEmail
           ? renderEmailChatStream(
+              bridgeSecret,
               payload,
               onStreamUpdate,
               finishSuccess,

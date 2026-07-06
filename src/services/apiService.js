@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { API_URL } from "../constants/Config";
+import { API_URL, RENDER_EMAIL_BRIDGE_URL } from "../constants/Config";
 
 /**
  * GLOBAL PULSE ENGINE:
@@ -411,19 +411,26 @@ export const openClawChatStream = (
   return xhr;
 };
 
-export const renderEmailChatStream = (payload, onUpdate, onDone, onError, authToken = null) =>
-  openClawChatStream(`${API_URL}/integrations/email`, null, payload, onUpdate, onDone, onError, authToken);
+export const renderEmailChatStream = (
+  bridgeSecret,
+  payload,
+  onUpdate,
+  onDone,
+  onError,
+  authToken = null,
+) =>
+  openClawChatStream(
+    RENDER_EMAIL_BRIDGE_URL,
+    bridgeSecret,
+    payload,
+    onUpdate,
+    onDone,
+    onError,
+    authToken,
+  );
 
-export const testRenderEmailHealth = async (authToken = null) => {
-  const res = await fetch(`${API_URL}/integrations/email/health`, {
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(parseBridgeHttpError(text, res.status));
-  }
-  return res.json();
-};
+export const testRenderEmailHealth = async (bridgeSecret) =>
+  testOpenClawBridge(RENDER_EMAIL_BRIDGE_URL, bridgeSecret);
 
 export const testOpenClawBridge = async (bridgeBaseUrl, bridgeSecret) => {
   const res = await fetch(`${bridgeBaseUrl.replace(/\/$/, "")}/health`, {
