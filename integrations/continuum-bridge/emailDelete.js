@@ -327,7 +327,7 @@ async function runImapDelete(imapScript, uids) {
   try {
     return JSON.parse(stdout);
   } catch {
-    return { success: true, uids, action: 'deleted', raw: stdout.trim() };
+    return { success: true, uids, action: 'moved_to_trash', raw: stdout.trim() };
   }
 }
 
@@ -449,7 +449,7 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false,
     return {
       executed: false,
       summary: null,
-      error: `Email delete failed: ${detail}.${syncHint}`,
+      error: `Move to Trash failed: ${detail}.${syncHint}`,
       uids,
       skippedUids,
     };

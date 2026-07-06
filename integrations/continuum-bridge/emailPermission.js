@@ -10,7 +10,7 @@ function hasBulkActionConfirm(message) {
 }
 
 function formatPermissionBlock({ totalMatched, cleanupTargets, limit, dateRangeLabel, isCleanup, isMove, destFolder }) {
-  const action = isMove ? 'move' : (isCleanup ? 'clean up' : 'delete/trash');
+  const action = isMove ? 'move' : (isCleanup ? 'move to Trash (clean up)' : 'move to Trash');
   const lines = [
     isMove
       ? `[Permission required — no emails moved to "${destFolder || 'folder'}" yet]`

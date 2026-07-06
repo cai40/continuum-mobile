@@ -442,14 +442,14 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         How far back to search: 24h, 7d, or 30d. Override in chat: “last 7 days”.
       </Text>
 
-      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>ALLOW EMAIL DELETE</Text>
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>ALLOW MOVE TO TRASH</Text>
       <View style={[styles.groupedCard, { padding: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
         <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={{ fontSize: 14, fontWeight: "700", color: theme.colors.black }}>
-            Permit inbox deletions
+            Permit move to Trash
           </Text>
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
-            When ON, chat can delete Yahoo mail via the bridge (max 25 per request). Off by default.
+            When ON, chat can move Yahoo mail to Trash via the bridge (not permanent delete; max 100 per batch). Off by default.
           </Text>
         </View>
         <Switch
@@ -461,7 +461,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         />
       </View>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Examples: “delete email 1”, “delete uid 12345”, “move category 6 to trash”.
+        Examples: “move email 1 to trash”, “trash uid 12345”, “move category 6 to trash”.
       </Text>
 
       <Text style={[styles.categoryTitle, { marginTop: 24 }]}>AUTO-TRASH NEWSLETTERS</Text>
@@ -523,7 +523,7 @@ const OpenClawIntegrationSection = ({ onBack }) => {
           Email fetch: {effectiveEmailLimit} messages / {effectiveEmailRecent}
         </Text>
         <Text style={{ fontSize: 12, color: openclawEmailDeleteEnabled ? theme.colors.danger : theme.colors.gray, marginTop: 4 }}>
-          Email delete: {openclawEmailDeleteEnabled ? "enabled" : "disabled"}
+          Email move to Trash: {openclawEmailDeleteEnabled ? "enabled" : "disabled"}
         </Text>
         <Text style={{ fontSize: 12, color: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled ? theme.colors.danger : theme.colors.gray, marginTop: 4 }}>
           Auto-trash junk: {openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled ? "enabled" : "disabled"}
