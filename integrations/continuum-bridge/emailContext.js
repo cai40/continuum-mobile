@@ -4,12 +4,12 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch } = require('./emailFetchOptions');
+const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
-const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock } = require('./emailPermission');
-const { wantsTriage, buildTriageContext, classifyEmail } = require('./emailTriage');
+const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
 
 const execFileAsync = promisify(execFile);
 
@@ -143,7 +143,56 @@ function inlineScanSummary(scanMeta) {
   return `Scanned ${scanMeta.scanned}/${scanMeta.totalUids} INBOX messages.${span} Matched: ${scanMeta.matched ?? 0}.`;
 }
 
-function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null, scanMeta = null) {
+function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanMeta }) {
+  const triaged = triageMessages(parsed);
+  const byCategory = {};
+  const bySender = {};
+  let unread = 0;
+  for (let i = 0; i < parsed.length; i += 1) {
+    const msg = parsed[i];
+    const row = triaged[i];
+    const cat = row?.category || 'other';
+    byCategory[cat] = (byCategory[cat] || 0) + 1;
+    const from = String(msg.from?.text || msg.from || msg.fromAddress || 'Unknown').replace(/\s+/g, ' ').slice(0, 72);
+    bySender[from] = (bySender[from] || 0) + 1;
+    if (Array.isArray(msg.flags) && !msg.flags.includes('\\Seen')) unread += 1;
+  }
+  const topSenders = Object.entries(bySender).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const cleanupCount = countCleanupTargets(parsed);
+  const scanBlock = formatScanDiagnostic(scanMeta, dateRangeLabel);
+
+  const lines = [
+    `SUMMARY MODE: ${parsed.length} email(s) fetched (offset ${offset}, limit ${limit}).`,
+    'User asked for aggregate summary ONLY — do NOT list individual emails or long UID lists.',
+    dateRangeLabel ? `Date filter: ${dateRangeLabel}.` : null,
+    scanBlock,
+    `Unread: ${unread}. Read: ${parsed.length - unread}.`,
+    '',
+    'By category:',
+    ...Object.entries(byCategory).sort((a, b) => b[1] - a[1]).map(([c, n]) => `- ${c}: ${n}`),
+    '',
+    'Top senders:',
+    ...topSenders.map(([s, n]) => `- ${s}: ${n}`),
+    '',
+    `Cleanup targets in this batch (news/promo/junk): ${cleanupCount} (max 100 moved to Trash per confirmed run).`,
+    'Give counts and high-level themes only. Confirm trash results only from [Email cleanup executed] blocks.',
+  ].filter(Boolean);
+
+  if (parsed.length > 0) {
+    lines.push('', 'Sample subjects (max 5, for context only):');
+    for (const msg of parsed.slice(0, 5)) {
+      lines.push(`- "${String(msg.subject || '(no subject)').slice(0, 100)}"`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function formatUidList(uids) {
+  if (uids.length <= 50) return uids.join(', ');
+  return `${uids.slice(0, 50).join(', ')} ... and ${uids.length - 50} more (use summary mode for large batches)`;
+}
+
+function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null, scanMeta = null, options = {}) {
   let parsed;
   try {
     parsed = JSON.parse(rawStdout);
@@ -166,8 +215,18 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
 
   const maxChars = Math.min(1_000_000, Math.max(10000, limit * 200));
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
-  const uidList = uids.join(', ');
   const fetchedCount = parsed.length;
+  const summaryOnly = options.summaryOnly || wantsEmailSummaryOnly(options.message || '') || fetchedCount > 250;
+
+  if (summaryOnly) {
+    return {
+      text: buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanMeta }),
+      messages: parsed,
+      fetchedCount,
+    };
+  }
+
+  const uidList = formatUidList(uids);
   const shortfall = limit > fetchedCount
     ? `\nNOTE: Requested up to ${limit} emails but only ${fetchedCount} exist in INBOX for this lookback period. Do NOT invent the missing ${limit - fetchedCount}.`
     : '';
@@ -262,6 +321,7 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     fetchOptions.offset || 0,
     fetchOptions.dateRangeLabel || null,
     scanMeta,
+    { summaryOnly: wantsEmailSummaryOnly(message), message },
   );
   console.error(
     '[continuum-bridge] email fetch result:',

@@ -10,6 +10,13 @@ const DEFAULT_RECENT = '7d';
 
 const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary|clean|clean(?:up|ing)?)\b/i;
 
+function wantsEmailSummaryOnly(message) {
+  const text = message || '';
+  if (/\b(list\s+each|every\s+email|all\s+subjects|show\s+(?:me\s+)?each)\b/i.test(text)) return false;
+  return /\b(summary|summarize|don'?t\s+(?:list|show|give)|do\s+not\s+(?:list|show)|no\s+details|not\s+each|overview|high[\s-]?level|just\s+(?:a\s+)?summary|aggregate|stats?\s+only)\b/i.test(text)
+    || /\bprocess\s+up\s+to\s+\d+\s+emails?\b/i.test(text);
+}
+
 function clampLimit(value, fallback = DEFAULT_LIMIT) {
   const n = parseInt(value, 10);
   if (Number.isNaN(n)) return fallback;
@@ -28,6 +35,7 @@ function parseLimitFromMessage(message) {
   if (range) return range.limit;
 
   const patterns = [
+    /\b(?:up\s+to|process\s+up\s+to|max|maximum)\s+(\d{1,4})\s+emails?\b/i,
     /\b(?:last|top|read|fetch|get|show|list)\s+(\d{1,4})\s+emails?\b/i,
     /\b(?:latest|recent|newest)\s+(\d{1,4})\s+emails?\b/i,
     /\b(\d{1,4})\s+(?:recent|latest|newest)\s+emails?\b/i,
@@ -159,4 +167,5 @@ module.exports = {
   parseDateRangeFromMessage,
   resolveEmailFetchOptions,
   wantsEmailFetch,
+  wantsEmailSummaryOnly,
 };
