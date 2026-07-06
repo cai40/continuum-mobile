@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
-const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly } = require('./emailFetchOptions');
+const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
@@ -316,7 +316,7 @@ function imapCheckArgs(fetchOptions) {
   return args;
 }
 
-async function runImapCheck(imapScript, message, payloadOptions = {}) {
+async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
   const isDateRange = !!(fetchOptions.since && fetchOptions.before);
   const sender = isDateRange
@@ -376,6 +376,35 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
     fetchOptions: { ...fetchOptions, sender },
     scanMeta,
   };
+}
+
+async function runImapCheck(imapScript, message, payloadOptions = {}) {
+  let result = await runImapCheckOnce(imapScript, message, payloadOptions);
+  const matched = result.scanMeta?.matched;
+  const loaded = result.messages?.length ?? 0;
+  const explicitLimit = parseLimitFromMessage(message) != null;
+  const isDateRange = !!(result.fetchOptions?.since && result.fetchOptions?.before);
+
+  if (
+    !explicitLimit
+    && isDateRange
+    && matched != null
+    && matched > loaded
+    && matched <= MAX_LIMIT
+  ) {
+    const expandedLimit = Math.min(MAX_LIMIT, matched);
+    if (expandedLimit > (result.fetchOptions?.limit || 0)) {
+      console.error(
+        '[continuum-bridge] expanding date-range fetch:',
+        `limit ${result.fetchOptions.limit} → ${expandedLimit} (${matched} matched)`,
+      );
+      result = await runImapCheckOnce(imapScript, message, {
+        ...payloadOptions,
+        email_limit: expandedLimit,
+      });
+    }
+  }
+  return result;
 }
 
 function formatImapError(err, fetchOptions = {}) {

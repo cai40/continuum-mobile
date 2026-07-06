@@ -191,7 +191,7 @@ export function resolveEmailFetchPayload({ limit, recent, message }) {
   const dateRange = message ? parseEmailDateRangeFromMessage(message) : null;
   let resolvedLimit = fromMessageLimit ?? clampEmailLimit(limit);
   if (dateRange && fromMessageLimit == null) {
-    resolvedLimit = Math.max(resolvedLimit, 1000);
+    resolvedLimit = Math.max(resolvedLimit, 5000);
   }
   let resolvedOffset = fromMessageOffset ?? 0;
 

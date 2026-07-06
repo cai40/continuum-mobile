@@ -6,6 +6,8 @@ const { wantsEmailMoveToFolder } = require('./emailMove');
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 5000;
+/** Minimum fetch cap for month/year date-range queries (no explicit limit in message). */
+const MONTH_RANGE_MIN_LIMIT = 5000;
 const DEFAULT_RECENT = '7d';
 
 const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary|clean|clean(?:up|ing)?)\b/i;
@@ -109,7 +111,7 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const dateRangeFromMessage = parseDateRangeFromMessage(message);
   const cleanup = wantsEmailCleanup(message);
   const moveToFolder = wantsEmailMoveToFolder(message);
-  const defaultLimit = dateRangeFromMessage ? 1000 : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
+  const defaultLimit = dateRangeFromMessage ? MONTH_RANGE_MIN_LIMIT : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
   let limit = limitFromMessage != null
     ? clampLimit(limitFromMessage, defaultLimit)
     : clampLimit(payloadOptions.email_limit, defaultLimit);
@@ -151,6 +153,9 @@ function formatPreEmailFetchStatus(fetchOptions) {
   if (!fetchOptions) return 'Fetching Yahoo inbox (if requested)…';
   const { limit = 0, dateRangeLabel } = fetchOptions;
   if (dateRangeLabel) {
+    if (limit >= 1500) {
+      return `Scanning ${dateRangeLabel}… (load cap ${limit}; large month scan — may take 5–12 minutes)`;
+    }
     if (limit >= 500) {
       return `Scanning ${dateRangeLabel}… (load cap ${limit}; may take 3–8 minutes)`;
     }
@@ -192,6 +197,7 @@ function wantsEmailFetch(message, payloadOptions = {}) {
 module.exports = {
   DEFAULT_LIMIT,
   MAX_LIMIT,
+  MONTH_RANGE_MIN_LIMIT,
   clampLimit,
   clampOffset,
   parseLimitFromMessage,
