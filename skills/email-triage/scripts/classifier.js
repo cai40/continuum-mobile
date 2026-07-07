@@ -48,6 +48,7 @@ const PROTECTED_PATTERNS = [
   /docu sign|docusign|jc realty|property management/i,
   /hetzner|termius|render services|stripe/i,
   /verification code|one.?time passcode|otp|fraud alert|unauthorized/i,
+  /michelle\s+wang|bingjing6699@gmail\.com/i,
 ];
 
 const PROTECTED_BANK_NON_STATEMENT = /\b(bank of america|fidelity|greenwood credit|peoplesbank|charles schwab|chase|wells fargo|capital one|citi|american express)\b/i;
@@ -59,7 +60,7 @@ const ORDER_RECEIPT_KEEP = /\b(receipt|invoice|order confirm|confirmation number
 const MARKETING_SENDER_PATTERNS = [
   /mattressfirm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
-  /yahoo@daily\.comms\.yahoo\.net|bingjing6699@gmail\.com/i,
+  /yahoo@daily\.comms\.yahoo\.net/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
 ];
 

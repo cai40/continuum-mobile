@@ -5,6 +5,7 @@ const path = require('path');
 const { fetchEmailContext } = require('./emailContext');
 const { triageMessages } = require('./emailTriage');
 const { countCleanupTargets } = require('./emailDelete');
+const { getAllNeverTrashSenders } = require('./emailNeverTrash');
 
 const DEFAULT_STATE_PATH = path.join(
   process.env.HOME || '/root',
@@ -88,6 +89,10 @@ function buildSummaryText(run) {
     for (const [cat, n] of Object.entries(run.by_category).sort((a, b) => b[1] - a[1])) {
       lines.push(`- ${cat}: ${n}`);
     }
+  }
+  const neverTrash = getAllNeverTrashSenders();
+  if (neverTrash.length) {
+    lines.push('', `**Never trash:** ${neverTrash.map((s) => s.label).join(', ')}`);
   }
   return lines.join('\n');
 }

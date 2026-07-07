@@ -96,6 +96,8 @@ function matchesCleanupTarget(row, email) {
   if (row.uid == null) return false;
 
   const fullBlob = emailFullBlob(row, email);
+  const { isNeverTrashEmail } = require('./emailNeverTrash');
+  if (isNeverTrashEmail(email || { from: row.from, subject: row.subject })) return false;
   if (CLEANUP_SECURITY_BLOCK.test(fullBlob)) return false;
 
   if (CLEANUP_STATEMENT.test(fullBlob)) return true;

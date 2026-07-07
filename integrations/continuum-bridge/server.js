@@ -39,6 +39,7 @@ const {
   loadState,
   saveState,
 } = require('./dailyCleanup');
+const { handleNeverTrashRequest, wantsNeverTrashRequest } = require('./emailNeverTrash');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
 const HOST = process.env.CONTINUUM_BRIDGE_HOST || '127.0.0.1';
@@ -245,6 +246,21 @@ async function handleChatStream(req, res, config) {
   // Open SSE before slow IMAP / upstream work so Cloudflare tunnels stay alive.
   const sse = beginSse(res);
   sse.write('status', { detail: 'Starting…' });
+
+  if (wantsNeverTrashRequest(message)) {
+    sse.write('status', { detail: 'Updating never-trash rules and recovering mail…' });
+    try {
+      const result = await handleNeverTrashRequest(message);
+      const state = loadState();
+      state.never_trash_senders = result.allSenders.map((s) => s.label);
+      saveState(state);
+      streamTextReply(sse, result.reply);
+    } catch (err) {
+      sse.write('error', { detail: err.message || String(err) });
+      sse.end();
+    }
+    return;
+  }
 
   if (wantsDailyCleanupSetup(message)) {
     const state = loadState();
