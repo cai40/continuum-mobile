@@ -29,6 +29,16 @@ const {
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
   WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
+const {
+  runDailyCleanup,
+  getDailyCleanupHistory,
+  buildPrefilledDailySummary,
+  wantsDailyCleanupSummary,
+  wantsDailyCleanupSetup,
+  buildSetupReply,
+  loadState,
+  saveState,
+} = require('./dailyCleanup');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
 const HOST = process.env.CONTINUUM_BRIDGE_HOST || '127.0.0.1';
@@ -133,6 +143,53 @@ async function maybeFetchEmailContext(message, payloadOptions = {}) {
   return { context: '[Yahoo email] No messages returned.', result };
 }
 
+async function handleDailyCleanupCron(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  const enabled = process.env.DAILY_CLEANUP_ENABLED !== 'false';
+  const state = loadState();
+  if (!enabled && !state.enabled) {
+    return json(res, 200, {
+      success: true,
+      skipped: true,
+      reason: 'Daily cleanup not enabled. Set DAILY_CLEANUP_ENABLED=true on Render or ask app to enable.',
+    });
+  }
+  try {
+    const { run } = await runDailyCleanup({ setEnabled: true });
+    return json(res, 200, { success: true, run });
+  } catch (err) {
+    return json(res, 500, { success: false, error: err.message || String(err) });
+  }
+}
+
+async function handleDailyCleanupLatest(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  const history = getDailyCleanupHistory(14);
+  return json(res, 200, { success: true, ...history });
+}
+
+async function handleDailyCleanupRunNow(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  try {
+    const { run } = await runDailyCleanup({ setEnabled: true });
+    return json(res, 200, { success: true, run });
+  } catch (err) {
+    return json(res, 500, { success: false, error: err.message || String(err) });
+  }
+}
+
+function streamTextReply(sse, text) {
+  sse.write('status', { detail: 'Done' });
+  sse.write('text', { token: text });
+  sse.end();
+}
+
 async function handleAsk(req, res, config) {
   const raw = await readBody(req);
   let body;
@@ -188,6 +245,45 @@ async function handleChatStream(req, res, config) {
   // Open SSE before slow IMAP / upstream work so Cloudflare tunnels stay alive.
   const sse = beginSse(res);
   sse.write('status', { detail: 'Starting…' });
+
+  if (wantsDailyCleanupSetup(message)) {
+    const state = loadState();
+    state.enabled = true;
+    saveState(state);
+    let reply = buildSetupReply();
+    if (/\b(inform|summary|report|tell\s+me)\b/i.test(message)) {
+      sse.write('status', { detail: 'Running first daily cleanup…' });
+      try {
+        const { run } = await runDailyCleanup({ setEnabled: true });
+        reply = `${buildPrefilledDailySummary(run)}\n\n${reply}`;
+      } catch (err) {
+        reply = `First cleanup failed: ${err.message || String(err)}\n\n${reply}`;
+      }
+    }
+    streamTextReply(sse, reply);
+    return;
+  }
+
+  if (wantsDailyCleanupSummary(message)) {
+    const latest = getDailyCleanupHistory(1).last_run;
+    const prefilled = latest
+      ? buildPrefilledDailySummary(latest)
+      : '[DAILY CLEANUP SUMMARY]\n\nNo daily cleanup has run yet. Enable Render Cron (Setup → Daily cleanup) or say **run daily cleanup now**.\n[/DAILY CLEANUP SUMMARY]';
+    streamTextReply(sse, prefilled);
+    return;
+  }
+
+  if (/\brun\s+daily\s+cleanup\s+now\b/i.test(message)) {
+    sse.write('status', { detail: 'Running daily cleanup…' });
+    try {
+      const { run } = await runDailyCleanup({ setEnabled: true });
+      streamTextReply(sse, buildPrefilledDailySummary(run));
+    } catch (err) {
+      sse.write('error', { detail: err.message || String(err) });
+      sse.end();
+    }
+    return;
+  }
 
   const isEmailRequest = wantsEmailFetch(message);
   let webContext = null;
@@ -337,6 +433,18 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    if (req.method === 'GET' && req.url === '/daily-cleanup/latest') {
+      return await handleDailyCleanupLatest(req, res, config);
+    }
+
+    if (req.method === 'POST' && req.url === '/cron/daily-cleanup') {
+      return await handleDailyCleanupCron(req, res, config);
+    }
+
+    if (req.method === 'POST' && req.url === '/daily-cleanup/run') {
+      return await handleDailyCleanupRunNow(req, res, config);
+    }
+
     if (req.method === 'POST' && req.url === '/ask') {
       if (!verifyBridgeSecret(req, config)) {
         return json(res, 401, { success: false, error: 'Invalid bridge secret' });
@@ -357,6 +465,9 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`Continuum bridge listening on http://${HOST}:${PORT}`);
   console.log('  GET  /health');
+  console.log('  GET  /daily-cleanup/latest');
+  console.log('  POST /cron/daily-cleanup');
+  console.log('  POST /daily-cleanup/run');
   console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');
   console.log('  POST /ask          (CLI / skill)');
 });

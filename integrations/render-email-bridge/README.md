@@ -57,3 +57,38 @@ iPhone → continuum-backend (Render) /integrations/email/chat/stream
 ```
 
 No user VPS required when this path is enabled in the app (Settings → Render cloud email).
+
+## Daily email cleanup (Cron)
+
+Automatic purge of newsletters/promos from the **last 24 hours** (up to **500** per run), with a saved summary.
+
+### Render Cron Job
+
+1. [Render Dashboard](https://dashboard.render.com/) → **New** → **Cron Job**
+2. Same repo; schedule `0 8 * * *` (8:00 AM UTC daily)
+3. Command:
+
+```bash
+curl -sS -X POST "https://continuum-email-bridge.onrender.com/cron/daily-cleanup" \
+  -H "X-Bridge-Secret: $BRIDGE_SECRET"
+```
+
+Set `BRIDGE_SECRET` in the cron job environment (same as the web service).
+
+Optional on the **web service** env:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DAILY_CLEANUP_ENABLED` | `true` | Set `false` to skip cron runs |
+| `DAILY_CLEANUP_RECENT` | `24h` | Lookback window |
+| `DAILY_CLEANUP_LIMIT` | `500` | Max emails scanned per run |
+
+### API
+
+| Method | Path | Auth |
+|--------|------|------|
+| `POST` | `/cron/daily-cleanup` | `X-Bridge-Secret` |
+| `POST` | `/daily-cleanup/run` | `X-Bridge-Secret` (manual run from app) |
+| `GET` | `/daily-cleanup/latest` | `X-Bridge-Secret` (last 14 runs) |
+
+In the app: **Setup → OpenClaw Gateway → Daily email cleanup**, or chat: “daily cleanup summary”.

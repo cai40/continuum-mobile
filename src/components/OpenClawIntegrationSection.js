@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "../context/AppContext";
-import { testOpenClawBridge, testRenderEmailHealth } from "../services/apiService";
+import { testOpenClawBridge, testRenderEmailHealth, fetchDailyCleanupLatest, runDailyCleanupNow } from "../services/apiService";
 import {
   API_URL,
   RENDER_EMAIL_BRIDGE_URL,
@@ -122,6 +122,8 @@ const OpenClawIntegrationSection = ({ onBack }) => {
   const [copied, setCopied] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testingRenderEmail, setTestingRenderEmail] = useState(false);
+  const [dailyCleanup, setDailyCleanup] = useState(null);
+  const [runningDailyCleanup, setRunningDailyCleanup] = useState(false);
 
   const refreshToken = session?.refresh_token || "";
   const effectiveSecret = resolveBridgeSecret(openclawBridgeSecret);
@@ -165,6 +167,48 @@ const OpenClawIntegrationSection = ({ onBack }) => {
     await saveOpenClawSettings();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Alert.alert("Saved", "OpenClaw gateway settings stored on this device.");
+  };
+
+  const loadDailyCleanup = useCallback(async () => {
+    if (!renderEmailEnabled || !effectiveRenderSecret) return;
+    try {
+      const data = await fetchDailyCleanupLatest(effectiveRenderSecret);
+      setDailyCleanup(data);
+    } catch {
+      setDailyCleanup(null);
+    }
+  }, [renderEmailEnabled, effectiveRenderSecret]);
+
+  useEffect(() => {
+    loadDailyCleanup();
+  }, [loadDailyCleanup]);
+
+  const handleRunDailyCleanup = async () => {
+    if (!effectiveRenderSecret) {
+      Alert.alert("Render email secret required", "Paste BRIDGE_SECRET from continuum-email-bridge.");
+      return;
+    }
+    if (!openclawEmailDeleteEnabled) {
+      Alert.alert("Allow move to Trash", "Turn on Allow move to Trash below before daily cleanup can run.");
+      return;
+    }
+    setRunningDailyCleanup(true);
+    try {
+      const data = await runDailyCleanupNow(effectiveRenderSecret);
+      setDailyCleanup({ enabled: true, last_run: data.run, runs: [data.run] });
+      const run = data.run;
+      Alert.alert(
+        "Daily cleanup done",
+        run?.moved_to_trash
+          ? `Moved ${run.moved_to_trash} email(s) to Trash (scanned ${run.fetched} from last ${run.lookback}).`
+          : run?.summary_text || "Cleanup finished.",
+      );
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      Alert.alert("Daily cleanup failed", e.message || String(e));
+    } finally {
+      setRunningDailyCleanup(false);
+    }
   };
 
   const handleTestRenderEmail = async () => {
@@ -487,8 +531,54 @@ const OpenClawIntegrationSection = ({ onBack }) => {
         Triggers on “check inbox”, “summarize email”, or any mail chat. Say “check my Yahoo inbox” daily to purge junk.
       </Text>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Say “clean up inbox” to trash news, newsletters, promos, ads, GitHub/dev mail, and bank statements (not OTP/security). Supports “June 2026”, “for 2026”, etc. Cleanups under 500 targets move up to 500 to Trash per run without confirm. At 500+ cleanup targets you’ll be asked to confirm. Requires delete permission above.
+        Say “clean up inbox” to trash news, newsletters, promos, ads, GitHub/dev mail, and bank statements (not OTP/security). Supports “June 2026”, “for 2026”, etc. Fetch-and-clean moves up to 10,000 to Trash per run. Requires delete permission above.
       </Text>
+
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>DAILY EMAIL CLEANUP</Text>
+      <View style={[styles.groupedCard, { padding: 16 }]}>
+        <Text style={{ fontSize: 14, fontWeight: "700", color: theme.colors.black }}>
+          Automatic daily purge + summary
+        </Text>
+        <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+          Scans the last 24 hours each day, trashes newsletters/promos (up to 500/run), and saves a report you can view here or ask in chat: “daily cleanup summary”.
+        </Text>
+        {dailyCleanup?.last_run ? (
+          <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black }}>
+              Last run
+            </Text>
+            <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+              {dailyCleanup.last_run.moved_to_trash} moved to Trash · {dailyCleanup.last_run.fetched} scanned · {dailyCleanup.last_run.lookback}
+            </Text>
+            <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 4 }}>
+              {dailyCleanup.last_run.ran_at ? new Date(dailyCleanup.last_run.ran_at).toLocaleString() : ""}
+            </Text>
+          </View>
+        ) : (
+          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 12 }}>
+            No daily cleanup run yet.
+          </Text>
+        )}
+        <TouchableOpacity
+          onPress={handleRunDailyCleanup}
+          disabled={runningDailyCleanup || !renderEmailEnabled}
+          style={{
+            backgroundColor: theme.colors.primary,
+            paddingVertical: 12,
+            borderRadius: 12,
+            marginTop: 12,
+            alignItems: "center",
+            opacity: runningDailyCleanup || !renderEmailEnabled ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>
+            {runningDailyCleanup ? "Running cleanup…" : "Run daily cleanup now"}
+          </Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 10, lineHeight: 16 }}>
+          For automatic runs: Render Dashboard → New Cron Job → POST {RENDER_EMAIL_BRIDGE_URL}/cron/daily-cleanup with header X-Bridge-Secret (schedule 0 8 * * *).
+        </Text>
+      </View>
 
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
         Live sports/news/weather works in any chat (e.g. “Norway soccer latest result”). With bridge off, the app searches Google News RSS, DuckDuckGo, and Wikipedia on-device and scrapes the top page — no VPS or API keys. With bridge on, search runs on the VPS (optional Brave API key in `~/.config/continuum-openclaw/.env`).

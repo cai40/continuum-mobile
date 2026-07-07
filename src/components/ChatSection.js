@@ -11,8 +11,9 @@ import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent
 } from 'expo-speech-recognition';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, openClawChatStream, renderEmailChatStream } from '../services/apiService';
+import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, isEmailConfirmMessage } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
@@ -89,6 +90,34 @@ const ChatSection = () => {
       dismissKeyboard();
     }
   }, [activeTab, dismissKeyboard]);
+
+  useEffect(() => {
+    if (activeTab !== 'chat' || !renderEmailEnabled) return undefined;
+    const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
+    if (!secret) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchDailyCleanupLatest(secret);
+        const run = data?.last_run;
+        if (!run?.ran_at || cancelled) return;
+        const seen = await AsyncStorage.getItem('@daily_cleanup_last_seen');
+        if (seen === run.ran_at) return;
+        await AsyncStorage.setItem('@daily_cleanup_last_seen', run.ran_at);
+        const moved = run.moved_to_trash ?? 0;
+        const scanned = run.fetched ?? 0;
+        Alert.alert(
+          'Daily email cleanup',
+          moved > 0
+            ? `Moved ${moved} newsletter/promo email(s) to Trash (${scanned} scanned, ${run.lookback || '24h'}).`
+            : `Scanned ${scanned} email(s); nothing to trash in the last ${run.lookback || '24h'}.`,
+        );
+      } catch {
+        // bridge may be offline or old version
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, renderEmailEnabled, renderEmailBridgeSecret]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);

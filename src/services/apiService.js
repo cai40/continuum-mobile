@@ -458,6 +458,23 @@ export const renderEmailChatStream = (
 export const testRenderEmailHealth = async (bridgeSecret) =>
   testOpenClawBridge(RENDER_EMAIL_BRIDGE_URL, bridgeSecret);
 
+export const fetchDailyCleanupLatest = async (bridgeSecret) => {
+  const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}/daily-cleanup/latest`, {
+    headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
+  });
+  if (!res.ok) throw new Error(`Daily cleanup status failed (${res.status})`);
+  return res.json();
+};
+
+export const runDailyCleanupNow = async (bridgeSecret) => {
+  const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}/daily-cleanup/run`, {
+    method: "POST",
+    headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
+  });
+  if (!res.ok) throw new Error(`Daily cleanup run failed (${res.status})`);
+  return res.json();
+};
+
 export const testOpenClawBridge = async (bridgeBaseUrl, bridgeSecret) => {
   const res = await fetch(`${bridgeBaseUrl.replace(/\/$/, "")}/health`, {
     headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
