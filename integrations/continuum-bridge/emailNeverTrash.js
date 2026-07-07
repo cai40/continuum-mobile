@@ -34,6 +34,28 @@ const BUILTIN_NEVER_TRASH = [
   { label: 'Michelle Wang', needles: ['michelle wang', 'bingjing6699@gmail.com'] },
 ];
 
+const INVALID_SENDER_LABELS = new Set([
+  'her', 'his', 'him', 'them', 'their', 'they', 'she', 'he',
+  'these', 'those', 'this', 'that', 'it', 'email', 'mail', 'emails',
+  'messages', 'message', 'the', 'and', 'from', 'trash',
+]);
+
+function isValidSenderLabel(label) {
+  const cleaned = String(label || '').trim().toLowerCase();
+  if (cleaned.length < 3) return false;
+  if (INVALID_SENDER_LABELS.has(cleaned)) return false;
+  if (/^[a-z]{1,3}$/.test(cleaned) && !cleaned.includes('@')) return false;
+  return true;
+}
+
+function pruneInvalidNeverTrashSenders() {
+  const custom = loadNeverTrashState().filter((entry) => {
+    const norm = normalizeSenderEntry(entry);
+    return norm && isValidSenderLabel(norm.label);
+  });
+  saveNeverTrashState(custom);
+}
+
 function loadNeverTrashState() {
   try {
     const raw = fs.readFileSync(STATE_PATH, 'utf8');
@@ -65,6 +87,7 @@ function normalizeSenderEntry({ label, needles, email }) {
 }
 
 function getAllNeverTrashSenders() {
+  pruneInvalidNeverTrashSenders();
   const custom = loadNeverTrashState();
   const byLabel = new Map();
   for (const entry of [...BUILTIN_NEVER_TRASH, ...custom]) {
@@ -98,22 +121,41 @@ function isNeverTrashEmail(emailOrRow) {
 
 function parseNeverTrashSender(message) {
   const text = String(message || '');
+
+  if (/\bmichelle\s+wang\b/i.test(text)) {
+    return { label: 'Michelle Wang', needles: ['michelle wang', 'bingjing6699@gmail.com'] };
+  }
+
   const patterns = [
     /\b(?:never|don't|do not|stop)\s+trash(?:ing)?\s+([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)(?:\s+emails?|\s*$|,|\.|and\b)/i,
-    /\b(?:recover|restore|untrash|move\s+back)\s+(?:emails?\s+from\s+)?([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)(?:\s+emails?|\s*$|,|\.)/i,
+    /\b(?:recover|restore|untrash|move\s+back)\s+(?:emails?\s+from\s+)([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)(?:\s+emails?|\s*$|,|\.)/i,
     /\b([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)\s+(?:emails?\s+)?should\s+never\s+be\s+trash(?:ed)?/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match?.[1]) {
       const label = match[1].trim().replace(/\s+(?:email|mail|emails)$/i, '').trim();
-      if (label.length >= 3) return { label, needles: [label.toLowerCase()] };
+      if (isValidSenderLabel(label)) {
+        const needles = [label.toLowerCase()];
+        if (label.toLowerCase().includes('michelle')) {
+          needles.push('bingjing6699@gmail.com');
+        }
+        return { label, needles };
+      }
     }
   }
-  if (/\bmichelle\s+wang\b/i.test(text)) {
-    return { label: 'Michelle Wang', needles: ['michelle wang', 'bingjing6699@gmail.com'] };
-  }
   return null;
+}
+
+function resolveRecoverTargets(message, parsedSender) {
+  const all = getAllNeverTrashSenders();
+  if (parsedSender && isValidSenderLabel(parsedSender.label)) {
+    return [normalizeSenderEntry(parsedSender)].filter(Boolean);
+  }
+  if (/\b(?:recover|restore|untrash)\s+(?:her|his|their|them|these)\b/i.test(message)) {
+    return all;
+  }
+  return all;
 }
 
 function wantsNeverTrashRequest(message) {
@@ -136,31 +178,64 @@ function addNeverTrashSender(entry) {
   return getAllNeverTrashSenders();
 }
 
-async function searchTrashBySender(imapScript, senderEntry, { limit = 100, recent = '30d' } = {}) {
+async function searchTrashBySender(imapScript, senderEntry, { limit = 200, recent = '30d' } = {}) {
   const skillRoot = path.dirname(path.dirname(imapScript));
-  const fromNeedle = senderEntry.needles.find((n) => n.includes('@')) || senderEntry.needles[0];
-  const args = [
-    imapScript, 'search',
-    '--mailbox', 'Trash',
-    '--from', fromNeedle,
-    '--limit', String(limit),
-    '--recent', recent,
-    '--lite',
-  ];
-  const { stdout } = await execFileAsync('node', args, {
-    timeout: 120000,
-    maxBuffer: 8 * 1024 * 1024,
-    cwd: skillRoot,
-    env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
-  });
-  let messages;
+  const emailNeedle = senderEntry.needles.find((n) => n.includes('@'));
+  const searchNeedles = emailNeedle
+    ? [emailNeedle, ...senderEntry.needles.filter((n) => n !== emailNeedle)]
+    : senderEntry.needles;
+
+  for (const needle of searchNeedles) {
+    const args = [
+      imapScript, 'search',
+      '--mailbox', 'Trash',
+      '--from', needle,
+      '--limit', String(limit),
+      '--recent', recent,
+      '--lite',
+    ];
+    try {
+      const { stdout } = await execFileAsync('node', args, {
+        timeout: 120000,
+        maxBuffer: 8 * 1024 * 1024,
+        cwd: skillRoot,
+        env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
+      });
+      const messages = JSON.parse(stdout);
+      if (Array.isArray(messages) && messages.length) {
+        return messages.filter((msg) => {
+          const blob = emailBlob(msg);
+          return senderEntry.needles.some((n) => blob.includes(n));
+        });
+      }
+    } catch {
+      // try next needle
+    }
+  }
+
+  // Fallback: scan recent Trash and filter by sender needles
   try {
-    messages = JSON.parse(stdout);
+    const { stdout } = await execFileAsync('node', [
+      imapScript, 'search',
+      '--mailbox', 'Trash',
+      '--limit', String(limit),
+      '--recent', recent,
+      '--lite',
+    ], {
+      timeout: 120000,
+      maxBuffer: 8 * 1024 * 1024,
+      cwd: skillRoot,
+      env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
+    });
+    const messages = JSON.parse(stdout);
+    if (!Array.isArray(messages)) return [];
+    return messages.filter((msg) => {
+      const blob = emailBlob(msg);
+      return senderEntry.needles.some((n) => blob.includes(n));
+    });
   } catch {
     return [];
   }
-  if (!Array.isArray(messages)) return [];
-  return messages.filter((msg) => isNeverTrashEmail(msg));
 }
 
 async function moveUidsFromTrash(imapScript, uids) {
@@ -240,18 +315,30 @@ function buildNeverTrashReply({ sender, recoverResult, allSenders }) {
 }
 
 async function handleNeverTrashRequest(message) {
-  const sender = parseNeverTrashSender(message);
-  if (sender) addNeverTrashSender(sender);
-  const allSenders = getAllNeverTrashSenders();
-  let recoverResult = null;
-  if (wantsRecoverFromTrash(message) || /\brecover\b/i.test(message)) {
-    recoverResult = await recoverNeverTrashSenders(sender ? [normalizeSenderEntry(sender)] : allSenders);
+  const text = String(message || '');
+  pruneInvalidNeverTrashSenders();
+
+  let sender = parseNeverTrashSender(text);
+  if (sender && isValidSenderLabel(sender.label)) {
+    addNeverTrashSender(sender);
   }
+
+  const allSenders = getAllNeverTrashSenders();
+  const primarySender = sender && isValidSenderLabel(sender.label)
+    ? normalizeSenderEntry(sender)
+    : allSenders.find((s) => /michelle/i.test(s.label)) || allSenders[0];
+
+  let recoverResult = null;
+  if (wantsRecoverFromTrash(text) || /\brecover\b/i.test(text)) {
+    const targets = resolveRecoverTargets(text, sender);
+    recoverResult = await recoverNeverTrashSenders(targets);
+  }
+
   return {
-    sender: sender || allSenders.find((s) => /michelle/i.test(s.label)) || allSenders[0],
+    sender: primarySender,
     recoverResult,
     allSenders,
-    reply: buildNeverTrashReply({ sender, recoverResult, allSenders }),
+    reply: buildNeverTrashReply({ sender: primarySender, recoverResult, allSenders }),
   };
 }
 
