@@ -22,6 +22,7 @@
         "NSMicrophoneUsageDescription": "Continuum needs access to your microphone to enable hands-free AI voice interactions.",
         "NSSpeechRecognitionUsageDescription": "Continuum uses on-device neural processing to transcribe your voice instantly and privately.",
         "NSPhotoLibraryUsageDescription": "Continuum needs access to your photos to allow the AI to analyze your documents and images.",
+        "NSPhotoLibraryAddUsageDescription": "Continuum needs permission to organize favorites when you run photo album cleanup.",
         "NSCameraUsageDescription": "Continuum needs access to your camera to capture images for real-time visual AI analysis.",
         "NSFaceIDUsageDescription": "Continuum uses FaceID to securely unlock your stored credentials and memory vault.",
         "NSLocationWhenInUseUsageDescription": "Continuum uses your location to provide real-time weather, travel advice, and environmental context for your AI advisor.",
@@ -44,7 +45,10 @@
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "READ_MEDIA_IMAGES",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
       ],
       "edgeToEdgeEnabled": true,
       "usesCleartextTraffic": true
@@ -67,7 +71,15 @@
     "plugins": [
       "expo-speech-recognition",
       "expo-local-authentication",
-      "expo-location"
+      "expo-location",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Continuum needs access to your photos to clean up duplicates and mark favorites.",
+          "savePhotosPermission": "Continuum needs permission to organize favorites when you run photo album cleanup.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
     ]
   }
 }

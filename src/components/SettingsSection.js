@@ -27,6 +27,7 @@ import {
 import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
+import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumCleanup";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
 
 const SettingsSection = (props) => {
@@ -106,6 +107,10 @@ const SettingsSection = (props) => {
   const [archetypeItems, setArchetypeItems] = useState({});
   const [isLoadingArchetypes, setIsLoadingArchetypes] = useState(false);
 
+  const [photoCleanup, setPhotoCleanup] = useState(null);
+  const [runningPhotoCleanup, setRunningPhotoCleanup] = useState(false);
+  const [photoCleanupProgress, setPhotoCleanupProgress] = useState("");
+
   useEffect(() => {
     const fetchPulse = async () => {
       try {
@@ -124,6 +129,7 @@ const SettingsSection = (props) => {
   useEffect(() => {
     if (activeSubTab === 'data') {
       fetchArchetypes();
+      loadLastPhotoCleanupRun().then(setPhotoCleanup).catch(() => {});
     }
   }, [activeSubTab]);
 
@@ -988,6 +994,137 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             ),
           theme.colors.danger,
         )}
+      </View>
+
+      <Text style={[categoryTitleStyle, { marginTop: 8 }]}>PHOTO ALBUM CLEANUP</Text>
+      <View style={[styles.groupedCard, { padding: 16, marginBottom: 24 }]}>
+        <Text style={{ fontSize: 14, fontWeight: "700", color: theme.colors.black }}>
+          Smart photo library cleanup
+        </Text>
+        <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
+          Removes duplicate photos and coding screenshots, then marks the top 5% of remaining photos as favorites in a Continuum Favorites album. Always preview with dry run first.
+        </Text>
+        {photoCleanup?.ran_at ? (
+          <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black }}>
+              Last run {photoCleanup.dryRun ? "(preview)" : "(applied)"}
+            </Text>
+            <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+              {photoCleanup.duplicates?.found || 0} duplicates · {photoCleanup.codingScreenshots?.found || 0} coding screenshots · {photoCleanup.favorites?.selected || 0} favorites
+            </Text>
+            <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 4 }}>
+              {new Date(photoCleanup.ran_at).toLocaleString()} · {photoCleanup.scanned} scanned
+            </Text>
+          </View>
+        ) : (
+          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 12 }}>
+            No photo cleanup run yet.
+          </Text>
+        )}
+        {photoCleanupProgress ? (
+          <Text style={{ fontSize: 11, color: theme.colors.primary, marginTop: 10 }}>
+            {photoCleanupProgress}
+          </Text>
+        ) : null}
+        <TouchableOpacity
+          onPress={async () => {
+            setRunningPhotoCleanup(true);
+            setPhotoCleanupProgress("Scanning photo library…");
+            try {
+              const report = await cleanUpPhotoAlbum({
+                dryRun: true,
+                onProgress: (phase, done, total) => {
+                  const labels = {
+                    scan: "Scanning",
+                    duplicates: "Finding duplicates",
+                    screenshots: "Detecting coding screenshots",
+                    favorites: "Scoring photos",
+                    delete: "Deleting",
+                    done: "Done",
+                  };
+                  setPhotoCleanupProgress(`${labels[phase] || phase}: ${done}${total ? ` / ${total}` : ""}`);
+                },
+              });
+              setPhotoCleanup(report);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert(
+                "Photo cleanup preview",
+                `${report.duplicates.found} duplicate(s), ${report.codingScreenshots.found} coding screenshot(s), ${report.favorites.selected} favorite(s) selected.\n\nNo changes were made.`,
+              );
+            } catch (e) {
+              Alert.alert("Photo cleanup failed", e.message || String(e));
+            } finally {
+              setRunningPhotoCleanup(false);
+              setPhotoCleanupProgress("");
+            }
+          }}
+          disabled={runningPhotoCleanup}
+          style={{
+            backgroundColor: theme.colors.light,
+            paddingVertical: 12,
+            borderRadius: 12,
+            marginTop: 12,
+            alignItems: "center",
+            opacity: runningPhotoCleanup ? 0.6 : 1,
+            borderWidth: 1,
+            borderColor: theme.colors.primary,
+          }}
+        >
+          <Text style={{ color: theme.colors.primary, fontWeight: "700", fontSize: 13 }}>
+            {runningPhotoCleanup ? "Running preview…" : "Preview cleanup (dry run)"}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            Alert.alert(
+              "Apply photo cleanup?",
+              "This will delete duplicate and coding-screenshot photos from your library and add the top 5% of remaining photos to Continuum Favorites. Deleted items go to Recently Deleted on iOS.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Apply",
+                  style: "destructive",
+                  onPress: async () => {
+                    setRunningPhotoCleanup(true);
+                    setPhotoCleanupProgress("Applying cleanup…");
+                    try {
+                      const report = await cleanUpPhotoAlbum({
+                        dryRun: false,
+                        onProgress: (phase, done, total) => {
+                          setPhotoCleanupProgress(`${phase}: ${done}${total ? ` / ${total}` : ""}`);
+                        },
+                      });
+                      setPhotoCleanup(report);
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      Alert.alert(
+                        "Photo cleanup complete",
+                        `Deleted ${report.duplicates.deleted + report.codingScreenshots.deleted} photo(s). Marked ${report.favorites.selected} as favorites.`,
+                      );
+                    } catch (e) {
+                      Alert.alert("Photo cleanup failed", e.message || String(e));
+                    } finally {
+                      setRunningPhotoCleanup(false);
+                      setPhotoCleanupProgress("");
+                    }
+                  },
+                },
+              ],
+            );
+          }}
+          disabled={runningPhotoCleanup}
+          style={{
+            backgroundColor: theme.colors.primary,
+            paddingVertical: 12,
+            borderRadius: 12,
+            marginTop: 10,
+            alignItems: "center",
+            opacity: runningPhotoCleanup ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>
+            {runningPhotoCleanup ? "Running cleanup…" : "Apply cleanup"}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={{ marginBottom: 30 }}>
