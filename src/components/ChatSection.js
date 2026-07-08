@@ -30,6 +30,7 @@ import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import {
   friendlyChatError,
   MAX_ATTACHMENT_BYTES,
+  sanitizeUserVisibleContent,
   trimChatHistoryForUpload,
 } from '../utils/helpers';
 import { styles, theme } from '../styles/theme';
@@ -446,7 +447,13 @@ const ChatSection = () => {
       const isWebSearchQuery =
         wantsWebSearch(finalInput) && !isEmailQuery && !activeAttachments.length;
 
-      const displayInput = isFromVoice ? finalInput : (input || (activeAttachments.some((f) => f.type?.startsWith('audio')) ? "🎤 Processing..." : (activeAttachments.length ? `📎 ${activeAttachments.length} file(s) attached` : "")));
+      const displayInput = isFromVoice
+        ? finalInput
+        : sanitizeUserVisibleContent(
+            input || (activeAttachments.some((f) => f.type?.startsWith('audio'))
+              ? "🎤 Processing..."
+              : (activeAttachments.length ? `📎 ${activeAttachments.length} file(s) attached` : "")),
+          );
       const userMsg = { id: Date.now().toString(), role: 'user', content: displayInput, attachments: activeAttachments };
 
       setMessages(prev => [...prev, userMsg]);
@@ -628,10 +635,11 @@ const ChatSection = () => {
           soundQueueRef.current.push(json.audio);
           if (!isPlayingQueueRef.current) playNextStreamChunk();
         } else if (event === 'transcript') {
+          if (!isFromVoice) return;
           const transcript = json.text || (typeof json === 'string' ? json : null);
           if (transcript) {
             setMessages(prev => prev.map(m =>
-              m.id === userMsg.id ? { ...m, content: transcript } : m
+              m.id === userMsg.id ? { ...m, content: sanitizeUserVisibleContent(transcript) } : m
             ));
           }
         } else if (event === 'error') {
@@ -824,7 +832,9 @@ const ChatSection = () => {
                 )}
               </View>
             ))}
-            <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>{item.content}</Text>
+            <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>
+              {item.role === 'user' ? sanitizeUserVisibleContent(item.content) : item.content}
+            </Text>
           </View>
           
           {isSelectionMode && (

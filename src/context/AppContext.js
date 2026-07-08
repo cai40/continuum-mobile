@@ -18,6 +18,7 @@ import {
 } from "../services/apiService";
 import { API_URL, DEFAULT_OPENCLAW_EMAIL_LIMIT, DEFAULT_OPENCLAW_EMAIL_RECENT } from "../constants/Config";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/openclawEmailOptions";
+import { sanitizeUserVisibleContent } from "../utils/helpers";
 
 const AppContext = createContext();
 
@@ -256,7 +257,13 @@ export const AppProvider = ({ children }) => {
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
             setMessages(
-              parsed.filter((m) => m.content !== "🎙 Voice Transmission"),
+              parsed
+                .filter((m) => m.content !== "🎙 Voice Transmission")
+                .map((m) => (
+                  m?.role === 'user'
+                    ? { ...m, content: sanitizeUserVisibleContent(m.content) }
+                    : m
+                )),
             );
           }
         });
@@ -279,7 +286,13 @@ export const AppProvider = ({ children }) => {
           : messages;
       
       // Filter out any potential non-serializable or null entries
-      const safeHistory = optimizedHistory.filter(m => m && m.content && m.role);
+      const safeHistory = optimizedHistory
+        .filter(m => m && m.content && m.role)
+        .map((m) => (
+          m.role === 'user'
+            ? { ...m, content: sanitizeUserVisibleContent(m.content) }
+            : m
+        ));
 
       AsyncStorage.setItem(
         "@chat_history",
@@ -307,7 +320,13 @@ export const AppProvider = ({ children }) => {
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
           // Strict filtering to prevent crashes from malformed remote data
-          const incoming = history.filter(m => m && m.id && m.content && !existingIds.has(m.id));
+          const incoming = history
+            .filter(m => m && m.id && m.content && !existingIds.has(m.id))
+            .map((m) => (
+              m.role === 'user'
+                ? { ...m, content: sanitizeUserVisibleContent(m.content) }
+                : m
+            ));
           
           if (incoming.length === 0) return prev;
           

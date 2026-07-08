@@ -98,6 +98,25 @@ export function trimChatHistoryForUpload(messages, maxMessages = 20, maxBytes = 
   return trimmed;
 }
 
+const INTERNAL_EMAIL_MARKERS =
+  /IMPORTANT:\s*Live Yahoo inbox|CLEANUP MODE:|SUMMARY MODE:|\[PREFILLED SUMMARY|MAILBOX SCAN \(include/i;
+
+/** Strip bridge/LLM system instructions accidentally shown in user chat bubbles. */
+export function sanitizeUserVisibleContent(content) {
+  const text = stringifyContent(content);
+  if (!INTERNAL_EMAIL_MARKERS.test(text)) return text;
+
+  const userRequest = text.match(/\nUser request:\s*\n?([\s\S]*)$/i);
+  if (userRequest?.[1]?.trim()) return userRequest[1].trim();
+
+  const cleanupMatch = text.match(
+    /((?:clean\s*up|cleanup|fetch|trash|delete|remove|move)[\s\S]{0,160})/i,
+  );
+  if (cleanupMatch?.[1]?.trim()) return cleanupMatch[1].trim().split('\n')[0].trim();
+
+  return 'Email request';
+}
+
 export function friendlyChatError(raw) {
   const text = String(raw || '').trim();
   if (!text) return 'Could not send message.';
