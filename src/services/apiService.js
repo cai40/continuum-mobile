@@ -175,6 +175,27 @@ export const chatStream = (
   let userTranscript = "";
   let currentEvent = "";
 
+  const finish = (errorMsg) => {
+    if (doneCalled) return;
+    doneCalled = true;
+    if (errorMsg) onError(errorMsg);
+    else onDone(fullText, userTranscript);
+  };
+
+  const handleHttpError = () => {
+    const responseText = xhr.responseText || "";
+    let msg = `Chat error (${xhr.status})`;
+    if (responseText.trim()) {
+      try {
+        const parsed = JSON.parse(responseText);
+        msg = parsed.detail || parsed.error || parsed.message || responseText;
+      } catch {
+        msg = responseText;
+      }
+    }
+    finish(msg);
+  };
+
   xhr.open("POST", `${API_URL}/chat/stream`);
   
   // Resiliency: Set a long timeout for streaming (60s) to prevent permanent hangs
@@ -188,17 +209,22 @@ export const chatStream = (
 
   xhr.onreadystatechange = () => {
     if (xhr.readyState === 3 || xhr.readyState === 4) {
+      if (xhr.readyState === 4 && xhr.status >= 400) {
+        handleHttpError();
+        return;
+      }
+
       const responseText = xhr.responseText;
-      if (!responseText) return;
+      if (!responseText) {
+        if (xhr.readyState === 4) finish(null);
+        return;
+      }
 
       let lastNewLineIndex = responseText.lastIndexOf("\n");
       if (xhr.readyState === 4) lastNewLineIndex = responseText.length;
 
       if (lastNewLineIndex <= lastProcessedIndex) {
-        if (xhr.readyState === 4 && !doneCalled) {
-          doneCalled = true;
-          onDone(fullText, userTranscript);
-        }
+        if (xhr.readyState === 4) finish(null);
         return;
       }
 
@@ -219,10 +245,7 @@ export const chatStream = (
           const rawData = line.replace("data: ", "").trim();
 
           if (rawData === "[DONE]") {
-            if (!doneCalled) {
-              doneCalled = true;
-              onDone(fullText, userTranscript);
-            }
+            finish(null);
             return;
           }
 
@@ -238,14 +261,11 @@ export const chatStream = (
         }
       });
 
-      if (xhr.readyState === 4 && !doneCalled) {
-        doneCalled = true;
-        onDone(fullText, userTranscript);
-      }
+      if (xhr.readyState === 4) finish(null);
     }
   };
 
-  xhr.onerror = () => onError("Network error or server unreachable.");
+  xhr.onerror = () => finish("Network error or server unreachable.");
 
   xhr.send(formData);
 

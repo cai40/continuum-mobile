@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
@@ -26,6 +27,11 @@ import {
 import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND } from '../utils/groundingPrompt';
 import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
+import {
+  friendlyChatError,
+  MAX_ATTACHMENT_BYTES,
+  trimChatHistoryForUpload,
+} from '../utils/helpers';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -256,6 +262,18 @@ const ChatSection = () => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const validateAttachmentSizes = async (files) => {
+    for (const file of files) {
+      if (!file?.uri) continue;
+      const info = await FileSystem.getInfoAsync(file.uri);
+      if (info.exists && info.size > MAX_ATTACHMENT_BYTES) {
+        throw new Error(
+          `"${file.name || 'Attachment'}" is ${Math.round(info.size / 1024)}KB. Maximum upload size is 1024KB per file.`,
+        );
+      }
+    }
+  };
+
   const playNextStreamChunk = async () => {
     if (soundQueueRef.current.length === 0) {
       isPlayingQueueRef.current = false;
@@ -465,6 +483,12 @@ const ChatSection = () => {
       let documentTextInjected = false;
 
       if (activeAttachments.length && !isFromVoice) {
+        await validateAttachmentSizes(activeAttachments);
+      }
+
+      const historyForUpload = trimChatHistoryForUpload(messages.slice(0, -1));
+
+      if (activeAttachments.length && !isFromVoice) {
         try {
           const built = await buildMessageWithAttachments(finalInput, activeAttachments);
           chatMessage = built.message;
@@ -508,7 +532,7 @@ const ChatSection = () => {
       formData.append('persona', appendGroundingPersona(persona, personaExtras));
       // Fresh file analysis or web search: drop chat history so prior replies
       // cannot override injected attachment text or live search results.
-      formData.append('history', JSON.stringify(documentTextInjected || webSearchContext ? [] : messages.slice(-20)));
+      formData.append('history', JSON.stringify(documentTextInjected || webSearchContext ? [] : historyForUpload));
       if (activeKey) formData.append('api_key', activeKey.trim());
       if (isVoiceMode) {
         formData.append('synthesize_voice', 'True');
@@ -592,7 +616,7 @@ const ChatSection = () => {
         clearTypingSafety();
         setIsTyping(false);
         setStreamingContent('');
-        Alert.alert("Chat Error", String(err || "Could not send message."));
+        Alert.alert("Chat Error", friendlyChatError(err));
       };
 
       const onStreamUpdate = (event, json) => {
@@ -630,7 +654,7 @@ const ChatSection = () => {
           message: webSearchContext ? `${webSearchContext}\n\n${finalInput}` : finalInput,
           provider,
           persona: appendGroundingPersona(persona, webSearchContext ? [WEB_SEARCH_APPEND] : []),
-          history: webSearchContext ? [] : messages.slice(-20),
+          history: webSearchContext ? [] : historyForUpload,
           gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
           groq_key: provider === 'groq' ? (groqKey || '').trim() : '',
           api_key: (activeKey || '').trim(),
