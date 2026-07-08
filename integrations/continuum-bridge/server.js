@@ -40,6 +40,12 @@ const {
   saveState,
 } = require('./dailyCleanup');
 const { handleNeverTrashRequest, wantsNeverTrashRequest } = require('./emailNeverTrash');
+const {
+  createEmailJob,
+  getJob,
+  getLatestJobs,
+  startEmailJob,
+} = require('./emailJobs');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
 const HOST = process.env.CONTINUUM_BRIDGE_HOST || '127.0.0.1';
@@ -192,6 +198,79 @@ async function handleDailyCleanupRunNow(req, res, config) {
   } catch (err) {
     return json(res, 500, { success: false, error: err.message || String(err) });
   }
+}
+
+async function handleEmailJobCreate(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  const userAuth = req.headers.authorization || '';
+  if (!userAuth.startsWith('Bearer ')) {
+    return json(res, 401, { success: false, error: 'Missing Continuum session token' });
+  }
+
+  const raw = await readBody(req);
+  let payload;
+  try {
+    payload = JSON.parse(raw || '{}');
+  } catch {
+    return json(res, 400, { success: false, error: 'Invalid JSON body' });
+  }
+
+  const message = (payload.message || '').trim();
+  if (!message) {
+    return json(res, 400, { success: false, error: 'message is required' });
+  }
+
+  const job = createEmailJob({ message, payload });
+  startEmailJob(job.id, { userAuth, config });
+  return json(res, 202, {
+    success: true,
+    job_id: job.id,
+    status: job.status,
+    progress: job.progress,
+    message: 'Email job started on server. Poll GET /email-jobs/:id for results.',
+  });
+}
+
+async function handleEmailJobGet(req, res, config, jobId) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  const job = getJob(jobId);
+  if (!job) {
+    return json(res, 404, { success: false, error: 'Job not found' });
+  }
+  return json(res, 200, {
+    success: true,
+    job: {
+      id: job.id,
+      status: job.status,
+      progress: job.progress,
+      message: job.message,
+      result: job.result,
+      error: job.error,
+      created_at: job.created_at,
+      updated_at: job.updated_at,
+    },
+  });
+}
+
+async function handleEmailJobsLatest(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  const jobs = getLatestJobs(8).map((job) => ({
+    id: job.id,
+    status: job.status,
+    progress: job.progress,
+    message: job.message,
+    result: job.status === 'completed' ? job.result : null,
+    error: job.error,
+    created_at: job.created_at,
+    updated_at: job.updated_at,
+  }));
+  return json(res, 200, { success: true, jobs });
 }
 
 function streamTextReply(sse, text) {
@@ -470,6 +549,19 @@ const server = http.createServer(async (req, res) => {
       return await handleDailyCleanupRunNow(req, res, config);
     }
 
+    if (req.method === 'POST' && req.url === '/email-jobs') {
+      return await handleEmailJobCreate(req, res, config);
+    }
+
+    if (req.method === 'GET' && req.url === '/email-jobs/latest') {
+      return await handleEmailJobsLatest(req, res, config);
+    }
+
+    const jobMatch = req.method === 'GET' && req.url?.match(/^\/email-jobs\/([a-f0-9]+)$/);
+    if (jobMatch) {
+      return await handleEmailJobGet(req, res, config, jobMatch[1]);
+    }
+
     if (req.method === 'POST' && req.url === '/ask') {
       if (!verifyBridgeSecret(req, config)) {
         return json(res, 401, { success: false, error: 'Invalid bridge secret' });
@@ -493,6 +585,9 @@ server.listen(PORT, HOST, () => {
   console.log('  GET  /daily-cleanup/latest');
   console.log('  POST /cron/daily-cleanup');
   console.log('  POST /daily-cleanup/run');
+  console.log('  POST /email-jobs       (background email fetch/cleanup)');
+  console.log('  GET  /email-jobs/latest');
+  console.log('  GET  /email-jobs/:id');
   console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');
   console.log('  POST /ask          (CLI / skill)');
 });

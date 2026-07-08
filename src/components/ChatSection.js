@@ -33,6 +33,14 @@ import {
   sanitizeUserVisibleContent,
   trimChatHistoryForUpload,
 } from '../utils/helpers';
+import {
+  shouldRunEmailInBackground,
+  submitBackgroundEmailJob,
+  pollEmailJobUntilDone,
+  savePendingEmailJob,
+  loadPendingEmailJob,
+  buildEmailJobPayload,
+} from '../utils/emailBackgroundJobs';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -80,6 +88,7 @@ const ChatSection = () => {
   const chatListRef = useRef();
   const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
+  const backgroundJobRef = useRef(null);
   const soundRef = useRef(null);
   const soundQueueRef = useRef([]);
   const isPlayingQueueRef = useRef(false);
@@ -184,6 +193,8 @@ const ChatSection = () => {
 
   const handleStop = () => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
+    if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
+    backgroundJobRef.current = null;
     setIsTyping(false);
     setStreamingContent('');
     if (soundRef.current) {
@@ -194,6 +205,44 @@ const ChatSection = () => {
     isPlayingQueueRef.current = false;
     setIsSpeaking(false);
   };
+
+  const resumePendingEmailJob = useCallback(async () => {
+    if (!renderEmailEnabled || isTyping || backgroundJobRef.current) return;
+    const pendingId = await loadPendingEmailJob();
+    if (!pendingId) return;
+    const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
+    const token = session?.access_token?.trim();
+    if (!secret || !token) return;
+
+    setIsTyping(true);
+    setStreamingContent('Resuming cloud email job…');
+    const poller = pollEmailJobUntilDone({
+      bridgeSecret: secret,
+      jobId: pendingId,
+      authToken: token,
+      onProgress: (detail) => setStreamingContent(detail),
+    });
+    backgroundJobRef.current = poller;
+    try {
+      const result = await poller.promise;
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), role: 'assistant', content: result },
+      ]);
+    } catch (e) {
+      Alert.alert('Email job failed', friendlyChatError(e.message || String(e)));
+    } finally {
+      backgroundJobRef.current = null;
+      setIsTyping(false);
+      setStreamingContent('');
+    }
+  }, [renderEmailEnabled, isTyping, renderEmailBridgeSecret, session?.access_token, setMessages]);
+
+  useEffect(() => {
+    if (activeTab === 'chat' && renderEmailEnabled) {
+      resumePendingEmailJob();
+    }
+  }, [activeTab, renderEmailEnabled, resumePendingEmailJob]);
 
   const isInitialLoad = useRef(true);
 
@@ -673,6 +722,53 @@ const ChatSection = () => {
           email_delete_enabled: openclawEmailDeleteEnabled,
           email_auto_trash_junk: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled,
         };
+
+        const useBackgroundEmailJob =
+          (useRenderEmail || useOpenClawBridge)
+          && shouldRunEmailInBackground(emailSourceMessage)
+          && !isEmailConfirm;
+
+        if (useBackgroundEmailJob) {
+          const jobBaseUrl = useRenderEmail
+            ? undefined
+            : bridgeUrl.replace(/\/$/, '');
+          const jobSecret = useRenderEmail ? renderEmailSecret : bridgeSecret;
+          const jobPayload = buildEmailJobPayload({
+            message: payload.message,
+            provider,
+            persona: payload.persona,
+            emailFetch,
+            emailDeleteEnabled: openclawEmailDeleteEnabled,
+            emailAutoTrashJunk: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled,
+            keys: { geminiKey, groqKey, apiKey: activeKey },
+            location,
+            clientTime,
+          });
+
+          setStreamingContent('Starting cloud email job…');
+          submitBackgroundEmailJob(jobSecret, jobPayload, activeToken, jobBaseUrl)
+            .then(async (created) => {
+              await savePendingEmailJob(created.job_id);
+              setStreamingContent('Running in cloud — safe to switch apps…');
+              const poller = pollEmailJobUntilDone({
+                bridgeSecret: jobSecret,
+                jobId: created.job_id,
+                authToken: activeToken,
+                baseUrl: jobBaseUrl,
+                onProgress: (detail) => setStreamingContent(detail),
+              });
+              backgroundJobRef.current = poller;
+              abortControllerRef.current = { abort: () => poller.cancel() };
+              const result = await poller.promise;
+              finishSuccess(result);
+            })
+            .catch(finishError)
+            .finally(() => {
+              backgroundJobRef.current = null;
+            });
+          return;
+        }
+
         const xhr = useRenderEmail
           ? renderEmailChatStream(
               renderEmailSecret,

@@ -117,3 +117,45 @@ async def email_status() -> JSONResponse:
             ),
         }
     )
+
+
+@router.post("/jobs")
+async def email_job_create(
+    request: Request,
+    token: str = Depends(require_user_bearer),
+) -> JSONResponse:
+    body = await request.body()
+    url = f"{bridge_base()}/email-jobs"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.post(url, headers=bridge_headers(token), content=body)
+        return JSONResponse(
+            res.json() if res.headers.get("content-type", "").startswith("application/json") else {"detail": res.text},
+            status_code=res.status_code,
+        )
+
+
+@router.get("/jobs/{job_id}")
+async def email_job_status(
+    job_id: str,
+    token: str = Depends(require_user_bearer),
+) -> JSONResponse:
+    url = f"{bridge_base()}/email-jobs/{job_id}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.get(url, headers=bridge_headers(token))
+        return JSONResponse(
+            res.json() if res.headers.get("content-type", "").startswith("application/json") else {"detail": res.text},
+            status_code=res.status_code,
+        )
+
+
+@router.get("/jobs")
+async def email_jobs_latest(
+    token: str = Depends(require_user_bearer),
+) -> JSONResponse:
+    url = f"{bridge_base()}/email-jobs/latest"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        res = await client.get(url, headers=bridge_headers(token))
+        return JSONResponse(
+            res.json() if res.headers.get("content-type", "").startswith("application/json") else {"detail": res.text},
+            status_code=res.status_code,
+        )

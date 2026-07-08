@@ -14,5 +14,6 @@ module.exports = {
     move_to_folder: true,
     web_search: true,
     sender_rule_trash: true,
+    background_email_jobs: true,
   },
 };
