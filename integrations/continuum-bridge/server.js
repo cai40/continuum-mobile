@@ -110,13 +110,22 @@ function slimHistory(history) {
   }));
 }
 
+/** ~80k tokens safety cap for upstream LLM (128k models leave room for persona/tools). */
+const MAX_LLM_MESSAGE_CHARS = 320_000;
+
+function truncateForLlm(text, maxChars = MAX_LLM_MESSAGE_CHARS) {
+  const s = String(text || '');
+  if (s.length <= maxChars) return s;
+  return `${s.slice(0, maxChars)}\n\n[Context truncated — ${s.length - maxChars} chars omitted. Retry with a smaller date range or say "limit 250".]`;
+}
+
 function buildContinuumForm(payload) {
   const form = new FormData();
-  const msg = String(payload.message || '');
-  form.append('message', msg.length > 900000 ? `${msg.slice(0, 900000)}\n\n[truncated for size]` : msg);
+  const msg = truncateForLlm(payload.message || '');
+  form.append('message', msg);
   form.append('provider', payload.provider || 'gemini');
   form.append('history', JSON.stringify(slimHistory(payload.history)));
-  if (payload.persona) form.append('persona', payload.persona);
+  if (payload.persona) form.append('persona', truncateForLlm(payload.persona, 24_000));
   if (payload.gemini_key) form.append('gemini_key', payload.gemini_key);
   if (payload.groq_key) form.append('groq_key', payload.groq_key);
   if (payload.api_key) form.append('api_key', payload.api_key);

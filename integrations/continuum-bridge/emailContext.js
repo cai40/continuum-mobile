@@ -329,8 +329,10 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
   const fetchedCount = parsed.length;
   const cleanupRequested = wantsEmailCleanup(options.message || '');
-  const summaryOnly = (options.summaryOnly || wantsEmailSummaryOnly(options.message || '') || fetchedCount > 250)
-    && !cleanupRequested;
+  const summaryOnly = options.summaryOnly
+    || wantsEmailSummaryOnly(options.message || '')
+    || fetchedCount > 250
+    || cleanupRequested;
 
   if (summaryOnly) {
     return {
@@ -670,7 +672,33 @@ async function fetchEmailContext(message, payloadOptions = {}) {
         cleanupRequested,
       });
       if (prefilled) {
-        finalContext = [finalContext, '', prefilled].join('\n');
+        if (cleanupRequested) {
+          const scanBlock = formatScanDiagnostic(
+            scanMeta,
+            fetchOptions.dateRangeLabel,
+            messages?.length ?? 0,
+          );
+          const trashBlocks = [];
+          if (deleteResult.executed && deleteResult.summary) {
+            const label = deleteResult.auto && !deleteRequested
+              ? '[Email auto-trash executed]'
+              : '[Email cleanup executed — moved to Trash]';
+            trashBlocks.push(label, deleteResult.summary, formatTrashReportBlock(deleteResult));
+          } else if (deleteResult.error) {
+            trashBlocks.push(`[Email trash] ${deleteResult.error}`);
+          }
+          if (moveResult.executed && moveResult.summary) {
+            trashBlocks.push('[Email move executed]', moveResult.summary);
+          } else if (moveResult.error) {
+            trashBlocks.push(`[Email move] ${moveResult.error}`);
+          }
+          if (permission) {
+            trashBlocks.push(formatPermissionBlock(permission));
+          }
+          finalContext = [scanBlock, prefilled, ...trashBlocks].filter(Boolean).join('\n\n');
+        } else {
+          finalContext = [finalContext, '', prefilled].join('\n');
+        }
       }
     }
 
