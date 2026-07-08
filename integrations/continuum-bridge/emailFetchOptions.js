@@ -8,8 +8,6 @@ const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50000;
 /** Minimum fetch cap for month date-range queries (no explicit limit in message). */
 const MONTH_RANGE_MIN_LIMIT = 5000;
-/** Month-range fetch cap when user only wants cleanup (IMAP scan; LLM gets compact summary). */
-const MONTH_RANGE_CLEANUP_LIMIT = 500;
 /** Minimum fetch cap for full-year date-range queries. */
 const YEAR_RANGE_MIN_LIMIT = 50000;
 const DEFAULT_RECENT = '7d';
@@ -122,7 +120,7 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const moveToFolder = wantsEmailMoveToFolder(message);
   const rangeMinLimit = yearRange
     ? YEAR_RANGE_MIN_LIMIT
-    : (dateRangeFromMessage ? (cleanup ? MONTH_RANGE_CLEANUP_LIMIT : MONTH_RANGE_MIN_LIMIT) : null);
+    : (dateRangeFromMessage ? MONTH_RANGE_MIN_LIMIT : null);
   const defaultLimit = rangeMinLimit ?? (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
   let limit = limitFromMessage != null
     ? clampLimit(limitFromMessage, defaultLimit)
