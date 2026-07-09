@@ -3,7 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { fetchEmailContext } = require('./emailContext');
+const {
+  fetchEmailContext,
+  buildPrefilledSummaryReply,
+  extractPrefilledSummaryFromText,
+} = require('./emailContext');
 const {
   wantsEmailFetch,
   wantsEmailSummaryOnly,
@@ -22,24 +26,30 @@ const {
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
 } = require('./groundingPrompt');
 
-const DEFAULT_JOBS_PATH = path.join(
-  process.env.HOME || '/root',
-  '.config/continuum-bridge/email-jobs.json',
-);
-
 const MAX_STORED_JOBS = 40;
 const MAX_LLM_MESSAGE_CHARS = 320_000;
 
+/** In-memory cache survives file read races; repopulated from disk on load. */
+const jobMemory = new Map();
+
 function jobsPath() {
-  return process.env.EMAIL_JOBS_STATE_PATH || DEFAULT_JOBS_PATH;
+  if (process.env.EMAIL_JOBS_STATE_PATH) return process.env.EMAIL_JOBS_STATE_PATH;
+  if (process.env.RENDER) {
+    return path.join('/opt/render/project/src', '.continuum-bridge-data', 'email-jobs.json');
+  }
+  return path.join(process.env.HOME || '/root', '.config/continuum-bridge/email-jobs.json');
 }
 
 function loadJobsState() {
   try {
     const raw = fs.readFileSync(jobsPath(), 'utf8');
-    return JSON.parse(raw);
+    const state = JSON.parse(raw);
+    for (const job of state.jobs || []) {
+      jobMemory.set(job.id, job);
+    }
+    return state;
   } catch {
-    return { jobs: [] };
+    return { jobs: Array.from(jobMemory.values()) };
   }
 }
 
@@ -47,18 +57,14 @@ function saveJobsState(state) {
   const file = jobsPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const jobs = (state.jobs || []).slice(0, MAX_STORED_JOBS);
+  for (const job of jobs) {
+    jobMemory.set(job.id, job);
+  }
   fs.writeFileSync(file, JSON.stringify({ jobs }, null, 2), 'utf8');
 }
 
 function newJobId() {
   return crypto.randomBytes(8).toString('hex');
-}
-
-function extractPrefilledSummary(text) {
-  const m = String(text || '').match(
-    /\[PREFILLED SUMMARY[^\]]*\]\s*([\s\S]*?)\s*\[\/PREFILLED SUMMARY\]/i,
-  );
-  return m?.[1]?.trim() || null;
 }
 
 function extractDailySummary(text) {
@@ -140,6 +146,34 @@ async function callContinuumStream(apiUrl, userAuth, payload) {
   return reply;
 }
 
+function resolvePrefilledJobResult(emailResult, { message, cleanupRequested, summaryOnly }) {
+  const emailContext = emailResult.context || '';
+  let prefilled = extractPrefilledSummaryFromText(emailContext)
+    || extractPrefilledSummaryFromText(message)
+    || extractDailySummary(emailContext);
+
+  if (!prefilled && Array.isArray(emailResult.messages) && emailResult.messages.length > 0) {
+    const built = buildPrefilledSummaryReply({
+      dateRangeLabel: emailResult.fetchOptions?.dateRangeLabel,
+      scanMeta: emailResult.scanMeta,
+      messages: emailResult.messages,
+      deleteResult: emailResult.deleteResult,
+      permission: null,
+      cleanupRequested,
+    });
+    prefilled = extractPrefilledSummaryFromText(built) || built;
+  }
+
+  if (prefilled) return prefilled;
+
+  if (cleanupRequested || summaryOnly) {
+    const compact = emailContext.slice(0, 12000).trim();
+    return compact || 'Email cleanup finished but no summary was generated. Try again or narrow the date range.';
+  }
+
+  return null;
+}
+
 function updateJob(jobId, patch) {
   const state = loadJobsState();
   const idx = state.jobs.findIndex((j) => j.id === jobId);
@@ -149,12 +183,16 @@ function updateJob(jobId, patch) {
     ...patch,
     updated_at: new Date().toISOString(),
   };
+  jobMemory.set(jobId, state.jobs[idx]);
   saveJobsState(state);
   return state.jobs[idx];
 }
 
 function getJob(jobId) {
-  return loadJobsState().jobs.find((j) => j.id === jobId) || null;
+  if (jobMemory.has(jobId)) return jobMemory.get(jobId);
+  const fromDisk = loadJobsState().jobs.find((j) => j.id === jobId) || null;
+  if (fromDisk) jobMemory.set(jobId, fromDisk);
+  return fromDisk;
 }
 
 function createEmailJob({ message, payload }) {
@@ -171,6 +209,7 @@ function createEmailJob({ message, payload }) {
     updated_at: new Date().toISOString(),
   };
   state.jobs.unshift(job);
+  jobMemory.set(job.id, job);
   saveJobsState(state);
   return job;
 }
@@ -230,6 +269,21 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
     const summaryOnly = (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext))
       && !cleanupRequested;
 
+    const prefilledResult = resolvePrefilledJobResult(emailResult, {
+      message,
+      cleanupRequested,
+      summaryOnly,
+    });
+    if (prefilledResult && (cleanupRequested || summaryOnly)) {
+      status('Done');
+      return updateJob(jobId, {
+        status: 'completed',
+        progress: 'Done',
+        result: prefilledResult,
+        error: null,
+      });
+    }
+
     message = [
       'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
       summaryOnly || cleanupRequested
@@ -242,17 +296,6 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       'User request:',
       message,
     ].join('\n');
-
-    const prefilled = extractPrefilledSummary(emailContext) || extractPrefilledSummary(message);
-    if (prefilled && (cleanupRequested || summaryOnly)) {
-      status('Done');
-      return updateJob(jobId, {
-        status: 'completed',
-        progress: 'Done',
-        result: prefilled,
-        error: null,
-      });
-    }
 
     const hasLiveInbox = !emailContext.startsWith('[Yahoo email not available]');
     if (hasLiveInbox) {
@@ -304,7 +347,10 @@ function startEmailJob(jobId, options) {
 }
 
 function getLatestJobs(limit = 5) {
-  return loadJobsState().jobs.slice(0, limit);
+  loadJobsState();
+  return Array.from(jobMemory.values())
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, limit);
 }
 
 function wantsBackgroundEmailJob(message) {

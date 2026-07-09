@@ -131,6 +131,12 @@ export function friendlyChatError(raw) {
   if (/exceeded maximum size|1024\s*kb/i.test(text)) {
     return 'Message too large (1MB server limit). Clear chat history under Setup → Data, or remove large attachments, then try again.';
   }
+  if (/context_length_exceeded|maximum context length|128000|128k/i.test(text)) {
+    return 'Inbox data was too large for the AI model. The cleanup ran on the server — try again; large month cleanups now skip the AI and return a compact summary.';
+  }
+  if (/job not found|job expired|EMAIL_JOB_NOT_FOUND/i.test(text)) {
+    return 'Cloud email job expired (server restarted). Send your cleanup request again — it will run in the background.';
+  }
   if (/RESOURCE_EXHAUSTED|Too Many Requests|quota|spend cap|billing/i.test(text)) {
     return 'API quota exceeded for the selected model. Check billing for your API key (Gemini spend cap or OpenRouter credits), or switch to another model.';
   }

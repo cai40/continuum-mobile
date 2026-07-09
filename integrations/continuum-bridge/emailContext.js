@@ -230,6 +230,13 @@ function buildCompactEmailSummary(parsed, { limit, offset, dateRangeLabel, scanM
   return lines.join('\n');
 }
 
+function extractPrefilledSummaryFromText(text) {
+  const m = String(text || '').match(
+    /\[PREFILLED SUMMARY[^\]]*\]\s*([\s\S]*?)\s*\[\/PREFILLED SUMMARY\]/i,
+  );
+  return m?.[1]?.trim() || null;
+}
+
 function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult, permission, cleanupRequested }) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
@@ -769,4 +776,10 @@ async function getEmailHealth({ quick = false } = {}) {
   }
 }
 
-module.exports = { fetchEmailContext, getEmailHealth, findImapScript };
+module.exports = {
+  fetchEmailContext,
+  getEmailHealth,
+  findImapScript,
+  buildPrefilledSummaryReply,
+  extractPrefilledSummary: extractPrefilledSummaryFromText,
+};

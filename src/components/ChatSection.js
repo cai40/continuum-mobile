@@ -230,7 +230,11 @@ const ChatSection = () => {
         { id: Date.now().toString(), role: 'assistant', content: result },
       ]);
     } catch (e) {
-      Alert.alert('Email job failed', friendlyChatError(e.message || String(e)));
+      const msg = friendlyChatError(e.message || String(e));
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), role: 'assistant', content: msg },
+      ]);
     } finally {
       backgroundJobRef.current = null;
       setIsTyping(false);

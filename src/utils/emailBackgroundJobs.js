@@ -43,15 +43,33 @@ export async function clearPendingEmailJob() {
   }
 }
 
+function jobHeaders(bridgeSecret, authToken) {
+  return {
+    Accept: 'application/json',
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    ...(bridgeSecret ? { 'X-Bridge-Secret': bridgeSecret } : {}),
+  };
+}
+
+export async function fetchLatestEmailJobs(bridgeSecret, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
+  const root = baseUrl.replace(/\/$/, '');
+  const res = await fetch(`${root}/email-jobs/latest`, {
+    headers: jobHeaders(bridgeSecret, authToken),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.detail || `Latest jobs failed (${res.status})`);
+  }
+  return data.jobs || [];
+}
+
 export async function submitBackgroundEmailJob(bridgeSecret, payload, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
   const root = baseUrl.replace(/\/$/, '');
   const res = await fetch(`${root}/email-jobs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...(bridgeSecret ? { 'X-Bridge-Secret': bridgeSecret } : {}),
+      ...jobHeaders(bridgeSecret, authToken),
     },
     body: JSON.stringify(payload),
   });
@@ -62,16 +80,33 @@ export async function submitBackgroundEmailJob(bridgeSecret, payload, authToken,
   return data;
 }
 
+async function recoverJobFromLatest(bridgeSecret, jobId, authToken, baseUrl) {
+  try {
+    const jobs = await fetchLatestEmailJobs(bridgeSecret, authToken, baseUrl);
+    return jobs.find((job) => job.id === jobId) || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchEmailJobStatus(bridgeSecret, jobId, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
   const root = baseUrl.replace(/\/$/, '');
   const res = await fetch(`${root}/email-jobs/${jobId}`, {
-    headers: {
-      Accept: 'application/json',
-      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-      ...(bridgeSecret ? { 'X-Bridge-Secret': bridgeSecret } : {}),
-    },
+    headers: jobHeaders(bridgeSecret, authToken),
   });
   const data = await res.json().catch(() => ({}));
+
+  if (res.status === 404) {
+    const recovered = await recoverJobFromLatest(bridgeSecret, jobId, authToken, baseUrl);
+    if (recovered) return recovered;
+    await clearPendingEmailJob();
+    const err = new Error(
+      'Cloud email job expired (server restarted). Send your cleanup request again — it will run in the background.',
+    );
+    err.code = 'EMAIL_JOB_NOT_FOUND';
+    throw err;
+  }
+
   if (!res.ok) {
     throw new Error(data.error || data.detail || `Job status failed (${res.status})`);
   }
@@ -120,6 +155,7 @@ export function pollEmailJobUntilDone({
   const runPoll = async () => {
     while (!cancelled) {
       if (Date.now() - started > maxWaitMs) {
+        await clearPendingEmailJob();
         throw new Error('Background email job timed out after 1 hour.');
       }
       const job = await fetchEmailJobStatus(bridgeSecret, jobId, authToken, baseUrl);

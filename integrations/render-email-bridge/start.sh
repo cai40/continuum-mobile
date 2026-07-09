@@ -40,6 +40,7 @@ chmod 600 "${OPENCLAW_DIR}/.env"
 
 export CONTINUUM_BRIDGE_HOST="0.0.0.0"
 export CONTINUUM_BRIDGE_PORT="${PORT:-8787}"
+export EMAIL_JOBS_STATE_PATH="${EMAIL_JOBS_STATE_PATH:-/opt/render/project/src/.continuum-bridge-data/email-jobs.json}"
 
 echo "Starting continuum-bridge on ${CONTINUUM_BRIDGE_HOST}:${CONTINUUM_BRIDGE_PORT}..."
 exec node "$REPO_ROOT/integrations/continuum-bridge/server.js"
