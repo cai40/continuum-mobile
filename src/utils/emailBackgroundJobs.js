@@ -51,6 +51,50 @@ function jobHeaders(bridgeSecret, authToken) {
   };
 }
 
+export function isNetworkFailure(err) {
+  const msg = String(err?.message || err || '');
+  return /network request failed|failed to fetch|network error|timed out|timeout|ENOTFOUND|ECONNREFUSED|socket closed/i.test(msg);
+}
+
+async function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Wake Render email bridge (cold start can drop the first request). */
+export async function wakeEmailBridge(bridgeSecret, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
+  const root = baseUrl.replace(/\/$/, '');
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(`${root}/health`, {
+        headers: jobHeaders(bridgeSecret, null),
+        method: 'GET',
+      });
+      if (res.ok) return true;
+    } catch {
+      // retry once after brief pause (Render spin-up)
+    }
+    if (attempt === 0) await sleep(2500);
+  }
+  return false;
+}
+
+async function fetchWithRetry(url, options, { attempts = 3, baseDelayMs = 2000 } = {}) {
+  let lastErr;
+  for (let i = 0; i < attempts; i += 1) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1 && isNetworkFailure(err)) {
+        await sleep(baseDelayMs * (i + 1));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
 export async function fetchLatestEmailJobs(bridgeSecret, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
   const root = baseUrl.replace(/\/$/, '');
   const res = await fetch(`${root}/email-jobs/latest`, {
@@ -65,7 +109,8 @@ export async function fetchLatestEmailJobs(bridgeSecret, authToken, baseUrl = RE
 
 export async function submitBackgroundEmailJob(bridgeSecret, payload, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
   const root = baseUrl.replace(/\/$/, '');
-  const res = await fetch(`${root}/email-jobs`, {
+  await wakeEmailBridge(bridgeSecret, baseUrl);
+  const res = await fetchWithRetry(`${root}/email-jobs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -91,9 +136,9 @@ async function recoverJobFromLatest(bridgeSecret, jobId, authToken, baseUrl) {
 
 export async function fetchEmailJobStatus(bridgeSecret, jobId, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
   const root = baseUrl.replace(/\/$/, '');
-  const res = await fetch(`${root}/email-jobs/${jobId}`, {
+  const res = await fetchWithRetry(`${root}/email-jobs/${jobId}`, {
     headers: jobHeaders(bridgeSecret, authToken),
-  });
+  }, { attempts: 2, baseDelayMs: 1500 });
   const data = await res.json().catch(() => ({}));
 
   if (res.status === 404) {

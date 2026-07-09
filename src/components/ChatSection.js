@@ -40,6 +40,7 @@ import {
   savePendingEmailJob,
   loadPendingEmailJob,
   buildEmailJobPayload,
+  isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
@@ -749,6 +750,30 @@ const ChatSection = () => {
             clientTime,
           });
 
+          const startEmailStream = () => {
+            setStreamingContent('Connecting to email bridge…');
+            const xhr = useRenderEmail
+              ? renderEmailChatStream(
+                  renderEmailSecret,
+                  payload,
+                  onStreamUpdate,
+                  finishSuccess,
+                  finishError,
+                  activeToken,
+                )
+              : openClawChatStream(
+                  bridgeUrl,
+                  bridgeSecret,
+                  payload,
+                  onStreamUpdate,
+                  finishSuccess,
+                  finishError,
+                  activeToken,
+                );
+            abortControllerRef.current = { abort: () => xhr.abort() };
+          };
+
+          let usingStreamFallback = false;
           setStreamingContent('Starting cloud email job…');
           submitBackgroundEmailJob(jobSecret, jobPayload, activeToken, jobBaseUrl)
             .then(async (created) => {
@@ -766,9 +791,17 @@ const ChatSection = () => {
               const result = await poller.promise;
               finishSuccess(result);
             })
-            .catch(finishError)
+            .catch((err) => {
+              if (isNetworkFailure(err)) {
+                usingStreamFallback = true;
+                backgroundJobRef.current = null;
+                startEmailStream();
+                return;
+              }
+              finishError(err);
+            })
             .finally(() => {
-              backgroundJobRef.current = null;
+              if (!usingStreamFallback) backgroundJobRef.current = null;
             });
           return;
         }

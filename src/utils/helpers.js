@@ -137,6 +137,9 @@ export function friendlyChatError(raw) {
   if (/job not found|job expired|EMAIL_JOB_NOT_FOUND/i.test(text)) {
     return 'Cloud email job expired (server restarted). Send your cleanup request again — it will run in the background.';
   }
+  if (/network request failed|failed to fetch|network error|cannot reach|timed out/i.test(text)) {
+    return 'Could not reach the email server. Check Wi‑Fi or cellular, wait a few seconds for the cloud bridge to wake up, then try again. Keep the app open for large cleanups.';
+  }
   if (/RESOURCE_EXHAUSTED|Too Many Requests|quota|spend cap|billing/i.test(text)) {
     return 'API quota exceeded for the selected model. Check billing for your API key (Gemini spend cap or OpenRouter credits), or switch to another model.';
   }
