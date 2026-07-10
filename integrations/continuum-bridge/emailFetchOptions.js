@@ -50,7 +50,9 @@ function parseLimitFromMessage(message) {
     const match = text.match(pattern);
     if (match) {
       const n = parseInt(match[1], 10);
-      if (n >= 2000 && n <= 2099 && parseYearRangeFromMessage(text)) return null;
+      // A 4-digit year (2000–2099) that's part of a date range (e.g. "Sep 2025 emails",
+      // "for 2025") must NOT be treated as a fetch limit — fall back to the range default.
+      if (n >= 2000 && n <= 2099 && parseDateRangeFromMessage(text)) return null;
       return clampLimit(match[1], null);
     }
   }
