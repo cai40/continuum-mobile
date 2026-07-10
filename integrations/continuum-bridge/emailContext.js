@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
@@ -408,7 +408,132 @@ function imapCheckArgs(fetchOptions) {
   return args;
 }
 
-async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
+/**
+ * Translate IMAP script stderr lines into user-friendly progress messages.
+ * Returns null for lines that aren't useful to surface to the user.
+ */
+function parseImapProgressLine(line) {
+  const text = String(line || '').trim();
+  if (!text || !text.startsWith('[imap]')) return null;
+
+  let m;
+  if ((m = text.match(/^\[imap\]\s+search\s+(.+?)\.\.\.$/i))) {
+    const label = m[1].replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
+    return `Searching ${label}…`;
+  }
+  if ((m = text.match(/^\[imap\]\s+search\s+(.+?):\s+(\d+)\s+uid/i))) {
+    const label = m[1].replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
+    return `Found ${m[2]} email(s) in ${label}`;
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range\s+check\s+(\S+)\.\.(\S+)\s+limit=(\d+)/i))) {
+    return `Scanning ${m[1]} to ${m[2]} (up to ${m[3]})…`;
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range\s+start\s+(\S+)\.\.(\S+)\s+limit=\d+.*lookback=(\d+)d/i))) {
+    return `Scanning ${m[1]} to ${m[2]} (lookback ${m[3]}d)…`;
+  }
+  if (/date-range:\s+expand\s+older\s+range/i.test(text)) {
+    return 'Expanding scan to older messages…';
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range\s+lookback\s+\d+d:\s+fetched\s+(\d+)\s+row/i))) {
+    const matched = text.match(/matched\s+(\d+)/i);
+    return `Scan complete: ${m[1]} fetched${matched ? `, ${matched[1]} matched` : ''}`;
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range\s+(.+?):\s+fetched\s+(\d+)\s+row/i))) {
+    const totalMatch = text.match(/total\s+matched\s+(\d+)/i);
+    const total = totalMatch ? `, matched so far: ${totalMatch[1]}` : '';
+    return `Fetched ${m[2]} from ${m[1]}${total}`;
+  }
+  if (/date-range:\s+stop\s+older\s+scan/i.test(text)) {
+    return 'Found all messages in range — finishing…';
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range\s+direct:\s+(\d+)\s+uid/i))) {
+    return `Found ${m[1]} email(s) in date range — fetching headers…`;
+  }
+  if (/date-range\s+direct:\s+hit\s+yahoo/i.test(text)) {
+    return 'Yahoo search cap hit — switching to lookback scan…';
+  }
+  if (/date-range\s+direct\s+failed/i.test(text)) {
+    return 'Direct search failed — switching to lookback scan…';
+  }
+  return null;
+}
+
+/**
+ * Run the IMAP script via spawn, streaming stderr to onProgress in real time.
+ * Collects stdout for later parsing.
+ */
+function runImapSpawned(args, { timeoutMs, cwd, env, onProgress }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('node', args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let stderrBuf = '';
+    let timedOut = false;
+    let lastProgressAt = 0;
+    let lastProgressMsg = '';
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+      if (stdout.length > 256 * 1024 * 1024) {
+        try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      }
+    });
+
+    child.stderr.on('data', (chunk) => {
+      const piece = chunk.toString();
+      stderr += piece;
+      stderrBuf += piece;
+      let nl;
+      while ((nl = stderrBuf.indexOf('\n')) >= 0) {
+        const line = stderrBuf.slice(0, nl);
+        stderrBuf = stderrBuf.slice(nl + 1);
+        const friendly = parseImapProgressLine(line);
+        if (friendly && onProgress) {
+          const now = Date.now();
+          // Throttle: skip if same message within 1.5s
+          if (friendly !== lastProgressMsg || now - lastProgressAt > 1500) {
+            lastProgressMsg = friendly;
+            lastProgressAt = now;
+            try { onProgress(friendly); } catch { /* ignore */ }
+          }
+        }
+        if (stderr.trim()) {
+          // Keep raw stderr for debugging but don't spam console per-line
+        }
+      }
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (timedOut) {
+        const err = new Error(`Yahoo IMAP timed out after ${Math.round(timeoutMs / 1000)}s`);
+        err.stderr = stderr;
+        reject(err);
+        return;
+      }
+      if (code !== 0) {
+        const err = new Error(`Yahoo IMAP exited with code ${code}`);
+        err.stderr = stderr;
+        err.code = code;
+        reject(err);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProgress = null) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
   const isDateRange = !!(fetchOptions.since && fetchOptions.before);
   const sender = isDateRange
@@ -424,16 +549,23 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
     : Math.min(3600000, 90000 + fetchOptions.limit * 1500);
   const maxBuffer = Math.min(128 * 1024 * 1024, 16 * 1024 * 1024 + fetchOptions.limit * 256 * 1024);
 
-  const { stdout, stderr } = await execFileAsync(
-    'node',
-    args,
-    {
-      timeout: timeoutMs,
-      maxBuffer,
-      cwd: skillRoot,
-      env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
-    },
-  );
+  const { stdout, stderr } = onProgress
+    ? await runImapSpawned(args, {
+        timeoutMs,
+        cwd: skillRoot,
+        env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
+        onProgress,
+      })
+    : await execFileAsync(
+        'node',
+        args,
+        {
+          timeout: timeoutMs,
+          maxBuffer,
+          cwd: skillRoot,
+          env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
+        },
+      );
   if (stderr?.trim()) {
     console.error('[continuum-bridge] imap stderr:', stderr.trim());
   }
@@ -470,8 +602,8 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}) {
   };
 }
 
-async function runImapCheck(imapScript, message, payloadOptions = {}) {
-  let result = await runImapCheckOnce(imapScript, message, payloadOptions);
+async function runImapCheck(imapScript, message, payloadOptions = {}, onProgress = null) {
+  let result = await runImapCheckOnce(imapScript, message, payloadOptions, onProgress);
   const matched = result.scanMeta?.matched;
   const loaded = result.messages?.length ?? 0;
   const explicitLimit = parseLimitFromMessage(message) != null;
@@ -490,6 +622,7 @@ async function runImapCheck(imapScript, message, payloadOptions = {}) {
         '[continuum-bridge] expanding date-range fetch:',
         `limit ${result.fetchOptions.limit} → ${expandedLimit} (${matched} matched)`,
       );
+      if (onProgress) onProgress(`Expanding scan to load all ${matched} matched…`);
       result = await runImapCheckOnce(imapScript, message, {
         ...payloadOptions,
         email_limit: expandedLimit,
@@ -511,7 +644,7 @@ function formatImapError(err, fetchOptions = {}) {
   return `Yahoo IMAP failed: ${detail}`;
 }
 
-async function fetchEmailContext(message, payloadOptions = {}) {
+async function fetchEmailContext(message, payloadOptions = {}, onProgress = null) {
   const effectiveMessage = buildEffectiveEmailMessage(message, payloadOptions.history);
   const deleteRequested = wantsEmailDelete(effectiveMessage);
   const moveRequested = wantsEmailMoveToFolder(effectiveMessage);
@@ -572,7 +705,7 @@ async function fetchEmailContext(message, payloadOptions = {}) {
   const destFolder = moveRequested ? parseDestinationFolder(effectiveMessage) : null;
 
   try {
-    const { context, messages, fetchOptions, scanMeta } = await runImapCheck(imapScript, effectiveMessage, payloadOptions);
+    const { context, messages, fetchOptions, scanMeta } = await runImapCheck(imapScript, effectiveMessage, payloadOptions, onProgress);
 
     let deleteResult = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
     let moveResult = { executed: false, summary: null, error: null, uids: [], destFolder: null, sender: null };

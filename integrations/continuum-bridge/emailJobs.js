@@ -248,7 +248,18 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
     const preFetchOptions = resolveEmailFetchOptions(message, emailPayloadOptions);
     status(formatPreEmailFetchStatus(preFetchOptions));
 
-    const emailResult = await fetchEmailContext(message, emailPayloadOptions);
+    // Throttled progress updater for the IMAP scan phase — avoids a disk write on every stderr line.
+    let lastScanProgressAt = 0;
+    let lastScanProgressMsg = '';
+    const onScanProgress = (detail) => {
+      const now = Date.now();
+      if (detail === lastScanProgressMsg && now - lastScanProgressAt < 2000) return;
+      lastScanProgressMsg = detail;
+      lastScanProgressAt = now;
+      status(detail);
+    };
+
+    const emailResult = await fetchEmailContext(message, emailPayloadOptions, onScanProgress);
     if (emailResult.error) {
       throw new Error(emailResult.error);
     }
@@ -268,6 +279,16 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
     const cleanupRequested = wantsEmailCleanup(message);
     const summaryOnly = (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext))
       && !cleanupRequested;
+
+    // If trash/cleanup was executed, surface that stage to the user.
+    if (emailResult.deleteResult?.executed) {
+      status('Moving cleanup targets to Trash…');
+    } else if (emailResult.deleteResult && !emailResult.deleteResult.executed && cleanupRequested) {
+      status('Analyzing cleanup targets…');
+    }
+    if (emailResult.moveResult?.executed) {
+      status(`Moving emails to ${emailResult.moveResult.destFolder || 'folder'}…`);
+    }
 
     const prefilledResult = resolvePrefilledJobResult(emailResult, {
       message,

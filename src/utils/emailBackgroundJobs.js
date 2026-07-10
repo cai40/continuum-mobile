@@ -167,7 +167,7 @@ export function pollEmailJobUntilDone({
   authToken,
   baseUrl = RENDER_EMAIL_BRIDGE_URL,
   onProgress,
-  pollMs = 3000,
+  pollMs = 2000,
   maxWaitMs = 3600000,
 }) {
   let cancelled = false;
