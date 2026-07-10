@@ -914,5 +914,6 @@ module.exports = {
   getEmailHealth,
   findImapScript,
   buildPrefilledSummaryReply,
+  extractPrefilledSummaryFromText,
   extractPrefilledSummary: extractPrefilledSummaryFromText,
 };
