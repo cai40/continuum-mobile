@@ -12,6 +12,7 @@ const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } =
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
 
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
+const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
 
 const execFileAsync = promisify(execFile);
 
@@ -646,6 +647,21 @@ function formatImapError(err, fetchOptions = {}) {
 
 async function fetchEmailContext(message, payloadOptions = {}, onProgress = null) {
   const effectiveMessage = buildEffectiveEmailMessage(message, payloadOptions.history);
+
+  if (wantsYearCleanup(effectiveMessage)) {
+    const { parseYearRangeFromMessage } = require('./emailDateRange');
+    const yearRange = parseYearRangeFromMessage(effectiveMessage);
+    if (yearRange) {
+      if (onProgress) onProgress(`Starting whole-year cleanup for ${yearRange.label || yearRange.since?.slice(0, 4)}…`);
+      return runYearCleanup({
+        message: effectiveMessage,
+        yearRange,
+        payloadOptions,
+        onProgress,
+      });
+    }
+  }
+
   const deleteRequested = wantsEmailDelete(effectiveMessage);
   const moveRequested = wantsEmailMoveToFolder(effectiveMessage);
   const triageRequested = wantsTriage(effectiveMessage);

@@ -382,6 +382,9 @@ function wantsBackgroundEmailJob(message) {
   if (/\b(?:for|in|during)\s+(?:the\s+)?(?:month\s+of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(text)) return true;
   if (/\b(?:for|in|during)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i.test(text)) return true;
   if (/\b(?:for|in|during)\s+(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i.test(text)) return true;
+  if (/\b(?:clean\s*up|cleanup|clean)\s+(?:all\s+of|entire|whole|full)\s+(20\d{2})\b/i.test(text)) return true;
+  if (/\b(?:clean\s*up|cleanup|clean)\s+(20\d{2})\b/i.test(text)) return true;
+  if (/\b(?:whole|full|entire)\s+year\s+(20\d{2})\b/i.test(text)) return true;
   if (/\bfetch\s+and\s+clean\b/i.test(text)) return true;
   if (/\blimit\s+(\d{3,})\b/i.test(text) && parseInt(text.match(/\blimit\s+(\d{3,})\b/i)[1], 10) >= 250) return true;
   return false;

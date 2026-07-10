@@ -100,8 +100,11 @@ function parseYearRangeFromMessage(message) {
   const patterns = [
     /\b(?:for|in|during)\s+(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
     /\b(?:clean\s*up|cleanup|clean)(?:\s+(?:my|the))?\s+(?:inbox\s+)?(?:for\s+)?(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
+    /\b(?:clean\s*up|cleanup|clean)\s+(?:all\s+of|entire|whole|full)\s+(20\d{2})\b/i,
+    /\b(?:clean\s*up|cleanup|clean)\s+(?:the\s+)?(?:whole|full|entire)\s+year\s+(20\d{2})\b/i,
     /\b(?:fetch\s+and\s+clean|fetch|get|show|list|trash|delete|remove|move)\s+(?:(?:and\s+)?clean\s+)?(?:emails?\s+)?(?:for\s+)?(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
-    /\b(?:whole|full)\s+year\s+(20\d{2})\b/i,
+    /\b(?:whole|full|entire)\s+year\s+(20\d{2})\b/i,
+    /\b(?:clean\s*up|cleanup|fetch\s+and\s+clean)\s+(20\d{2})\s+emails?\b/i,
   ];
   for (const pattern of patterns) {
     const match = text.match(pattern);
