@@ -1,7 +1,8 @@
 'use strict';
 
-const { parseYearRangeFromMessage } = require('./emailDateRange');
+const { parseYearRangeFromMessage, addDays } = require('./emailDateRange');
 const { wantsEmailCleanup, countCleanupTargets } = require('./emailDelete');
+const { MONTH_RANGE_MIN_LIMIT } = require('./emailFetchOptions');
 
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -37,6 +38,103 @@ function mergeYearDeleteResults(a, b) {
     uids: [...(a.uids || []), ...(b.uids || [])],
     skippedUids: [...new Set([...(a.skippedUids || []), ...(b.skippedUids || [])])],
   };
+}
+
+function monthWeekRanges(year, monthIndex) {
+  const month = monthIndex + 1;
+  const since = `${year}-${String(month).padStart(2, '0')}-01`;
+  const nextMonth = month === 12
+    ? { y: year + 1, m: 1 }
+    : { y: year, m: month + 1 };
+  const monthEnd = `${nextMonth.y}-${String(nextMonth.m).padStart(2, '0')}-01`;
+  const weeks = [];
+  let cursor = since;
+  while (cursor < monthEnd) {
+    const next = addDays(cursor, 7);
+    const before = next >= monthEnd ? monthEnd : next;
+    weeks.push({ since: cursor, before });
+    cursor = before;
+  }
+  return weeks;
+}
+
+function mergeMonthScanResults(accum, result) {
+  if (!result || result.error) return accum;
+  const matched = result.scanMeta?.matched ?? result.messages?.length ?? 0;
+  const loaded = result.messages?.length ?? result.loadedCount ?? 0;
+  const trashed = parseTrashedCount(result.deleteResult);
+  const cleanupTargets = Array.isArray(result.messages) ? countCleanupTargets(result.messages) : 0;
+  accum.matched += matched;
+  accum.loaded += loaded;
+  accum.trashed += trashed;
+  accum.cleanupTargets += cleanupTargets;
+  accum.lastFetchOptions = result.fetchOptions || accum.lastFetchOptions;
+  if (result.deleteResult?.executed) {
+    accum.mergedDelete = mergeYearDeleteResults(accum.mergedDelete, result.deleteResult);
+  }
+  return accum;
+}
+
+async function runMonthCleanup({
+  monthName,
+  year,
+  monthIndex,
+  stepLabel,
+  payloadOptions,
+  fetchEmailContext,
+  onProgress,
+}) {
+  const weeks = monthWeekRanges(year, monthIndex);
+  const monthMessage = monthCleanupMessage(monthName, year);
+  const accum = {
+    matched: 0,
+    loaded: 0,
+    trashed: 0,
+    cleanupTargets: 0,
+    mergedDelete: { executed: false, summary: null, error: null, uids: [], skippedUids: [] },
+    lastFetchOptions: null,
+    error: null,
+  };
+
+  for (let w = 0; w < weeks.length; w += 1) {
+    const week = weeks[w];
+    const weekLabel = weeks.length > 1 ? `${stepLabel} week ${w + 1}/${weeks.length}` : stepLabel;
+    if (onProgress) onProgress(`Whole-year cleanup: ${weekLabel}…`);
+
+    const weekPayload = {
+      ...payloadOptions,
+      email_since: week.since,
+      email_before: week.before,
+      email_limit: MONTH_RANGE_MIN_LIMIT,
+      email_offset: 0,
+      email_date_override: true,
+      year_cleanup_month: true,
+      history: [],
+    };
+
+    let weekProgress = null;
+    const nestedProgress = onProgress
+      ? (detail) => {
+          if (!weekProgress || weekProgress !== detail) {
+            weekProgress = detail;
+            onProgress(`${weekLabel}: ${detail}`);
+          }
+        }
+      : null;
+
+    try {
+      const result = await fetchEmailContext(monthMessage, weekPayload, nestedProgress);
+      if (result.error) {
+        accum.error = result.error;
+        continue;
+      }
+      mergeMonthScanResults(accum, result);
+    } catch (err) {
+      accum.error = err.message || String(err);
+    }
+  }
+
+  return accum;
 }
 
 function buildYearPrefilledSummary({ year, monthResults, deleteResult, totalMatched, totalLoaded, totalTrashed, totalCleanupTargets }) {
@@ -92,7 +190,7 @@ function buildYearScanBlock(year, totalMatched, totalLoaded) {
     `Date filter: ${year}-01-01 .. ${year + 1}-01-01 (${year} full year)`,
     `Matched: ${totalMatched}`,
     `Emails loaded: ${totalLoaded}`,
-    'Mode: month-by-month scan (12 batches)',
+    'Mode: month-by-month scan with weekly slices (12 batches)',
     '[/MAILBOX SCAN]',
   ].join('\n');
 }
@@ -178,60 +276,39 @@ async function runYearCleanup({
 
   for (let i = startIndex; i < MONTH_NAMES.length; i += 1) {
     const monthName = MONTH_NAMES[i];
-    const monthMessage = monthCleanupMessage(monthName, year);
     const stepLabel = `${monthName} ${year} (${i + 1}/12)`;
 
-    if (onProgress) onProgress(`Whole-year cleanup: ${stepLabel}…`);
-
-    const monthPayload = {
-      ...payloadOptions,
-      email_since: null,
-      email_before: null,
-      email_limit: null,
-      email_offset: 0,
-      history: [],
-    };
-
-    let monthProgress = null;
-    const nestedProgress = onProgress
-      ? (detail) => {
-          if (!monthProgress || monthProgress !== detail) {
-            monthProgress = detail;
-            onProgress(`${stepLabel}: ${detail}`);
-          }
-        }
-      : null;
-
     try {
-      const result = await fetchEmailContext(monthMessage, monthPayload, nestedProgress);
-      if (result.error) {
-        hadError = result.error;
-        monthResults.push({ month: monthName, matched: 0, loaded: 0, trashed: 0, cleanupTargets: 0, error: result.error });
-        continue;
+      const monthScan = await runMonthCleanup({
+        monthName,
+        year,
+        monthIndex: i,
+        stepLabel,
+        payloadOptions,
+        fetchEmailContext,
+        onProgress,
+      });
+
+      if (monthScan.error && monthScan.matched === 0 && monthScan.loaded === 0) {
+        hadError = monthScan.error;
       }
 
-      const matched = result.scanMeta?.matched ?? result.messages?.length ?? 0;
-      const loaded = result.messages?.length ?? result.loadedCount ?? 0;
-      const trashed = parseTrashedCount(result.deleteResult);
-      const cleanupTargets = Array.isArray(result.messages) ? countCleanupTargets(result.messages) : 0;
-
-      totalMatched += matched;
-      totalLoaded += loaded;
-      totalTrashed += trashed;
-      totalCleanupTargets += cleanupTargets;
-      lastFetchOptions = result.fetchOptions;
-
-      if (result.deleteResult?.executed) {
-        mergedDelete = mergeYearDeleteResults(mergedDelete, result.deleteResult);
+      totalMatched += monthScan.matched;
+      totalLoaded += monthScan.loaded;
+      totalTrashed += monthScan.trashed;
+      totalCleanupTargets += monthScan.cleanupTargets;
+      lastFetchOptions = monthScan.lastFetchOptions || lastFetchOptions;
+      if (monthScan.mergedDelete?.executed) {
+        mergedDelete = mergeYearDeleteResults(mergedDelete, monthScan.mergedDelete);
       }
 
       monthResults.push({
         month: monthName,
-        matched,
-        loaded,
-        trashed,
-        cleanupTargets,
-        error: null,
+        matched: monthScan.matched,
+        loaded: monthScan.loaded,
+        trashed: monthScan.trashed,
+        cleanupTargets: monthScan.cleanupTargets,
+        error: monthScan.error && monthScan.matched === 0 ? monthScan.error : null,
       });
     } catch (err) {
       hadError = err.message || String(err);

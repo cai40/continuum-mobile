@@ -131,6 +131,10 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   if (dateRangeFromMessage && limitFromMessage == null) {
     limit = Math.max(limit, defaultLimit);
   }
+  // Whole-year cleanup uses weekly slices — always use month minimum, never the parent year cap.
+  if (payloadOptions.year_cleanup_month && dateRangeFromMessage) {
+    limit = Math.max(MONTH_RANGE_MIN_LIMIT, limitFromMessage != null ? clampLimit(limitFromMessage, MONTH_RANGE_MIN_LIMIT) : MONTH_RANGE_MIN_LIMIT);
+  }
   let offset = clampOffset(
     offsetFromMessage ?? payloadOptions.email_offset,
     0,
@@ -147,12 +151,12 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
       || (cleanup ? '30d' : null)
       || payloadOptions.email_recent
       || DEFAULT_RECENT);
-  const since = dateRangeFromMessage?.since
-    || payloadOptions.email_since
-    || null;
-  const before = dateRangeFromMessage?.before
-    || payloadOptions.email_before
-    || null;
+  const since = payloadOptions.email_date_override
+    ? (payloadOptions.email_since || dateRangeFromMessage?.since || null)
+    : (dateRangeFromMessage?.since || payloadOptions.email_since || null);
+  const before = payloadOptions.email_date_override
+    ? (payloadOptions.email_before || dateRangeFromMessage?.before || null)
+    : (dateRangeFromMessage?.before || payloadOptions.email_before || null);
   const dateRangeLabel = dateRangeFromMessage?.label
     || (since && before ? `${since} through ${addDays(before, -1)}` : null);
   const unreadOnly = /\b(unread|unseen)\b/i.test(message || '');
