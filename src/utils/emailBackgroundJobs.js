@@ -359,6 +359,8 @@ export function pollEmailJobUntilDone({
     }
   };
 
+  let doneStuckMs = 0;
+
   const runPoll = async () => {
     while (!cancelled) {
       if (Date.now() - started > effectiveMaxWait) {
@@ -372,6 +374,7 @@ export function pollEmailJobUntilDone({
       });
       if (job.restarted) {
         currentJobId = job.id;
+        doneStuckMs = 0;
         await persistMeta({ restartCount: (meta?.restartCount || 0) + 1 });
         if (onProgress) onProgress(job.progress || 'Restarting cloud email job…');
         await sleep(pollMs);
@@ -384,7 +387,7 @@ export function pollEmailJobUntilDone({
       if (onProgress && job.progress) onProgress(job.progress, job.status);
       if (job.status === 'completed') {
         await clearPendingEmailJob();
-        return job.result || '';
+        return job.result ?? '';
       }
       if (job.status === 'cancelled') {
         await clearPendingEmailJob();
@@ -396,6 +399,30 @@ export function pollEmailJobUntilDone({
         await clearPendingEmailJob();
         throw new Error(job.error || 'Background email job failed.');
       }
+      // Bridge may write progress "Done" before status flips to completed — poll quickly.
+      if (job.progress === 'Done' && job.status === 'running') {
+        if (job.result) {
+          await clearPendingEmailJob();
+          return job.result;
+        }
+        doneStuckMs += 200;
+        await sleep(200);
+        if (doneStuckMs > 15000) {
+          const recovered = await recoverJobFromLatest(
+            bridgeSecret,
+            currentJobId,
+            authToken,
+            baseUrl,
+            meta?.message,
+          );
+          if (recovered?.status === 'completed') {
+            await clearPendingEmailJob();
+            return recovered.result ?? '';
+          }
+        }
+        continue;
+      }
+      doneStuckMs = 0;
       await sleep(pollMs);
     }
     throw new Error('Background email job cancelled.');

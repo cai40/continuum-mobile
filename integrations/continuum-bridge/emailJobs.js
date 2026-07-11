@@ -328,7 +328,6 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       summaryOnly,
     });
     if (prefilledResult && (cleanupRequested || summaryOnly)) {
-      status('Done');
       return updateJob(jobId, {
         status: 'completed',
         progress: 'Done',
@@ -372,7 +371,6 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
 
     status('Asking Continuum…');
     const reply = await callContinuumStream(config.apiUrl, userAuth, payload);
-    status('Done');
     return updateJob(jobId, {
       status: 'completed',
       progress: 'Done',
