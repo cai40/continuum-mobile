@@ -51,6 +51,7 @@ import {
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
+import CleanupMenuBar from './CleanupMenuBar';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -80,6 +81,8 @@ const ChatSection = () => {
     getTierLimits,
     subscriptionTier,
     setActiveTab,
+    pendingChatMessage,
+    setPendingChatMessage,
   } = useAppContext();
 
   const [input, setInput] = useState('');
@@ -116,6 +119,16 @@ const ChatSection = () => {
       dismissKeyboard();
     }
   }, [activeTab, dismissKeyboard]);
+
+  useEffect(() => {
+    if (activeTab !== 'chat' || !pendingChatMessage) return undefined;
+    const msg = pendingChatMessage;
+    setPendingChatMessage(null);
+    const timer = setTimeout(() => {
+      sendMessage(null, false, msg);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [activeTab, pendingChatMessage, setPendingChatMessage]);
 
   useEffect(() => {
     if (activeTab !== 'chat' || !renderEmailEnabled) return undefined;
@@ -460,7 +473,7 @@ const ChatSection = () => {
   };
   stopRecordingRef.current = stopRecording;
 
-  const sendMessage = async (overrideAttachment = null, isFromVoice = false) => {
+  const sendMessage = async (overrideAttachment = null, isFromVoice = false, overrideText = null) => {
     try {
       if (isTyping) {
         handleStop();
@@ -483,8 +496,8 @@ const ChatSection = () => {
       const activeAttachments = (overrideAttachment && overrideAttachment.uri)
         ? [overrideAttachment]
         : attachments;
-      const finalInput = isFromVoice ? localTranscript : input;
-      if (!finalInput.trim() && activeAttachments.length === 0) return;
+      const finalInput = (overrideText ?? (isFromVoice ? localTranscript : input)).trim();
+      if (!finalInput && activeAttachments.length === 0) return;
 
       if (renderEmailEnabled && isStopEmailJobMessage(finalInput)) {
         const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
@@ -579,9 +592,11 @@ const ChatSection = () => {
       const isWebSearchQuery =
         wantsWebSearch(finalInput) && !isEmailQuery && !activeAttachments.length;
 
-      const displayInput = isFromVoice
-        ? finalInput
-        : sanitizeUserVisibleContent(
+      const displayInput = overrideText
+        ? overrideText
+        : isFromVoice
+          ? finalInput
+          : sanitizeUserVisibleContent(
             input || (activeAttachments.some((f) => f.type?.startsWith('audio'))
               ? "🎤 Processing..."
               : (activeAttachments.length ? `📎 ${activeAttachments.length} file(s) attached` : "")),
@@ -1192,6 +1207,16 @@ const ChatSection = () => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {!isSelectionMode && (
+        <CleanupMenuBar
+          onEmailCleanup={(msg) => sendMessage(null, false, msg)}
+          onPhotoPreview={(msg) => sendMessage(null, false, msg)}
+          onPhotoApply={(msg) => sendMessage(null, false, msg)}
+          emailDisabled={!renderEmailEnabled}
+          emailDisabledHint="Turn on Render cloud email in Setup → OpenClaw Gateway."
+        />
+      )}
 
       <FlatList
         ref={chatListRef}
