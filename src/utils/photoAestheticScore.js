@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { throwIfPhotoCleanupCancelled } from './photoCleanupCancel';
 
 const SCREENSHOT_NAME_RE = /screenshot|screen.?shot|screencapture|simulator|capture|screenrecording/i;
 const CODING_NAME_RE = /vscode|xcode|android.?studio|terminal|ide|code|debug|console|stack\s*trace/i;
@@ -233,6 +234,7 @@ export async function scorePhotosForFavorites(assets, { onProgress, visionCreden
   const textureCandidates = quick.slice(0, textureCount);
 
   for (let i = 0; i < textureCandidates.length; i++) {
+    throwIfPhotoCleanupCancelled();
     const { asset } = textureCandidates[i];
     const texture = await scorePhotoTexture(asset.uri);
     const blended = scores.get(asset.id) + texture * 0.35;
@@ -251,6 +253,7 @@ export async function scorePhotosForFavorites(assets, { onProgress, visionCreden
   let visionDone = 0;
 
   for (let i = 0; i < visionCandidates.length; i += VISION_BATCH_SIZE) {
+    throwIfPhotoCleanupCancelled();
     const batchAssets = visionCandidates.slice(i, i + VISION_BATCH_SIZE);
     try {
       const images = await Promise.all(

@@ -53,6 +53,7 @@ import {
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, isPhotoConfirmMessage, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
+import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from '../utils/photoCleanupCancel';
 import { wantsDraftOutput, DRAFT_OUTPUT_APPEND, buildDraftAssistantMessages } from '../utils/draftOutput';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
@@ -212,6 +213,7 @@ const ChatSection = () => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
     backgroundJobRef.current = null;
+    requestPhotoCleanupCancel();
     if (renderEmailEnabled) {
       const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
       const token = session?.access_token?.trim();
@@ -621,7 +623,14 @@ const ChatSection = () => {
           ]);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (e) {
-          Alert.alert('Photo cleanup failed', friendlyChatError(e.message || String(e)));
+          if (isPhotoCleanupCancelledError(e)) {
+            setMessages((prev) => [
+              ...prev,
+              { id: (Date.now() + 1).toString(), role: 'assistant', content: 'Photo cleanup stopped.' },
+            ]);
+          } else {
+            Alert.alert('Photo cleanup failed', friendlyChatError(e.message || String(e)));
+          }
         } finally {
           setIsTyping(false);
           setStreamingContent('');

@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, View, Text, Alert } from 'react-native';
+import { ScrollView, View, Text, Alert, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { applyPhotoCleanupPlan, loadLastPhotoCleanupRun } from '../utils/photoAlbumCleanup';
 import { runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
+import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from '../utils/photoCleanupCancel';
 import { formatPhotoPreviewAlertSummary } from '../utils/photoCleanupPreview';
 import { createPreviewPlan, planSummary } from '../utils/photoPreviewPlan';
 import { styles, theme } from '../styles/theme';
@@ -49,7 +50,9 @@ export default function PhotoCleanupSection() {
       }
       showPreviewResult(result.report);
     } catch (e) {
-      Alert.alert('Photo cleanup failed', e.message || String(e));
+      if (!isPhotoCleanupCancelledError(e)) {
+        Alert.alert('Photo cleanup failed', e.message || String(e));
+      }
     } finally {
       setRunning(false);
       setProgress('');
@@ -85,7 +88,9 @@ export default function PhotoCleanupSection() {
                 `Deleted ${report.duplicates.deleted} photo(s). Favorited ${report.favorites.selected} photo(s).`,
               );
             } catch (e) {
-              Alert.alert('Apply failed', e.message || String(e));
+              if (!isPhotoCleanupCancelledError(e)) {
+                Alert.alert('Apply failed', e.message || String(e));
+              }
             } finally {
               setRunning(false);
               setProgress('');
@@ -135,6 +140,22 @@ export default function PhotoCleanupSection() {
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6 }}>
             Scanning your library on-device — keep the app open. Large libraries may take a few minutes.
           </Text>
+          {running ? (
+            <TouchableOpacity
+              onPress={() => requestPhotoCleanupCancel()}
+              style={{
+                backgroundColor: theme.colors.danger,
+                paddingVertical: 10,
+                borderRadius: 10,
+                marginTop: 12,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                Stop
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
 
