@@ -56,6 +56,16 @@ const STATEMENT_PATTERNS = /\b(e-?statement|account statement|monthly statement|
 
 const ORDER_RECEIPT_KEEP = /\b(receipt|invoice|order confirm|confirmation number|your order|shipped|delivery confirm|payment received|tracking number|out for delivery|has shipped|pickup ready|pick.?up|delivered)\b/i;
 
+/** Card/bank welcome & promo subdomains — not OTP/alerts; safe to classify as marketing. */
+const BANK_MARKETING_FROM = /@welcome\.americanexpress|@marketing\.|@promo\.|@e\.(?:aa|united|delta)\./i;
+
+/** Airline bulk promo domains; keep trip essentials via TRAVEL_ESSENTIAL_KEEP. */
+const AIRLINE_MARKETING_FROM = /@infos-|notifications@united\.com|@e\.united\.com|@e\.aa\.com|@e\.delta\.com|@email\.southwest\.com|@flyfrontier\.com/i;
+
+const TRAVEL_ESSENTIAL_KEEP = /\b(flight confirm(?:ation)?|itinerar|check.?in|boarding pass|gate change|delay|flight status|e-?ticket|your trip|travel document|baggage|seat assignment|trip confirm(?:ation)?|ua\d{3,4}\b|flight\s+#?\d+)\b/i;
+
+const VENMO_PAYMENT_KEEP = /\b(paid you|you paid|payment|transfer|sent you|received|completed|charged|refund)\b/i;
+
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
   /mattressfirm|mattress\s+firm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
@@ -66,13 +76,38 @@ const MARKETING_SENDER_PATTERNS = [
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
   /yahoo@daily\.comms\.yahoo\.net/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
+  /@welcome\.americanexpress|bostonsailingcenter/i,
 ];
+
+function isBankMarketingFrom(from) {
+  return BANK_MARKETING_FROM.test(String(from || ''));
+}
+
+function isAirlineMarketing(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
+  if (!AIRLINE_MARKETING_FROM.test(from)) return false;
+  const blob = emailBlob(email);
+  if (TRAVEL_ESSENTIAL_KEEP.test(blob)) return false;
+  if (ORDER_RECEIPT_KEEP.test(blob)) return false;
+  return true;
+}
+
+function isVenmoPromo(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
+  if (!/venmo\.com/i.test(from)) return false;
+  const blob = emailBlob(email);
+  if (VENMO_PAYMENT_KEEP.test(blob)) return false;
+  return /\b(refer|invite|earn|reward|promo|bonus|friend)\b/i.test(blob);
+}
 
 function isMarketingSender(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const subject = String(email.subject || '');
   const blob = `${from} ${subject}`;
   if (ORDER_RECEIPT_KEEP.test(emailBlob(email))) return false;
+  if (isAirlineMarketing(email)) return true;
+  if (isVenmoPromo(email)) return true;
+  if (isBankMarketingFrom(from)) return true;
   return MARKETING_SENDER_PATTERNS.some((re) => re.test(blob));
 }
 
@@ -102,7 +137,9 @@ function emailBlob(email) {
 }
 
 function isProtected(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
   const blob = emailBlob(email);
+  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email)) return false;
   if (PROTECTED_PATTERNS.some((re) => re.test(blob))) return true;
   // Bank mail that is not a routine statement stays protected (OTP, alerts, invoices).
   if (PROTECTED_BANK_NON_STATEMENT.test(blob) && !STATEMENT_PATTERNS.test(blob)) return true;
