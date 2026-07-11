@@ -461,10 +461,16 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
 
     if (sinceStr && beforeStr) {
       console.error(`[imap] date-range check ${sinceStr}..${beforeStr} limit=${limit} offset=${offset}`);
+      const rangeDays = rangeWidthDays(sinceStr, beforeStr);
       const direct = await tryFetchDateRangeDirect(imap, {
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
       if (direct != null) return direct;
+      if (rangeDays <= 8) {
+        console.error(`[imap] date-range: skipping lookback for short window ${sinceStr}..${beforeStr}`);
+        emptyDirectScanMeta(sinceStr, beforeStr);
+        return [];
+      }
       return await fetchDateRangeViaRecentLookback(imap, {
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
@@ -623,6 +629,24 @@ function imapDateFromIso(isoStr) {
   return new Date(isoStr);
 }
 
+function isoRangeToMs(sinceStr, beforeStr) {
+  const sinceMs = imapDateFromIso(sinceStr).getTime();
+  const beforeMs = imapDateFromIso(beforeStr).getTime();
+  return { sinceMs, beforeMs };
+}
+
+function emptyDirectScanMeta(sinceStr, beforeStr, { scanned = 0, matched = 0, scanMode = 'direct', sampleDates = [] } = {}) {
+  console.error(`SCAN_META:${JSON.stringify({
+    scanned,
+    totalUids: 0,
+    scanMode,
+    matched,
+    sampleDates,
+    wanted: { since: sinceStr, before: beforeStr },
+    used: { since: sinceStr, before: beforeStr },
+  })}`);
+}
+
 function buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime, useImapBefore = true }) {
   const criteria = [];
   if (unreadOnly) criteria.push('UNSEEN');
@@ -635,8 +659,7 @@ function buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime, useI
 
 function filterByDateRange(rows, sinceStr, beforeStr) {
   if (!sinceStr || !beforeStr) return rows;
-  const sinceMs = imapDateFromIso(sinceStr).getTime();
-  const beforeMs = imapDateFromIso(beforeStr).getTime();
+  const { sinceMs, beforeMs } = isoRangeToMs(sinceStr, beforeStr);
   return rows.filter((row) => rowInDateRange(row, sinceMs, beforeMs));
 }
 
@@ -735,12 +758,19 @@ function mergeRowsByUid(rows) {
 
 // Try Yahoo IMAP SINCE+BEFORE first — only fetch headers for matching UIDs (no Jan–Jun lookback scan).
 async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
-  const searchAttempts = [
-    { unreadOnly, useImapBefore: true, label: 'since-before' },
-    { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
-    { unreadOnly, useImapBefore: false, label: 'since-only' },
-    { unreadOnly: false, useImapBefore: false, label: 'since-only-all' },
-  ];
+  const rangeDays = rangeWidthDays(sinceStr, beforeStr);
+  const shortWindow = rangeDays <= 8;
+  const searchAttempts = shortWindow
+    ? [
+      { unreadOnly, useImapBefore: true, label: 'since-before' },
+      { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
+    ]
+    : [
+      { unreadOnly, useImapBefore: true, label: 'since-before' },
+      { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
+      { unreadOnly, useImapBefore: false, label: 'since-only' },
+      { unreadOnly: false, useImapBefore: false, label: 'since-only-all' },
+    ];
 
   try {
     let uids = [];
@@ -758,7 +788,14 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
         45000,
       );
     }
-    if (uids.length === 0) return null;
+    if (uids.length === 0) {
+      if (shortWindow) {
+        console.error(`[imap] date-range direct: 0 uid(s) for ${sinceStr}..${beforeStr} (short window)`);
+        emptyDirectScanMeta(sinceStr, beforeStr);
+        return [];
+      }
+      return null;
+    }
 
     if (uids.length >= 1000) {
       console.error(
@@ -777,6 +814,22 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
 
     let { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
     if (filtered.length === 0) {
+      const sampleDates = sortRowsNewestFirst([...allRows]).slice(0, 5).map((row) => {
+        const t = emailTimestampMs(row);
+        return t > 0 ? new Date(t).toISOString().slice(0, 10) : null;
+      }).filter(Boolean);
+      if (shortWindow) {
+        console.error(
+          `[imap] date-range direct: 0 in ${sinceStr}..${beforeStr} after checking ${allRows.length} header(s)`
+          + (sampleDates.length ? `; sample dates: ${sampleDates.join(', ')}` : ''),
+        );
+        emptyDirectScanMeta(sinceStr, beforeStr, {
+          scanned: allRows.length,
+          matched: 0,
+          sampleDates,
+        });
+        return [];
+      }
       console.error('[imap] date-range direct: 0 matched after JS filter; falling back to lookback');
       return null;
     }

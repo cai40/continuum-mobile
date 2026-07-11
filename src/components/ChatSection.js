@@ -46,6 +46,7 @@ import {
   stopActiveEmailJob,
   isStopEmailJobMessage,
   wasEmailJobStopped,
+  appendJobProgress,
   buildEmailJobPayload,
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
@@ -266,7 +267,7 @@ const ChatSection = () => {
       jobId: pendingId,
       authToken: token,
       jobMeta: meta,
-      onProgress: (detail) => setStreamingContent(detail),
+      onProgress: (detail) => appendJobProgress(setStreamingContent, detail),
     });
     backgroundJobRef.current = poller;
     try {
@@ -890,7 +891,7 @@ const ChatSection = () => {
                 authToken: activeToken,
                 baseUrl: jobBaseUrl,
                 jobMeta,
-                onProgress: (detail) => setStreamingContent(detail),
+                onProgress: (detail) => appendJobProgress(setStreamingContent, detail),
               });
               backgroundJobRef.current = poller;
               abortControllerRef.current = { abort: () => poller.cancel() };
