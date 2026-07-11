@@ -419,12 +419,24 @@ function parseImapProgressLine(line) {
 
   let m;
   if ((m = text.match(/^\[imap\]\s+search\s+(.+?)\.\.\.$/i))) {
+    const direct = m[1].match(/^direct-(\d{4}-\d{2}-\d{2})-since-before/i);
+    if (direct) return null;
     const label = m[1].replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
     return `Searching ${label}…`;
   }
   if ((m = text.match(/^\[imap\]\s+search\s+(.+?):\s+(\d+)\s+uid/i))) {
+    const count = parseInt(m[2], 10);
+    const direct = m[1].match(/^direct-(\d{4}-\d{2}-\d{2})-since-before/i);
+    if (direct) {
+      const since = direct[1];
+      return count === 0
+        ? `No mail found from ${since} in this slice`
+        : `Found ${count} email(s) from ${since} in this slice`;
+    }
     const label = m[1].replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
-    return `Found ${m[2]} email(s) in ${label}`;
+    return count === 0
+      ? `No mail found in ${label}`
+      : `Found ${count} email(s) in ${label}`;
   }
   if ((m = text.match(/^\[imap\]\s+date-range\s+check\s+(\S+)\.\.(\S+)\s+limit=(\d+)/i))) {
     return `Scanning ${m[1]} to ${m[2]} (up to ${m[3]})…`;
@@ -452,7 +464,9 @@ function parseImapProgressLine(line) {
     return 'Found all messages in range — finishing…';
   }
   if ((m = text.match(/^\[imap\]\s+date-range\s+direct:\s+(\d+)\s+uid/i))) {
-    return `Found ${m[1]} email(s) in date range — fetching headers…`;
+    const count = parseInt(m[1], 10);
+    if (count === 0) return null;
+    return `Found ${count} email(s) in date range — fetching headers…`;
   }
   if (/date-range\s+direct:\s+hit\s+yahoo/i.test(text)) {
     return 'Yahoo search cap hit — switching to lookback scan…';

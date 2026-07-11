@@ -75,6 +75,11 @@ function mergeMonthScanResults(accum, result) {
   return accum;
 }
 
+function weekRangeLabel(week) {
+  const end = addDays(week.before, -1);
+  return week.since === end ? week.since : `${week.since} .. ${end}`;
+}
+
 async function runMonthCleanup({
   monthName,
   year,
@@ -102,7 +107,8 @@ async function runMonthCleanup({
 
     const week = weeks[w];
     const weekLabel = weeks.length > 1 ? `${stepLabel} week ${w + 1}/${weeks.length}` : stepLabel;
-    if (onProgress) onProgress(`Whole-year cleanup: ${weekLabel}…`);
+    const rangeLabel = weekRangeLabel(week);
+    if (onProgress) onProgress(`${weekLabel}: scanning ${rangeLabel}…`);
 
     const weekPayload = {
       ...payloadOptions,
@@ -115,12 +121,8 @@ async function runMonthCleanup({
       history: [],
     };
 
-    const nestedProgress = onProgress
-      ? (detail) => onProgress(`${weekLabel}: ${detail}`)
-      : null;
-
     try {
-      const result = await fetchEmailContext(monthMessage, weekPayload, nestedProgress);
+      const result = await fetchEmailContext(monthMessage, weekPayload, null);
       if (result.error) {
         accum.error = result.error;
         if (onProgress) onProgress(`${weekLabel}: error — ${result.error}`);
@@ -318,6 +320,12 @@ async function runYearCleanup({
         cleanupTargets: monthScan.cleanupTargets,
         error: monthScan.error && monthScan.matched === 0 ? monthScan.error : null,
       });
+
+      if (onProgress) {
+        onProgress(
+          `${stepLabel}: month done — ${monthScan.matched} matched, ${monthScan.loaded} loaded, ${monthScan.trashed} trashed`,
+        );
+      }
     } catch (err) {
       if (err.code === 'EMAIL_JOB_CANCELLED') throw err;
       hadError = err.message || String(err);

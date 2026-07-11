@@ -14,7 +14,7 @@ export function appendJobProgress(setStreamingContent, detail) {
     const text = String(prev || '').trim();
     if (!text) return line;
     const lines = text.split('\n');
-    if (lines.includes(line)) return text;
+    if (lines[lines.length - 1] === line) return text;
     const next = `${text}\n${line}`;
     return next.length > 6000 ? next.slice(-6000) : next;
   });
