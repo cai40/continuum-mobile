@@ -183,7 +183,50 @@ function listCleanupTargets(emails, maxCap = CLEANUP_DELETE_MAX) {
 
 const CLEANUP_PREVIEW_LIST_MAX = 150;
 
-function formatCleanupPreviewBlock(emails, { maxList = CLEANUP_PREVIEW_LIST_MAX } = {}) {
+function formatEmailCleanupPreviewNextSteps({ dateRangeLabel = null, cleanupCount = 0 } = {}) {
+  const period = dateRangeLabel ? `**${dateRangeLabel}**` : 'the **same period** you just previewed';
+  const chatApply = dateRangeLabel ? `clean up ${dateRangeLabel} emails` : 'clean up inbox';
+
+  const lines = [
+    '',
+    '---',
+    '',
+    '## What to do next',
+    '',
+    'This was a **preview only** — nothing was moved to Trash.',
+    '',
+  ];
+
+  if (cleanupCount <= 0) {
+    lines.push(
+      'No messages matched cleanup rules in this batch.',
+      '',
+      '**Options:**',
+      '- Try a different date range from the **Email** tab.',
+      '- Raise **Email Fetch Limit** in Setup if you expected more mail.',
+      '- Preview again: **Email** tab → period → **Preview (dry run)**.',
+    );
+    return lines;
+  }
+
+  lines.push(
+    '**To apply cleanup (move listed emails to Trash):**',
+    '',
+    '1. Open **Setup** → **OpenClaw Gateway** (Render cloud email).',
+    '2. Turn **ON** “Allow move to Trash” and tap **Save**.',
+    `3. Open the **Email** tab → choose ${period} → tap **Apply cleanup**.`,
+    `4. Or in **Chat**, send exactly: \`${chatApply}\` (same period — do not say “preview”).`,
+    '5. Keep the app open until the reply shows **Done** (large months may take 1–2 minutes).',
+    '',
+    '**Notes:**',
+    `- **${cleanupCount}** message(s) above would move to Yahoo **Trash** (recoverable; not permanently deleted).`,
+    '- Protected mail (banks, OTP/security, never-trash senders) is not in the list above.',
+    '- **To skip:** do nothing — this preview made no changes.',
+  );
+  return lines;
+}
+
+function formatCleanupPreviewBlock(emails, { maxList = CLEANUP_PREVIEW_LIST_MAX, dateRangeLabel = null } = {}) {
   const targets = listCleanupTargets(emails);
   const lines = [
     '[EMAIL CLEANUP PREVIEW — dry run, nothing moved to Trash]',
@@ -204,10 +247,7 @@ function formatCleanupPreviewBlock(emails, { maxList = CLEANUP_PREVIEW_LIST_MAX 
     }
   }
 
-  lines.push(
-    '',
-    '_Turn on **Allow move to Trash** in Setup, then say **apply email cleanup** (or tap Apply) to move these._',
-  );
+  lines.push(...formatEmailCleanupPreviewNextSteps({ dateRangeLabel, cleanupCount: targets.length }));
 
   return {
     text: lines.join('\n'),
@@ -616,6 +656,7 @@ module.exports = {
   countCleanupTargets,
   listCleanupTargets,
   formatCleanupPreviewBlock,
+  formatEmailCleanupPreviewNextSteps,
   extractEmailCleanupPreviewBlock,
   resolveChurchCommunityUids,
   parseExplicitUids,

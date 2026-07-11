@@ -6,7 +6,7 @@ const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
-const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, formatEmailCleanupPreviewNextSteps, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
@@ -310,10 +310,7 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
         lines.push(`- _…and ${targets.length - maxInline} more_`);
       }
     }
-    lines.push(
-      '',
-      '_Turn on Allow move to Trash in Setup, then say apply email cleanup (or tap Apply) to move these._',
-    );
+    lines.push(...formatEmailCleanupPreviewNextSteps({ dateRangeLabel, cleanupCount }));
   } else if (cleanupRequested && cleanupCount > 0) {
     lines.push(
       '',
@@ -806,7 +803,9 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     let cleanupPreviewBlock = null;
 
     if (cleanupPreviewRequested) {
-      cleanupPreviewBlock = formatCleanupPreviewBlock(messages);
+      cleanupPreviewBlock = formatCleanupPreviewBlock(messages, {
+        dateRangeLabel: fetchOptions.dateRangeLabel,
+      });
     }
 
     if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested && !skipAutoTrashForCleanup && !cleanupPreviewRequested) {
