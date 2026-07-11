@@ -91,6 +91,8 @@ const CLEANUP_BANK = /\b(bank of america|fidelity|greenwood credit|peoplesbank|c
 const CLEANUP_NEWS = /\b(breaking news|news digest|news alert|daily briefing|top stories|news update|news@|@news\.|nytimes|cnn\.com|bbc\.|reuters|apnews|substack)\b/i;
 const CLEANUP_DEV = /\b(github|gitlab|bitbucket|cursor\[bot\]|dependabot|circleci|travis.?ci|vercel|netlify|npmjs|docker\.com|pull request|workflow run|build failed|build passed|code review|stackoverflow|sentry\.io|heroku|render\.com|actions run|ci\/cd|jenkins)\b/i;
 const CLEANUP_ADS = /\b(advertisement|sponsored|promo(?:tion|tional)?|marketing blast|%\s*off|deal of the day|limited.?time offer|shop now|buy now|free shipping)\b/i;
+const CLEANUP_MARKETING_SENDERS = /\b(auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure|shopifyemail\.com|@t\.shopifyemail|hit-reply@linkedin|mailer\.appfolio|appfolio\.us|mattressfirm|mattress\s+firm)\b/i;
+const CLEANUP_RECEIPT_KEEP = /\b(receipt|invoice|order confirm|confirmation number|your order|shipped|delivery confirm|payment received|tracking number|out for delivery|has shipped|pickup ready|paid you|sent you \$)\b/i;
 
 function matchesCleanupTarget(row, email) {
   if (row.uid == null) return false;
@@ -108,6 +110,7 @@ function matchesCleanupTarget(row, email) {
   if (CLEANUP_NEWS.test(fullBlob)) return true;
   if (CLEANUP_DEV.test(fullBlob)) return true;
   if (CLEANUP_ADS.test(fullBlob)) return true;
+  if (CLEANUP_MARKETING_SENDERS.test(fullBlob) && !CLEANUP_RECEIPT_KEEP.test(fullBlob)) return true;
   if (/\bnewsletter\b/i.test(fullBlob)) return true;
 
   return false;
