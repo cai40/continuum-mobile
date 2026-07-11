@@ -74,20 +74,20 @@ const UPS_MARKETING_FROM = /mcinfo@ups\.com|@ups\.com.*(?:marketing|promo)/i;
 
 const PACKAGE_ESSENTIAL_KEEP = /\b(out for delivery|on the way|in transit|delivered|delivery (?:confirm|update|scheduled)|tracking number|track your package|package (?:has|was) (?:shipped|delivered)|expected delivery|ready for pickup|pickup ready|shipment (?:confirm|update))\b/i;
 
-/** Amazon shipment, delivery, and auto-confirm order mail (keep returns). */
-const AMAZON_SHIPPING_FROM = /shipment-tracking@amazon\.com|order-update@amazon\.com|auto-confirm@amazon\.com/i;
+/** Amazon order/shipment/return automated mail. */
+const AMAZON_CLEANUP_FROM = /shipment-tracking@amazon\.com|order-update@amazon\.com|auto-confirm@amazon\.com|return@amazon\.com/i;
 
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
   /mattressfirm|mattress\s+firm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
-  /auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure\.|@search\.foreclosure|@convo\.zillow\.com|convo\.zillow/i,
+  /auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure\.|@search\.foreclosure|@convo\.zillow\.com|convo\.zillow|affordablehousing\.com|@e\.stessa\.com|stessa\.com/i,
   /shopifyemail\.com|@t\.shopifyemail|myshopify\.com/i,
   /hit-reply@linkedin|linkedin.*(?:promoted|digest|newsletter)/i,
   /mailer\.appfolio|communications@.*appfolio|jbutlerpm\.mailer/i,
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
   /yahoo@daily\.comms\.yahoo\.net/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
-  /@welcome\.americanexpress|bostonsailingcenter|update\.strava\.com|mail@update\.strava|gopassport\.com/i,
+  /@welcome\.americanexpress|bostonsailingcenter|update\.strava\.com|mail@update\.strava|gopassport\.com|notification\.us\.moomoo\.com|moomoo\.com/i,
 ];
 
 function isBankMarketingFrom(from) {
@@ -138,16 +138,16 @@ function isGopassportPromo(email) {
   return true;
 }
 
-function isAmazonShippingJunk(email) {
+function isAmazonCleanupJunk(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
-  return AMAZON_SHIPPING_FROM.test(from);
+  return AMAZON_CLEANUP_FROM.test(from);
 }
 
 function isMarketingSender(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const subject = String(email.subject || '');
   const blob = `${from} ${subject}`;
-  if (isAmazonShippingJunk(email)) return true;
+  if (isAmazonCleanupJunk(email)) return true;
   if (ORDER_RECEIPT_KEEP.test(emailBlob(email))) return false;
   if (isAirlineMarketing(email)) return true;
   if (isVenmoPromo(email)) return true;
@@ -186,7 +186,7 @@ function emailBlob(email) {
 function isProtected(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const blob = emailBlob(email);
-  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email) || isUspsAutoJunk(email) || isUpsMarketing(email) || isGopassportPromo(email) || isAmazonShippingJunk(email)) return false;
+  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email) || isUspsAutoJunk(email) || isUpsMarketing(email) || isGopassportPromo(email) || isAmazonCleanupJunk(email)) return false;
   if (PROTECTED_PATTERNS.some((re) => re.test(blob))) return true;
   // Bank mail that is not a routine statement stays protected (OTP, alerts, invoices).
   if (PROTECTED_BANK_NON_STATEMENT.test(blob) && !STATEMENT_PATTERNS.test(blob)) return true;
