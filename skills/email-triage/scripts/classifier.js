@@ -88,7 +88,7 @@ const MARKETING_SENDER_PATTERNS = [
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
   /yahoo@daily\.comms\.yahoo\.net/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
-  /@welcome\.americanexpress|bostonsailingcenter|update\.strava\.com|mail@update\.strava|gopassport\.com/i,
+  /@welcome\.americanexpress|update\.strava\.com|mail@update\.strava|gopassport\.com/i,
 ];
 
 function isBankMarketingFrom(from) {
