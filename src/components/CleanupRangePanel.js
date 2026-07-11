@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { theme } from '../styles/theme';
 import {
   getCleanupRange,
+  getCleanupRangeFromMonths,
   buildEmailCleanupMessage,
   buildPhotoCleanupMessage,
   listSelectableMonths,
@@ -60,33 +61,51 @@ export default function CleanupRangePanel({
   compact = false,
 }) {
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
-  const [pendingPhotoApply, setPendingPhotoApply] = useState(false);
   const months = listSelectableMonths(24);
 
-  const runEmail = (period, opts) => {
-    const range = getCleanupRange(period, opts);
+  const runEmailWithRange = (range) => {
     if (!range || !onEmailCleanup) return;
     onEmailCleanup(buildEmailCleanupMessage(range));
   };
 
-  const runPhoto = (period, opts, apply) => {
-    const range = getCleanupRange(period, opts);
+  const runEmail = (period, opts) => {
+    runEmailWithRange(getCleanupRange(period, opts));
+  };
+
+  const runPhotoWithRange = (range, apply) => {
     if (!range) return;
     const message = buildPhotoCleanupMessage(range, { apply });
     if (apply) onPhotoApply?.(message);
     else onPhotoPreview?.(message);
   };
 
-  const openMonthPicker = (forApply = false) => {
-    setPendingPhotoApply(forApply);
+  const runPhoto = (period, opts, apply) => {
+    runPhotoWithRange(getCleanupRange(period, opts), apply);
+  };
+
+  const openMonthPicker = () => {
     setMonthPickerVisible(true);
   };
 
-  const onMonthSelected = ({ month, year, label }) => {
+  const onMonthsConfirmed = (selectedMonths) => {
     setMonthPickerVisible(false);
-    const opts = { month, year };
-    if (mode === 'email') runEmail('custom_month', opts);
-    else runPhoto('custom_month', opts, pendingPhotoApply);
+    if (!selectedMonths.length) return;
+
+    const range = selectedMonths.length === 1
+      ? getCleanupRange('custom_month', selectedMonths[0])
+      : getCleanupRangeFromMonths(selectedMonths);
+    if (!range) return;
+
+    if (mode === 'email') {
+      runEmailWithRange(range);
+      return;
+    }
+
+    Alert.alert('Photo cleaning', 'Preview scans without deleting. Apply removes duplicates and coding screenshots. Favorites are never touched.', [
+      { text: 'Preview (dry run)', onPress: () => runPhotoWithRange(range, false) },
+      { text: 'Apply cleanup', style: 'destructive', onPress: () => runPhotoWithRange(range, true) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const showPhotoActionSheet = (period, opts = {}) => {
@@ -103,11 +122,11 @@ export default function CleanupRangePanel({
         Alert.alert('Email cleaning unavailable', emailDisabledHint || 'Enable Render cloud email in Setup.');
         return;
       }
-      if (period === 'custom_month') openMonthPicker(false);
+      if (period === 'custom_month') openMonthPicker();
       else runEmail(period);
       return;
     }
-    if (period === 'custom_month') openMonthPicker(false);
+    if (period === 'custom_month') openMonthPicker();
     else showPhotoActionSheet(period);
   };
 
@@ -121,7 +140,7 @@ export default function CleanupRangePanel({
                 { text: 'Today', onPress: () => handleRangePress('today') },
                 { text: 'This week', onPress: () => handleRangePress('week') },
                 { text: 'This month', onPress: () => handleRangePress('month') },
-                { text: 'Choose month…', onPress: () => handleRangePress('custom_month') },
+                { text: 'Choose months…', onPress: () => handleRangePress('custom_month') },
                 { text: 'Cancel', style: 'cancel' },
               ]);
             }}
@@ -155,8 +174,8 @@ export default function CleanupRangePanel({
         <MonthPickerModal
           visible={monthPickerVisible}
           months={months}
-          title={mode === 'email' ? 'Email — choose month' : 'Photos — choose month'}
-          onSelect={onMonthSelected}
+          title={mode === 'email' ? 'Email — choose months' : 'Photos — choose months'}
+          onConfirm={onMonthsConfirmed}
           onClose={() => setMonthPickerVisible(false)}
         />
       </>
@@ -202,8 +221,8 @@ export default function CleanupRangePanel({
         disabled={mode === 'email' && emailDisabled}
       />
       <RangeButton
-        label="Choose month…"
-        subtitle="Pick any of the last 24 months"
+        label="Choose months…"
+        subtitle="Pick one or more of the last 24 months"
         icon="list-outline"
         onPress={() => handleRangePress('custom_month')}
         disabled={mode === 'email' && emailDisabled}
@@ -212,17 +231,44 @@ export default function CleanupRangePanel({
       <MonthPickerModal
         visible={monthPickerVisible}
         months={months}
-        title={mode === 'email' ? 'Email — choose month' : 'Photos — choose month'}
-        onSelect={onMonthSelected}
+        title={mode === 'email' ? 'Email — choose months' : 'Photos — choose months'}
+        onConfirm={onMonthsConfirmed}
         onClose={() => setMonthPickerVisible(false)}
       />
     </View>
   );
 }
 
-function MonthPickerModal({ visible, months, title, onSelect, onClose }) {
+function MonthPickerModal({ visible, months, title, onConfirm, onClose }) {
+  const [selectedKeys, setSelectedKeys] = useState(new Set());
+
+  const toggleMonth = (item) => {
+    const key = `${item.year}-${item.month}`;
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleConfirm = () => {
+    if (!selectedKeys.size) {
+      Alert.alert('Choose at least one month', 'Tap months to select them, then tap Done.');
+      return;
+    }
+    const selected = months.filter((item) => selectedKeys.has(`${item.year}-${item.month}`));
+    onConfirm(selected);
+    setSelectedKeys(new Set());
+  };
+
+  const handleClose = () => {
+    setSelectedKeys(new Set());
+    onClose();
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={{ flex: 1, backgroundColor: theme.colors.white }}>
         <View style={{
           padding: 20,
@@ -233,28 +279,55 @@ function MonthPickerModal({ visible, months, title, onSelect, onClose }) {
           borderBottomColor: theme.colors.light,
         }}
         >
-          <Text style={{ fontSize: 18, fontWeight: '800', color: theme.colors.black }}>{title}</Text>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>Cancel</Text>
+          <TouchableOpacity onPress={handleClose}>
+            <Text style={{ color: theme.colors.gray, fontWeight: '700' }}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.black }}>{title}</Text>
+          <TouchableOpacity onPress={handleConfirm}>
+            <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>
+              Done{selectedKeys.size ? ` (${selectedKeys.size})` : ''}
+            </Text>
           </TouchableOpacity>
         </View>
+        <Text style={{ fontSize: 12, color: theme.colors.gray, paddingHorizontal: 20, paddingVertical: 10 }}>
+          Tap to select multiple months. Non-adjacent months are supported for photos.
+        </Text>
         <FlatList
           data={months}
           keyExtractor={(item) => `${item.year}-${item.month}`}
-          contentContainerStyle={{ padding: 16 }}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              onPress={() => onSelect(item)}
-              style={{
-                paddingVertical: 14,
-                paddingHorizontal: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: theme.colors.light,
-              }}
-            >
-              <Text style={{ fontSize: 16, fontWeight: '600', color: theme.colors.black }}>{item.label}</Text>
-            </TouchableOpacity>
-          )}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          renderItem={({ item }) => {
+            const key = `${item.year}-${item.month}`;
+            const selected = selectedKeys.has(key);
+            return (
+              <TouchableOpacity
+                onPress={() => toggleMonth(item)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  paddingHorizontal: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: theme.colors.light,
+                }}
+              >
+                <Ionicons
+                  name={selected ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={selected ? theme.colors.primary : theme.colors.gray}
+                  style={{ marginRight: 12 }}
+                />
+                <Text style={{
+                  fontSize: 16,
+                  fontWeight: selected ? '700' : '600',
+                  color: theme.colors.black,
+                }}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
         />
       </View>
     </Modal>
