@@ -33,7 +33,7 @@ export default function PhotoCleanupSection() {
   const runApply = (msg) => {
     Alert.alert(
       'Apply photo cleanup?',
-      'This permanently deletes duplicate photos and coding screenshots in the selected period.',
+      'This permanently deletes duplicate photos and coding screenshots in the selected period. Favorites are never deleted.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

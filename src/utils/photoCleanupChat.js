@@ -8,7 +8,7 @@ const PHASE_LABELS = {
   scan: 'Scanning photo library',
   duplicates: 'Finding duplicates',
   screenshots: 'Detecting coding screenshots',
-  favorites: 'Scoring photos for favorites',
+  favorites: 'Scoring photos with AI',
   delete: 'Deleting photos',
   done: 'Done',
 };
