@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
-import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, isEmailConfirmMessage, buildEmailConfirmPayloadMessage } from '../utils/openclawBridge';
+import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
 import {
   DOCUMENT_MIME_TYPES,
@@ -52,8 +52,9 @@ import {
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
-import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, isPhotoConfirmMessage, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
+import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from '../utils/photoCleanupCancel';
+import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
 import { wantsDraftOutput, DRAFT_OUTPUT_APPEND, buildDraftAssistantMessages } from '../utils/draftOutput';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
@@ -517,13 +518,16 @@ const ChatSection = () => {
         return;
       }
 
-      const isPhotoConfirm = isPhotoConfirmMessage(finalInput);
+      const confirmCleanupKind = isGenericCleanupConfirm(finalInput)
+        ? resolveConfirmCleanupKind(messages, finalInput)
+        : null;
+      const isPhotoConfirm = confirmCleanupKind === 'photo';
       const isPhotoCleanupQuery = (wantsPhotoCleanup(finalInput) || wantsPhotoCleanupStatus(finalInput) || isPhotoConfirm)
         && !activeAttachments.length;
 
       const wantsCopyDraft = wantsDraftOutput(finalInput);
 
-      const isEmailConfirm = renderEmailEnabled && isEmailConfirmMessage(finalInput);
+      const isEmailConfirm = renderEmailEnabled && isGenericCleanupConfirm(finalInput) && confirmCleanupKind !== 'photo';
       const isEmailQuery = !isPhotoCleanupQuery && !isComposeEmailRequest(finalInput) && (
         /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
         || /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to|through|until|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i.test(finalInput)
