@@ -760,13 +760,14 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
     }
     if (uids.length === 0) return null;
 
-    // Yahoo SEARCH caps at ~1000 UIDs — incomplete for large months; use lookback instead.
     if (uids.length >= 1000) {
-      console.error('[imap] date-range direct: hit Yahoo ~1000 UID search cap; falling back to lookback');
-      return null;
+      console.error(
+        `[imap] date-range direct: ${uids.length} uid(s) from search`
+        + ' (Yahoo may cap at ~1000 — fetching all returned UIDs directly)',
+      );
+    } else {
+      console.error(`[imap] date-range direct: ${uids.length} uid(s) from SINCE+BEFORE — header fetch only`);
     }
-
-    console.error(`[imap] date-range direct: ${uids.length} uid(s) from SINCE+BEFORE — header fetch only`);
     const allRows = [];
     for (let i = 0; i < uids.length; i += 100) {
       const batch = uids.slice(i, i + 100);

@@ -437,6 +437,10 @@ function parseImapProgressLine(line) {
   }
   if ((m = text.match(/^\[imap\]\s+date-range\s+lookback\s+\d+d:\s+fetched\s+(\d+)\s+row/i))) {
     const matched = text.match(/matched\s+(\d+)/i);
+    const matchedN = matched ? parseInt(matched[1], 10) : null;
+    if (matchedN === 0) {
+      return `Scan complete: ${m[1]} headers checked, 0 in date range`;
+    }
     return `Scan complete: ${m[1]} fetched${matched ? `, ${matched[1]} matched` : ''}`;
   }
   if ((m = text.match(/^\[imap\]\s+date-range\s+(.+?):\s+fetched\s+(\d+)\s+row/i))) {
