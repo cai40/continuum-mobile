@@ -448,7 +448,7 @@ export const openClawChatStream = (
     ? "Email bridge timed out after 10 minutes. Try a smaller batch (limit 500) or summary-only fetch."
     : "Cannot reach OpenClaw bridge.");
   xhr.ontimeout = () => finish(timeoutMs >= 600000
-    ? "Email fetch timed out (10 min). Large inbox scans take time — retry with limit 1000 or wait and try again."
+    ? "Email fetch timed out (10 min). Large inbox scans take time — retry with limit 50000 or wait and try again."
     : "OpenClaw bridge timed out.");
 
   xhr.send(JSON.stringify(payload));

@@ -489,7 +489,13 @@ function parseImapProgressLine(line) {
   if ((m = text.match(/^\[imap\]\s+date-range\s+direct:\s+(\d+)\s+uid/i))) {
     const count = parseInt(m[1], 10);
     if (count === 0) return null;
+    if (/Yahoo may cap|since-only|since-before/i.test(text)) {
+      return `Found ${count} search result(s) — checking dates…`;
+    }
     return `Found ${count} email(s) in date range — fetching headers…`;
+  }
+  if (/date-range direct:\s+0 matched after JS filter/i.test(text)) {
+    return 'No matches in search slice — expanding to older mail…';
   }
   if (/date-range\s+direct:\s+hit\s+yahoo/i.test(text)) {
     return 'Yahoo search cap hit — switching to lookback scan…';

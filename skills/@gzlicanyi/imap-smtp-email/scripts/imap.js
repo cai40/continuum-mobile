@@ -274,27 +274,55 @@ function rangeWidthDays(sinceStr, beforeStr) {
   return Math.max(1, Math.ceil((beforeMs - sinceMs) / (24 * 60 * 60 * 1000)));
 }
 
+const YAHOO_SEARCH_UID_CAP = 1000;
+const UID_RANGE_BLOCK = 2000;
+
+function computeMaxOlderRanges(sinceStr, beforeStr) {
+  const daysBack = recentDaysForRange(sinceStr);
+  const rangeDays = rangeWidthDays(sinceStr, beforeStr);
+  // Heavy inboxes may need many 2k-UID blocks to walk from today back to a historical month.
+  const byDepth = Math.ceil(daysBack / 4);
+  if (rangeDays <= 31) return Math.min(150, Math.max(24, byDepth));
+  if (rangeDays <= 93) return Math.min(100, Math.max(16, byDepth));
+  if (rangeDays <= 366) return Math.min(150, Math.max(50, byDepth));
+  return Math.min(80, Math.max(25, byDepth));
+}
+
+function appendOlderUidRanges(plan, anchorMinUid, maxOlderRanges, reason) {
+  let uidHigh = anchorMinUid - 1;
+  let rangeCount = 0;
+  while (uidHigh > 0 && rangeCount < maxOlderRanges) {
+    const uidLow = Math.max(1, uidHigh - UID_RANGE_BLOCK + 1);
+    plan.push({ type: 'range', label: `${uidLow}:${uidHigh}`, low: uidLow, high: uidHigh });
+    console.error(
+      `[imap] date-range: expand older range ${uidLow}:${uidHigh}`
+      + ` (${reason}, anchor uid ${anchorMinUid})`,
+    );
+    uidHigh = uidLow - 1;
+    rangeCount++;
+  }
+}
+
 // Yahoo SEARCH caps at ~1000 UIDs. Walk older mail with UID range FETCH (sparse-safe).
 function buildDateRangeScanPlan(sinceUids, recentUids, { maxOlderRanges = 25 } = {}) {
   const plan = [];
-  const UID_BLOCK = 2000;
 
   if (sinceUids.length) pushUidBatches(plan, sinceUids, 'since');
 
-  if (recentUids.length >= 1000) {
-    const minRecent = Math.min(...recentUids);
-    let uidHigh = minRecent - 1;
-    let rangeCount = 0;
-    while (uidHigh > 0 && rangeCount < maxOlderRanges) {
-      const uidLow = Math.max(1, uidHigh - UID_BLOCK + 1);
-      plan.push({ type: 'range', label: `${uidLow}:${uidHigh}`, low: uidLow, high: uidHigh });
-      console.error(
-        `[imap] date-range: expand older range ${uidLow}:${uidHigh}`
-        + ` (Yahoo cap ~1000, min recent uid ${minRecent})`,
-      );
-      uidHigh = uidLow - 1;
-      rangeCount++;
-    }
+  const cappedSince = sinceUids.length >= YAHOO_SEARCH_UID_CAP;
+  const cappedRecent = recentUids.length >= YAHOO_SEARCH_UID_CAP;
+  if (cappedSince || cappedRecent) {
+    const anchors = [];
+    if (sinceUids.length) anchors.push(Math.min(...sinceUids));
+    if (recentUids.length) anchors.push(Math.min(...recentUids));
+    appendOlderUidRanges(
+      plan,
+      Math.min(...anchors),
+      maxOlderRanges,
+      cappedSince && cappedRecent
+        ? 'Yahoo cap ~1000 on since+recent'
+        : (cappedSince ? 'Yahoo cap ~1000 on since search' : 'Yahoo cap ~1000 on recent search'),
+    );
   }
 
   if (recentUids.length) pushUidBatches(plan, recentUids, 'recent');
@@ -618,7 +646,7 @@ async function downloadAttachments(uid, mailbox = DEFAULT_MAILBOX, outputDir = '
   }
 }
 
-// Local calendar date for IMAP SINCE/BEFORE and JS filtering (midnight local = full day inclusive).
+// Calendar date for IMAP SINCE/BEFORE (server interprets as date-only).
 function imapDateFromIso(isoStr) {
   if (!isoStr) return null;
   const parts = String(isoStr).split('-').map(Number);
@@ -629,10 +657,32 @@ function imapDateFromIso(isoStr) {
   return new Date(isoStr);
 }
 
+// UTC day boundaries for JS filtering — avoids dropping month edges on UTC servers.
+function dayStartUtcMs(isoStr) {
+  const parts = String(isoStr).split('-').map(Number);
+  if (parts.length === 3 && parts.every((n) => Number.isFinite(n))) {
+    const [y, m, d] = parts;
+    return Date.UTC(y, m - 1, d);
+  }
+  const t = new Date(isoStr).getTime();
+  if (!Number.isFinite(t)) return 0;
+  const dt = new Date(t);
+  return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+}
+
 function isoRangeToMs(sinceStr, beforeStr) {
-  const sinceMs = imapDateFromIso(sinceStr).getTime();
-  const beforeMs = imapDateFromIso(beforeStr).getTime();
-  return { sinceMs, beforeMs };
+  return { sinceMs: dayStartUtcMs(sinceStr), beforeMs: dayStartUtcMs(beforeStr) };
+}
+
+function emailDayUtcMs(row) {
+  for (const v of [row.date, row.headerDate]) {
+    const t = new Date(v).getTime();
+    if (Number.isFinite(t) && t > 0) {
+      const dt = new Date(t);
+      return Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+    }
+  }
+  return 0;
 }
 
 function emptyDirectScanMeta(sinceStr, beforeStr, { scanned = 0, matched = 0, scanMode = 'direct', sampleDates = [] } = {}) {
@@ -664,11 +714,8 @@ function filterByDateRange(rows, sinceStr, beforeStr) {
 }
 
 function rowInDateRange(row, sinceMs, beforeMs) {
-  for (const v of [row.date, row.headerDate]) {
-    const t = new Date(v).getTime();
-    if (Number.isFinite(t) && t > 0 && t >= sinceMs && t < beforeMs) return true;
-  }
-  return false;
+  const dayMs = emailDayUtcMs(row);
+  return dayMs > 0 && dayMs >= sinceMs && dayMs < beforeMs;
 }
 
 function filterTimestampMs(row) {
@@ -797,10 +844,10 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
       return null;
     }
 
-    if (uids.length >= 1000) {
+    if (uids.length >= YAHOO_SEARCH_UID_CAP) {
       console.error(
         `[imap] date-range direct: ${uids.length} uid(s) from search`
-        + ' (Yahoo may cap at ~1000 — fetching all returned UIDs directly)',
+        + ' (Yahoo may cap at ~1000 — fetching headers to verify dates)',
       );
     } else {
       console.error(`[imap] date-range direct: ${uids.length} uid(s) from SINCE+BEFORE — header fetch only`);
@@ -860,7 +907,7 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
 async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const days = recentDaysForRange(sinceStr);
   const rangeDays = rangeWidthDays(sinceStr, beforeStr);
-  const maxOlderRanges = rangeDays <= 31 ? 12 : (rangeDays <= 93 ? 8 : (rangeDays <= 366 ? 50 : 25));
+  const maxOlderRanges = computeMaxOlderRanges(sinceStr, beforeStr);
   console.error(`[imap] date-range start ${sinceStr}..${beforeStr} limit=${limit} offset=${offset} lookback=${days}d maxOlderRanges=${maxOlderRanges}`);
 
   // NEVER search ALL on Yahoo — hangs on large mailboxes. Use relative SINCE like "fetch last 100".
@@ -925,9 +972,25 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     return [];
   }
 
-  const sinceMs = imapDateFromIso(sinceStr).getTime();
+  const { sinceMs, beforeMs } = isoRangeToMs(sinceStr, beforeStr);
   let results = [];
   let scannedRows = 0;
+  let lowestUidScanned = Infinity;
+
+  const processBatch = async (step, batchResults) => {
+    scannedRows += batchResults.length;
+    for (const row of batchResults) {
+      if (row?.uid != null && row.uid < lowestUidScanned) lowestUidScanned = row.uid;
+    }
+    results = mergeRowsByUid(results.concat(batchResults));
+    const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
+    console.error(
+      `[imap] date-range ${step.label}: fetched ${batchResults.length} row(s),`
+      + ` total matched ${batchFiltered.length}`,
+    );
+    return batchFiltered;
+  };
+
   for (const step of scanPlan) {
     let batchResults = [];
     if (step.type === 'range') {
@@ -935,26 +998,66 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     } else {
       batchResults = await fetchHeaderRowsByUids(imap, step.values);
     }
-    scannedRows += batchResults.length;
-    results = mergeRowsByUid(results.concat(batchResults));
-    const { filtered: batchFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
-    console.error(
-      `[imap] date-range ${step.label}: fetched ${batchResults.length} row(s),`
-      + ` total matched ${batchFiltered.length}`,
-    );
+    const batchFiltered = await processBatch(step, batchResults);
 
     if (step.type === 'range' && batchResults.length > 0 && batchFiltered.length < offset + limit) {
-      const newestInBatch = Math.max(...batchResults.map(emailTimestampMs).filter((t) => t > 0));
-      if (newestInBatch > 0 && newestInBatch < sinceMs) {
-        console.error(
-          `[imap] date-range: stop older scan (newest in ${step.label} is`
-          + ` ${new Date(newestInBatch).toISOString().slice(0, 10)} < since ${sinceStr})`,
-        );
-        break;
+      const times = batchResults.map(emailTimestampMs).filter((t) => t > 0);
+      if (times.length > 0 && batchFiltered.length > 0) {
+        const newestInBatch = Math.max(...times);
+        if (newestInBatch > 0 && newestInBatch < sinceMs) {
+          console.error(
+            `[imap] date-range: stop older scan (newest in ${step.label} is`
+            + ` ${new Date(newestInBatch).toISOString().slice(0, 10)} < since ${sinceStr})`,
+          );
+          break;
+        }
       }
     }
 
     if (batchFiltered.length >= offset + limit) break;
+  }
+
+  // Yahoo since/recent searches cap at ~1000 UIDs — keep walking older UID blocks until we
+  // overlap the target month or hit safety limits.
+  const MAX_SCAN_ROWS = 50000;
+  const MAX_EXTRA_BLOCKS = 80;
+  let extraBlocks = 0;
+  let uidHigh = Number.isFinite(lowestUidScanned) ? lowestUidScanned - 1 : 0;
+  let { filtered: runningFiltered } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
+
+  while (
+    uidHigh > 0
+    && extraBlocks < MAX_EXTRA_BLOCKS
+    && scannedRows < MAX_SCAN_ROWS
+    && runningFiltered.length < offset + limit
+  ) {
+    const uidLow = Math.max(1, uidHigh - UID_RANGE_BLOCK + 1);
+    const step = { type: 'range', label: `${uidLow}:${uidHigh}` };
+    console.error(
+      `[imap] date-range: expand older range ${uidLow}:${uidHigh}`
+      + ` (continuing below uid ${lowestUidScanned}, block ${extraBlocks + 1}/${MAX_EXTRA_BLOCKS})`,
+    );
+    const batchResults = await fetchHeaderRowsByUidRange(imap, uidLow, uidHigh);
+    runningFiltered = await processBatch(step, batchResults);
+    lowestUidScanned = uidLow;
+    uidHigh = uidLow - 1;
+    extraBlocks++;
+
+    if (batchResults.length > 0 && runningFiltered.length > 0) {
+      const times = batchResults.map(emailTimestampMs).filter((t) => t > 0);
+      if (times.length > 0) {
+        const newestInBatch = Math.max(...times);
+        if (newestInBatch > 0 && newestInBatch < sinceMs) break;
+      }
+    }
+
+    if (batchResults.length > 0) {
+      const batchDays = batchResults.map(emailDayUtcMs).filter((t) => t > 0);
+      if (batchDays.length > 0) {
+        const oldestDay = Math.min(...batchDays);
+        if (oldestDay > 0 && oldestDay < sinceMs - (beforeMs - sinceMs)) break;
+      }
+    }
   }
 
   let { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(results, sinceStr, beforeStr);
@@ -1497,7 +1600,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error('Fatal:', err.message || err);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('Fatal:', err.message || err);
+    process.exit(1);
+  });
+}
