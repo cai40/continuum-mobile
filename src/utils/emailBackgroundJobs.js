@@ -4,6 +4,7 @@ import { RENDER_EMAIL_BRIDGE_URL } from '../constants/Config';
 import { resolveEmailFetchPayload } from './openclawEmailOptions';
 
 const PENDING_JOB_KEY = '@continuum_pending_email_job';
+const PENDING_JOB_META_KEY = '@continuum_pending_email_job_meta';
 
 /** Mirror bridge wantsBackgroundEmailJob for client-side routing. */
 export function shouldRunEmailInBackground(message) {
@@ -24,9 +25,25 @@ export function shouldRunEmailInBackground(message) {
   return false;
 }
 
-export async function savePendingEmailJob(jobId) {
+function normalizeJobMessage(message) {
+  return String(message || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function isYearCleanupMessage(message) {
+  return /\b(?:clean\s*up|cleanup|clean)\s+(?:all\s+of|entire|whole|full\s+)?(?:year\s+)?(20\d{2})\b/i.test(String(message || ''))
+    || /\b(?:whole|full|entire)\s+year\s+(20\d{2})\b/i.test(String(message || ''));
+}
+
+function jobMaxWaitMs(message) {
+  return isYearCleanupMessage(message) ? 7200000 : 3600000;
+}
+
+export async function savePendingEmailJob(jobId, meta = null) {
   if (!jobId) return;
   await AsyncStorage.setItem(PENDING_JOB_KEY, String(jobId));
+  if (meta) {
+    await AsyncStorage.setItem(PENDING_JOB_META_KEY, JSON.stringify(meta));
+  }
 }
 
 export async function loadPendingEmailJob() {
@@ -37,9 +54,18 @@ export async function loadPendingEmailJob() {
   }
 }
 
+export async function loadPendingEmailJobMeta() {
+  try {
+    const raw = await AsyncStorage.getItem(PENDING_JOB_META_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function clearPendingEmailJob() {
   try {
-    await AsyncStorage.removeItem(PENDING_JOB_KEY);
+    await AsyncStorage.multiRemove([PENDING_JOB_KEY, PENDING_JOB_META_KEY]);
   } catch {
     // ignore
   }
@@ -127,16 +153,47 @@ export async function submitBackgroundEmailJob(bridgeSecret, payload, authToken,
   return data;
 }
 
-async function recoverJobFromLatest(bridgeSecret, jobId, authToken, baseUrl) {
+async function recoverJobFromLatest(bridgeSecret, jobId, authToken, baseUrl, expectedMessage) {
   try {
     const jobs = await fetchLatestEmailJobs(bridgeSecret, authToken, baseUrl);
-    return jobs.find((job) => job.id === jobId) || null;
+    const byId = jobs.find((job) => job.id === jobId);
+    if (byId) return byId;
+    if (expectedMessage) {
+      const norm = normalizeJobMessage(expectedMessage);
+      const match = jobs.find((job) => normalizeJobMessage(job.message) === norm);
+      if (match) return match;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export async function fetchEmailJobStatus(bridgeSecret, jobId, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
+/**
+ * Check whether a job still exists on the bridge. Returns null on 404 (no throw).
+ */
+export async function peekEmailJobStatus(bridgeSecret, jobId, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
+  const root = baseUrl.replace(/\/$/, '');
+  try {
+    const res = await fetch(`${root}/email-jobs/${jobId}`, {
+      headers: jobHeaders(bridgeSecret, authToken),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 404) return null;
+    if (!res.ok) return null;
+    return data.job || data;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchEmailJobStatus(
+  bridgeSecret,
+  jobId,
+  authToken,
+  baseUrl = RENDER_EMAIL_BRIDGE_URL,
+  { expectedMessage, allowRestart = false, restartContext = null } = {},
+) {
   const root = baseUrl.replace(/\/$/, '');
   const res = await fetchWithRetry(`${root}/email-jobs/${jobId}`, {
     headers: jobHeaders(bridgeSecret, authToken),
@@ -144,8 +201,31 @@ export async function fetchEmailJobStatus(bridgeSecret, jobId, authToken, baseUr
   const data = await res.json().catch(() => ({}));
 
   if (res.status === 404) {
-    const recovered = await recoverJobFromLatest(bridgeSecret, jobId, authToken, baseUrl);
+    const recovered = await recoverJobFromLatest(bridgeSecret, jobId, authToken, baseUrl, expectedMessage);
     if (recovered) return recovered;
+
+    if (allowRestart && restartContext?.payload && (restartContext.restartCount || 0) < 1) {
+      const checkpoint = restartContext.checkpoint || null;
+      const payload = {
+        ...restartContext.payload,
+        ...(checkpoint ? { email_year_checkpoint: checkpoint } : {}),
+      };
+      const created = await submitBackgroundEmailJob(bridgeSecret, payload, authToken, baseUrl);
+      const nextMeta = {
+        message: restartContext.message,
+        payload: restartContext.payload,
+        restartCount: (restartContext.restartCount || 0) + 1,
+        checkpoint,
+      };
+      await savePendingEmailJob(created.job_id, nextMeta);
+      return {
+        id: created.job_id,
+        status: created.status || 'queued',
+        progress: created.progress || 'Restarting after server refresh…',
+        restarted: true,
+      };
+    }
+
     await clearPendingEmailJob();
     const err = new Error(
       'Cloud email job expired (server restarted). Send your cleanup request again — it will run in the background.',
@@ -162,6 +242,7 @@ export async function fetchEmailJobStatus(bridgeSecret, jobId, authToken, baseUr
 
 /**
  * Poll a background email job until complete. Survives app backgrounding — resumes on foreground.
+ * Auto-restarts once if the bridge loses the job mid-run (Render restart).
  */
 export function pollEmailJobUntilDone({
   bridgeSecret,
@@ -170,12 +251,17 @@ export function pollEmailJobUntilDone({
   baseUrl = RENDER_EMAIL_BRIDGE_URL,
   onProgress,
   pollMs = 2000,
-  maxWaitMs = 3600000,
+  maxWaitMs,
+  jobMeta = null,
 }) {
   let cancelled = false;
   let timer = null;
   let sleeping = false;
   const started = Date.now();
+  let currentJobId = jobId;
+  let meta = jobMeta || null;
+  let checkpoint = meta?.checkpoint || null;
+  const effectiveMaxWait = maxWaitMs || jobMaxWaitMs(meta?.message);
 
   const cancel = () => {
     cancelled = true;
@@ -199,13 +285,35 @@ export function pollEmailJobUntilDone({
     }, ms);
   });
 
+  const persistMeta = async (patch) => {
+    meta = { ...(meta || {}), ...patch };
+    if (meta.message && meta.payload) {
+      await savePendingEmailJob(currentJobId, meta);
+    }
+  };
+
   const runPoll = async () => {
     while (!cancelled) {
-      if (Date.now() - started > maxWaitMs) {
+      if (Date.now() - started > effectiveMaxWait) {
         await clearPendingEmailJob();
-        throw new Error('Background email job timed out after 1 hour.');
+        throw new Error('Background email job timed out.');
       }
-      const job = await fetchEmailJobStatus(bridgeSecret, jobId, authToken, baseUrl);
+      const job = await fetchEmailJobStatus(bridgeSecret, currentJobId, authToken, baseUrl, {
+        expectedMessage: meta?.message,
+        allowRestart: true,
+        restartContext: meta ? { ...meta, checkpoint } : null,
+      });
+      if (job.restarted) {
+        currentJobId = job.id;
+        await persistMeta({ restartCount: (meta?.restartCount || 0) + 1 });
+        if (onProgress) onProgress(job.progress || 'Restarting cloud email job…');
+        await sleep(pollMs);
+        continue;
+      }
+      if (job.checkpoint) {
+        checkpoint = job.checkpoint;
+        await persistMeta({ checkpoint });
+      }
       if (onProgress && job.progress) onProgress(job.progress, job.status);
       if (job.status === 'completed') {
         await clearPendingEmailJob();
@@ -242,6 +350,7 @@ export function buildEmailJobPayload({
   keys,
   location,
   clientTime,
+  yearCheckpoint = null,
 }) {
   return {
     message,
@@ -250,6 +359,7 @@ export function buildEmailJobPayload({
     ...emailFetch,
     email_delete_enabled: emailDeleteEnabled,
     email_auto_trash_junk: emailAutoTrashJunk,
+    ...(yearCheckpoint ? { email_year_checkpoint: yearCheckpoint } : {}),
     gemini_key: provider === 'gemini' ? (keys.geminiKey || '').trim() : '',
     groq_key: provider === 'groq' ? (keys.groqKey || '').trim() : '',
     api_key: (keys.apiKey || '').trim(),

@@ -250,6 +250,7 @@ async function handleEmailJobGet(req, res, config, jobId) {
       message: job.message,
       result: job.result,
       error: job.error,
+      checkpoint: job.checkpoint || null,
       created_at: job.created_at,
       updated_at: job.updated_at,
     },
@@ -267,6 +268,7 @@ async function handleEmailJobsLatest(req, res, config) {
     message: job.message,
     result: job.status === 'completed' ? job.result : null,
     error: job.error,
+    checkpoint: job.checkpoint || null,
     created_at: job.created_at,
     updated_at: job.updated_at,
   }));
