@@ -12,6 +12,7 @@ import LoginSection from './src/components/LoginSection';
 import SubscriptionSection from './src/components/SubscriptionSection';
 import LegalGate from './src/components/LegalGate';
 import StatusIndicator from './src/components/shared/StatusIndicator';
+import HeaderBadge from './src/components/shared/HeaderBadge';
 import { styles, theme } from './src/styles/theme';
 import * as Sentry from '@sentry/react-native';
 import { SENTRY_DSN, BUILD_ID } from './src/constants/Config';
@@ -35,7 +36,9 @@ const AppShell = () => {
     activeTab, setActiveTab, 
     provider, 
     serverStatus,
-    isInitializing
+    isInitializing,
+    sttLang,
+    setSttLang,
   } = useAppContext();
 
   if (isInitializing) {
@@ -100,6 +103,18 @@ const AppShell = () => {
     openai: 'OPENAI',
   }[provider] || String(provider || '').toUpperCase();
 
+  const cycleSttLang = () => {
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const cycle = ['en-US', 'zh-CN', 'es-ES'];
+      const currentIndex = cycle.indexOf(sttLang);
+      const nextIndex = (currentIndex + 1) % cycle.length;
+      setSttLang(cycle[nextIndex]);
+    } catch (e) {}
+  };
+
+  const langLabel = sttLang ? sttLang.split('-')[0].toUpperCase() : 'EN';
+
   return (
     <SafeAreaView style={styles.container}>
       {/* GLOBAL HEADER */}
@@ -121,20 +136,20 @@ const AppShell = () => {
             </Text>
           </View>
           
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end'}}>
             {activeTab === 'chat' && (
-              <View style={{backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
-                <Text style={{color: theme.colors.gray, fontSize: 8, fontWeight: '900'}}>
-                  {providerLabel}
-                </Text>
-              </View>
+              <HeaderBadge label={providerLabel} color={theme.colors.gray} />
             )}
 
-            <View style={{backgroundColor: theme.colors.success + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.success + '30'}}>
-              <Text style={{color: theme.colors.success, fontSize: 8, fontWeight: '900'}}>CLOUD</Text>
-            </View>
+            <HeaderBadge label="CLOUD" color={theme.colors.success} />
 
             <StatusIndicator status={serverStatus} />
+
+            <HeaderBadge
+              label={langLabel}
+              color={theme.colors.primary}
+              onPress={cycleSttLang}
+            />
           </View>
         </View>
       </View>
