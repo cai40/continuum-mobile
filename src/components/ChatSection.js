@@ -60,7 +60,7 @@ const ChatSection = () => {
     messages, setMessages,
     provider, groqKey, geminiKey, openaiKey, openrouterKey,
     selectedVoice, persona,
-    sttLang, setSttLang,
+    sttLang,
     activeTab,
     session,
     syncRemoteHistory,
@@ -1148,66 +1148,29 @@ const ChatSection = () => {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       style={styles.chatArea}
     >
+      {isSelectionMode && (
       <View style={styles.providerBar}>
         <View style={{ flexDirection: 'row', gap: 6, flex: 1, alignItems: 'center' }}>
-          {isSelectionMode ? (
-            <>
-              <TouchableOpacity
-                onPress={() => { setIsSelectionMode(false); setSelectedIds(new Set()); }}
-                style={{ padding: 8, backgroundColor: theme.colors.light, borderRadius: 8 }}
-              >
-                <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.gray }}>CANCEL</Text>
-              </TouchableOpacity>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary, marginLeft: 10 }}>
-                {selectedIds.size} SELECTED
-              </Text>
-              <TouchableOpacity
-                onPress={deleteSelectedMessages}
-                disabled={selectedIds.size === 0}
-                style={{ marginLeft: 'auto', padding: 8, backgroundColor: theme.colors.danger + '15', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}
-              >
-                <Ionicons name="trash-outline" size={14} color={theme.colors.danger} />
-                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.danger, marginLeft: 5 }}>DELETE</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            <View style={{ flex: 1 }} />
-          )}
-        </View>
-
-        {/* CYCLING LANGUAGE TOGGLE */}
-        <View style={{ marginLeft: 8 }}>
           <TouchableOpacity
-            onPress={() => {
-              try {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                const cycle = ['en-US', 'zh-CN', 'es-ES'];
-                const currentIndex = cycle.indexOf(sttLang);
-                const nextIndex = (currentIndex + 1) % cycle.length;
-                setSttLang(cycle[nextIndex]);
-              } catch (e) {}
-            }}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 5,
-              borderRadius: 10,
-              backgroundColor: theme.colors.secondary,
-              borderWidth: 1,
-              borderColor: theme.colors.secondary,
-              alignItems: 'center',
-              minWidth: 45
-            }}
+            onPress={() => { setIsSelectionMode(false); setSelectedIds(new Set()); }}
+            style={{ padding: 8, backgroundColor: theme.colors.light, borderRadius: 8 }}
           >
-            <Text style={{ 
-              fontSize: 9, 
-              fontWeight: '900', 
-              color: 'white' 
-            }}>
-              {sttLang ? sttLang.split('-')[0].toUpperCase() : 'EN'}
-            </Text>
+            <Text style={{ fontSize: 10, fontWeight: '700', color: theme.colors.gray }}>CANCEL</Text>
+          </TouchableOpacity>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary, marginLeft: 10 }}>
+            {selectedIds.size} SELECTED
+          </Text>
+          <TouchableOpacity
+            onPress={deleteSelectedMessages}
+            disabled={selectedIds.size === 0}
+            style={{ marginLeft: 'auto', padding: 8, backgroundColor: theme.colors.danger + '15', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}
+          >
+            <Ionicons name="trash-outline" size={14} color={theme.colors.danger} />
+            <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.danger, marginLeft: 5 }}>DELETE</Text>
           </TouchableOpacity>
         </View>
       </View>
+      )}
 
       <FlatList
         ref={chatListRef}
