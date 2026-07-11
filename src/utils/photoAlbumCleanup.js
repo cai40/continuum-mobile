@@ -98,7 +98,7 @@ async function sampleHash(uri) {
   }
 }
 
-async function loadAllPhotos(onProgress) {
+async function loadAllPhotos(onProgress, { createdAfter, createdBefore } = {}) {
   const assets = [];
   let hasNext = true;
   let after;
@@ -109,6 +109,8 @@ async function loadAllPhotos(onProgress) {
       after,
       mediaType: MediaLibrary.MediaType.photo,
       sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+      ...(createdAfter != null ? { createdAfter } : {}),
+      ...(createdBefore != null ? { createdBefore } : {}),
     });
     assets.push(...page.assets);
     hasNext = page.hasNextPage;
@@ -274,9 +276,11 @@ async function markFavorites(favorites) {
 }
 
 function buildSummary(report) {
+  const rangeLine = report.rangeLabel ? `- **Period:** ${report.rangeLabel}` : null;
   const lines = [
     `## Photo album cleanup — ${new Date(report.ran_at).toLocaleString()}`,
     '',
+    ...(rangeLine ? [rangeLine, ''] : []),
     `- **Scanned:** ${report.scanned} photo(s)`,
     `- **Duplicates:** ${report.duplicates.found} found${report.dryRun ? '' : `, ${report.duplicates.deleted} deleted`}`,
     `- **Coding screenshots:** ${report.codingScreenshots.found} found${report.dryRun ? '' : `, ${report.codingScreenshots.deleted} deleted`}`,
@@ -316,6 +320,9 @@ export async function cleanUpPhotoAlbum({
   dryRun = true,
   favoritePercent = 0.05,
   onProgress,
+  createdAfter,
+  createdBefore,
+  rangeLabel = null,
 } = {}) {
   const errors = [];
   const permission = await MediaLibrary.requestPermissionsAsync();
@@ -328,7 +335,7 @@ export async function cleanUpPhotoAlbum({
   }
 
   const protectedIds = await loadProtectedAssetIds();
-  const assets = await loadAllPhotos(onProgress);
+  const assets = await loadAllPhotos(onProgress, { createdAfter, createdBefore });
 
   const { toDelete: duplicateDeletes, survivors: afterDupes, found: dupFound } =
     await findDuplicateDeletes(assets, { onProgress, protectedIds });
@@ -357,6 +364,7 @@ export async function cleanUpPhotoAlbum({
   const report = {
     dryRun,
     scanned: assets.length,
+    rangeLabel,
     duplicates: {
       found: dupFound,
       deleted: dryRun ? 0 : uniqueDeletes.filter((a) => duplicateDeletes.some((d) => d.id === a.id)).length,

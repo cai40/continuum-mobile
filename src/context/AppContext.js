@@ -78,6 +78,7 @@ export const AppProvider = ({ children }) => {
   const [trialStart, setTrialStart] = useState(null);
   const [dailyMessageCount, setDailyMessageCount] = useState(0);
   const [isSuperUser, setIsSuperUser] = useState(false);
+  const [pendingChatMessage, setPendingChatMessage] = useState(null);
   const [hasAcceptedLegal, setHasAcceptedLegal] = useState(true); // Default to true during check
 
   const recordLegalAcceptance = async () => {
@@ -635,6 +636,8 @@ export const AppProvider = ({ children }) => {
         setSubscriptionTier,
         isSuperUser,
         isFeatureAvailable,
+        pendingChatMessage,
+        setPendingChatMessage,
         trialStart,
         isBiometricAuthenticated,
         setIsBiometricAuthenticated,

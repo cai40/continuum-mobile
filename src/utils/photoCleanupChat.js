@@ -1,4 +1,5 @@
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from './photoAlbumCleanup';
+import { parsePhotoCleanupRangeFromMessage } from './cleanupMenu';
 
 const PHOTO_TRIGGER = /\b(photos?|pictures?|images?|selfies?|album|camera\s*roll|photo\s+library|library)\b/i;
 const PHOTO_CLEANUP_INTENT = /\b(clean\s*up|cleanup|cleaning\s+up|dedupe?|dedup(?:licate)?|organize|declutter|tidy)\b/i;
@@ -18,6 +19,7 @@ export function wantsPhotoCleanup(message) {
   if (!text) return false;
 
   if (/\bphoto\s+album\s+cleanup\b/i.test(text)) return true;
+  if (/\b(?:preview|apply)\s+photo\s+(?:album\s+)?cleanup\b/i.test(text)) return true;
   if (/\b(clean\s*up|cleanup)\s+(my\s+)?(photos?|pictures?|album|library)\b/i.test(text)) return true;
   if (/\b(remove|delete)\s+(duplicate|coding)\s+(photos?|pictures?|screenshots?)\b/i.test(text)) return true;
   if (/\b(duplicate|coding)\s+(photos?|pictures?|screenshots?).*\b(clean|remove|delete)\b/i.test(text)) return true;
@@ -92,8 +94,12 @@ export async function runPhotoCleanupFromChat(message, onProgress) {
   }
 
   const dryRun = !isPhotoCleanupApply(message);
+  const range = parsePhotoCleanupRangeFromMessage(message);
   const report = await cleanUpPhotoAlbum({
     dryRun,
+    createdAfter: range?.createdAfter,
+    createdBefore: range?.createdBefore,
+    rangeLabel: range?.label || null,
     onProgress: (phase, done, total) => {
       if (onProgress) onProgress(formatPhotoCleanupProgress(phase, done, total, dryRun));
     },
