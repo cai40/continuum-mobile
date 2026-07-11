@@ -16,6 +16,7 @@ const {
   formatPostEmailFetchStatus,
 } = require('./emailFetchOptions');
 const { wantsEmailCleanup, wantsEmailCleanupPreview, extractEmailCleanupPreviewBlock } = require('./emailDelete');
+const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
 const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
 const {
@@ -258,6 +259,7 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       history: payload.history,
       _cancel_job_id: jobId,
     };
+    message = buildEffectiveEmailMessage(message, emailPayloadOptions.history || []);
 
     assertJobActive(jobId);
 

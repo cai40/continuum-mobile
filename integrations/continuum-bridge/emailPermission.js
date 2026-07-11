@@ -6,7 +6,7 @@ const { wantsEmailMoveToFolder } = require('./emailMove');
 /** Bulk confirm hint threshold in permission messages (fetch-and-clean bypasses target count). */
 const PERMISSION_CLEANUP_THRESHOLD = 10000;
 
-const BULK_CONFIRM = /\b(yes|yeah|yep|confirm|confirmed|proceed|go ahead|do it|approved|approve|clean all|trash all|delete all matching|move all)\b/i;
+const BULK_CONFIRM = /\b(yes|yeah|yep|ok(?:ay)?|apply|confirm|confirmed|proceed|go ahead|do it|approved|approve|run|clean all|trash all|delete all matching|move all)\b/i;
 
 function hasBulkActionConfirm(message) {
   return BULK_CONFIRM.test(message || '');

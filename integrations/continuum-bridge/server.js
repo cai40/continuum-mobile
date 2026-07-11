@@ -17,6 +17,7 @@ const { callContinuum } = require(path.join(skillRoot, 'scripts/ask'));
 const { fetchEmailContext, getEmailHealth } = require('./emailContext');
 const { wantsEmailFetch, wantsEmailSummaryOnly, resolveEmailFetchOptions, formatPreEmailFetchStatus, formatPostEmailFetchStatus } = require('./emailFetchOptions');
 const { wantsEmailCleanup } = require('./emailDelete');
+const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
@@ -349,6 +350,8 @@ async function handleChatStream(req, res, config) {
   if (!message) {
     return json(res, 400, { success: false, error: 'message is required' });
   }
+  message = buildEffectiveEmailMessage(message, payload.history || []);
+  payload.message = message;
 
   // Open SSE before slow IMAP / upstream work so Cloudflare tunnels stay alive.
   const sse = beginSse(res);

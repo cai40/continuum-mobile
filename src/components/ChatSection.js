@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
 import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
-import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, isEmailConfirmMessage } from '../utils/openclawBridge';
+import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, isEmailConfirmMessage, buildEmailConfirmPayloadMessage } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
 import {
   DOCUMENT_MIME_TYPES,
@@ -828,6 +828,9 @@ const ChatSection = () => {
         const emailSourceMessage = isEmailConfirm
           ? (findPriorEmailUserMessage(messages) || finalInput)
           : finalInput;
+        const bridgeMessage = isEmailConfirm && emailSourceMessage !== finalInput
+          ? buildEmailConfirmPayloadMessage(emailSourceMessage, finalInput)
+          : (webSearchContext ? `${webSearchContext}\n\n${finalInput}` : finalInput);
         const emailFetch = isEmailQuery
           ? resolveEmailFetchPayload({
               limit: openclawEmailLimit,
@@ -836,7 +839,7 @@ const ChatSection = () => {
             })
           : {};
         const payload = {
-          message: webSearchContext ? `${webSearchContext}\n\n${finalInput}` : finalInput,
+          message: bridgeMessage,
           provider,
           persona: appendGroundingPersona(persona, webSearchContext ? [WEB_SEARCH_APPEND] : []),
           history: webSearchContext ? [] : historyForUpload,
