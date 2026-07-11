@@ -1002,7 +1002,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           Smart photo library cleanup
         </Text>
         <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-          Removes duplicate photos and coding screenshots, then marks the top 5% of remaining photos as favorites in a Continuum Favorites album. Always preview with dry run first.
+          Removes duplicate photos and coding screenshots, then picks the prettiest top 5% as favorites (AI vision when a Gemini or OpenAI key is set in Setup). System favorites, Continuum Favorites, and prior picks are never deleted. Always preview with dry run first.
         </Text>
         {photoCleanup?.ran_at ? (
           <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
@@ -1038,7 +1038,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                     scan: "Scanning",
                     duplicates: "Finding duplicates",
                     screenshots: "Detecting coding screenshots",
-                    favorites: "Scoring photos",
+                    favorites: "AI scoring photos",
                     delete: "Deleting",
                     done: "Done",
                   };
@@ -1078,7 +1078,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           onPress={() => {
             Alert.alert(
               "Apply photo cleanup?",
-              "This will delete duplicate and coding-screenshot photos from your library and add the top 5% of remaining photos to Continuum Favorites. Deleted items go to Recently Deleted on iOS.",
+              "This will delete duplicate and coding-screenshot photos from your library and add the prettiest top 5% of remaining photos to Continuum Favorites. Favorites are never deleted. Deleted items go to Recently Deleted on iOS.",
               [
                 { text: "Cancel", style: "cancel" },
                 {

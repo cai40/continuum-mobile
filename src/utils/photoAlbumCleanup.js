@@ -4,8 +4,10 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { scorePhotosForFavorites, loadVisionApiCredentials } from './photoAestheticScore';
 
 const LAST_RUN_KEY = '@photo_cleanup_last_run';
+const FAVORITE_IDS_KEY = '@continuum_favorite_photo_ids';
 const FAVORITES_ALBUM = 'Continuum Favorites';
 const PROTECTED_ALBUM_NAMES = new Set([
   FAVORITES_ALBUM.toLowerCase(),
@@ -26,7 +28,8 @@ const MONITOR_RATIOS = [16 / 9, 16 / 10, 4 / 3, 3 / 2, 19.5 / 9, 20 / 9, 21 / 9]
  * @property {number} scanned
  * @property {{ found: number, deleted: number, kept: number }} duplicates
  * @property {{ found: number, deleted: number }} codingScreenshots
- * @property {{ selected: number, ids: string[] }} favorites
+ * @property {{ selected: number, ids: string[], method: 'heuristic' | 'ai' }} favorites
+ * @property {number} protectedCount
  * @property {string[]} errors
  * @property {string} summary
  * @property {string} ran_at
@@ -56,16 +59,15 @@ function isCodingScreenshot(asset) {
   return false;
 }
 
-function scorePhoto(asset) {
-  const pixels = (asset.width || 0) * (asset.height || 0);
-  const resolution = pixels > 0 ? Math.log10(pixels) / 7 : 0;
-  const notScreenshot = isCodingScreenshot(asset) || isScreenshotFilename(asset.filename) ? 0 : 0.25;
-  const landscapeBonus = asset.width > asset.height ? 0.05 : 0;
-  const recency = asset.creationTime
-    ? Math.min(0.1, (Date.now() - asset.creationTime) / (1000 * 60 * 60 * 24 * 365 * -10) + 0.1)
-    : 0;
-
-  return resolution * 0.55 + notScreenshot + landscapeBonus + recency;
+async function loadStoredFavoriteIds() {
+  try {
+    const raw = await AsyncStorage.getItem(FAVORITE_IDS_KEY);
+    if (!raw) return new Set();
+    const ids = JSON.parse(raw);
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch {
+    return new Set();
+  }
 }
 
 async function hashAssetContent(uri) {
@@ -122,7 +124,7 @@ async function loadAllPhotos(onProgress, { createdAfter, createdBefore } = {}) {
 }
 
 async function loadProtectedAssetIds() {
-  const protectedIds = new Set();
+  const protectedIds = new Set(await loadStoredFavoriteIds());
   try {
     const albums = await MediaLibrary.getAlbumsAsync({ includeSmartAlbums: true });
     for (const album of albums) {
@@ -143,6 +145,13 @@ async function loadProtectedAssetIds() {
     }
   } catch {
     // Non-fatal: proceed without protected set if album enumeration fails.
+  }
+  return protectedIds;
+}
+
+function augmentProtectedFromAssets(assets, protectedIds) {
+  for (const asset of assets) {
+    if (asset.isFavorite) protectedIds.add(asset.id);
   }
   return protectedIds;
 }
@@ -236,13 +245,26 @@ function findCodingScreenshotDeletes(assets, { protectedIds }) {
   };
 }
 
-function selectFavorites(assets, favoritePercent = 0.05) {
-  if (!assets.length) return [];
+async function selectFavorites(assets, favoritePercent = 0.05, { onProgress, visionCredentials } = {}) {
+  if (!assets.length) return { favorites: [], method: 'heuristic' };
+
+  const creds = visionCredentials !== undefined ? visionCredentials : await loadVisionApiCredentials();
+  const scoreMap = await scorePhotosForFavorites(assets, {
+    visionCredentials: creds,
+    onProgress: (done, total, stage) => {
+      if (stage === 'vision' || stage === 'texture') onProgress?.('favorites', done, total);
+    },
+  });
+
   const scored = assets
-    .map((asset) => ({ asset, score: scorePhoto(asset) }))
+    .map((asset) => ({ asset, score: scoreMap.get(asset.id) || 0 }))
     .sort((a, b) => b.score - a.score);
   const count = Math.max(1, Math.ceil(assets.length * favoritePercent));
-  return scored.slice(0, count).map((row) => row.asset);
+
+  return {
+    favorites: scored.slice(0, count).map((row) => row.asset),
+    method: creds?.apiKey ? 'ai' : 'heuristic',
+  };
 }
 
 async function batchDeleteAssets(assets, onProgress) {
@@ -270,21 +292,25 @@ async function markFavorites(favorites) {
   }
 
   const favoriteIds = favorites.map((a) => a.id);
-  const existing = await AsyncStorage.getItem('@continuum_favorite_photo_ids');
+  const existing = await AsyncStorage.getItem(FAVORITE_IDS_KEY);
   const merged = Array.from(new Set([...(existing ? JSON.parse(existing) : []), ...favoriteIds]));
-  await AsyncStorage.setItem('@continuum_favorite_photo_ids', JSON.stringify(merged));
+  await AsyncStorage.setItem(FAVORITE_IDS_KEY, JSON.stringify(merged));
 }
 
 function buildSummary(report) {
   const rangeLine = report.rangeLabel ? `- **Period:** ${report.rangeLabel}` : null;
+  const favoriteMethod = report.favorites.method === 'ai'
+    ? 'AI vision + on-device scoring'
+    : 'on-device smart scoring';
   const lines = [
     `## Photo album cleanup — ${new Date(report.ran_at).toLocaleString()}`,
     '',
     ...(rangeLine ? [rangeLine, ''] : []),
     `- **Scanned:** ${report.scanned} photo(s)`,
+    `- **Protected favorites:** ${report.protectedCount} never deleted`,
     `- **Duplicates:** ${report.duplicates.found} found${report.dryRun ? '' : `, ${report.duplicates.deleted} deleted`}`,
     `- **Coding screenshots:** ${report.codingScreenshots.found} found${report.dryRun ? '' : `, ${report.codingScreenshots.deleted} deleted`}`,
-    `- **Favorites (top 5%):** ${report.favorites.selected} selected`,
+    `- **New favorites (top 5%, ${favoriteMethod}):** ${report.favorites.selected} selected`,
     report.dryRun ? '- **Mode:** dry run (no changes made)' : '- **Mode:** applied',
   ];
   if (report.errors.length) {
@@ -308,17 +334,20 @@ async function saveLastPhotoCleanupRun(report) {
 
 /**
  * Clean up the on-device photo library: remove duplicates and coding screenshots,
- * then mark the top 5% of remaining photos as favorites.
+ * then mark the top 5% of remaining photos as favorites using smart/AI scoring.
+ * Favorites (system hearts, Continuum Favorites album, and prior picks) are never deleted.
  *
  * @param {Object} [options]
  * @param {boolean} [options.dryRun=true]
  * @param {number} [options.favoritePercent=0.05]
+ * @param {{ provider: string, apiKey: string } | null} [options.visionCredentials]
  * @param {(phase: CleanupPhase, done: number, total: number) => void} [options.onProgress]
  * @returns {Promise<CleanupReport>}
  */
 export async function cleanUpPhotoAlbum({
   dryRun = true,
   favoritePercent = 0.05,
+  visionCredentials,
   onProgress,
   createdAfter,
   createdBefore,
@@ -336,6 +365,8 @@ export async function cleanUpPhotoAlbum({
 
   const protectedIds = await loadProtectedAssetIds();
   const assets = await loadAllPhotos(onProgress, { createdAfter, createdBefore });
+  augmentProtectedFromAssets(assets, protectedIds);
+  const protectedCount = protectedIds.size;
 
   const { toDelete: duplicateDeletes, survivors: afterDupes, found: dupFound } =
     await findDuplicateDeletes(assets, { onProgress, protectedIds });
@@ -344,9 +375,14 @@ export async function cleanUpPhotoAlbum({
   const { toDelete: screenshotDeletes, survivors, found: ssFound } =
     findCodingScreenshotDeletes(afterDupes, { protectedIds });
 
-  onProgress?.('favorites', 0, survivors.length);
-  const favorites = selectFavorites(survivors, favoritePercent);
-  onProgress?.('favorites', favorites.length, survivors.length);
+  const favoriteCandidates = survivors.filter((a) => !protectedIds.has(a.id));
+  onProgress?.('favorites', 0, favoriteCandidates.length);
+  const { favorites, method: favoriteMethod } = await selectFavorites(
+    favoriteCandidates,
+    favoritePercent,
+    { onProgress, visionCredentials },
+  );
+  onProgress?.('favorites', favorites.length, favoriteCandidates.length);
 
   const allDeletes = [...duplicateDeletes, ...screenshotDeletes];
   const uniqueDeletes = Array.from(new Map(allDeletes.map((a) => [a.id, a])).values());
@@ -364,6 +400,7 @@ export async function cleanUpPhotoAlbum({
   const report = {
     dryRun,
     scanned: assets.length,
+    protectedCount,
     rangeLabel,
     duplicates: {
       found: dupFound,
@@ -377,6 +414,7 @@ export async function cleanUpPhotoAlbum({
     favorites: {
       selected: favorites.length,
       ids: favorites.map((a) => a.id),
+      method: favoriteMethod,
     },
     errors,
     ran_at: new Date().toISOString(),

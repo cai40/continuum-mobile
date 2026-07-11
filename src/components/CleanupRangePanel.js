@@ -90,7 +90,7 @@ export default function CleanupRangePanel({
   };
 
   const showPhotoActionSheet = (period, opts = {}) => {
-    Alert.alert('Photo cleaning', 'Preview scans without deleting. Apply removes duplicates and coding screenshots.', [
+    Alert.alert('Photo cleaning', 'Preview scans without deleting. Apply removes duplicates and coding screenshots. Favorites are never touched.', [
       { text: 'Preview (dry run)', onPress: () => runPhoto(period, opts, false) },
       { text: 'Apply cleanup', style: 'destructive', onPress: () => runPhoto(period, opts, true) },
       { text: 'Cancel', style: 'cancel' },
@@ -171,7 +171,7 @@ export default function CleanupRangePanel({
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 16, lineHeight: 16 }}>
         {mode === 'email'
           ? 'Fetch and clean newsletters, promos, and junk for the selected period. Requires Render cloud email and Allow move to Trash.'
-          : 'Remove duplicate photos and coding screenshots for photos taken in the selected period. Preview first, then apply.'}
+          : 'Remove duplicate photos and coding screenshots for photos taken in the selected period. Favorites are never deleted. Preview first, then apply.'}
       </Text>
 
       {emailDisabled && mode === 'email' ? (
