@@ -74,8 +74,8 @@ const UPS_MARKETING_FROM = /mcinfo@ups\.com|@ups\.com.*(?:marketing|promo)/i;
 
 const PACKAGE_ESSENTIAL_KEEP = /\b(out for delivery|on the way|in transit|delivered|delivery (?:confirm|update|scheduled)|tracking number|track your package|package (?:has|was) (?:shipped|delivered)|expected delivery|ready for pickup|pickup ready|shipment (?:confirm|update))\b/i;
 
-/** Amazon shipment / delivery status mail (keep order confirmations and returns). */
-const AMAZON_SHIPPING_FROM = /shipment-tracking@amazon\.com|order-update@amazon\.com/i;
+/** Amazon shipment, delivery, and auto-confirm order mail (keep returns). */
+const AMAZON_SHIPPING_FROM = /shipment-tracking@amazon\.com|order-update@amazon\.com|auto-confirm@amazon\.com/i;
 
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
