@@ -66,6 +66,9 @@ const TRAVEL_ESSENTIAL_KEEP = /\b(flight confirm(?:ation)?|itinerar|check.?in|bo
 
 const VENMO_PAYMENT_KEEP = /\b(paid you|you paid|payment|transfer|sent you|received|completed|charged|refund)\b/i;
 
+/** USPS automated / auto-reply bulk mail (keep package tracking notices). */
+const USPS_AUTO_FROM = /auto-reply@usps\.com|@email\.usps\.gov/i;
+
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
   /mattressfirm|mattress\s+firm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
@@ -100,6 +103,14 @@ function isVenmoPromo(email) {
   return /\b(refer|invite|earn|reward|promo|bonus|friend)\b/i.test(blob);
 }
 
+function isUspsAutoJunk(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
+  if (!USPS_AUTO_FROM.test(from)) return false;
+  const blob = emailBlob(email);
+  if (ORDER_RECEIPT_KEEP.test(blob)) return false;
+  return true;
+}
+
 function isMarketingSender(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const subject = String(email.subject || '');
@@ -107,6 +118,7 @@ function isMarketingSender(email) {
   if (ORDER_RECEIPT_KEEP.test(emailBlob(email))) return false;
   if (isAirlineMarketing(email)) return true;
   if (isVenmoPromo(email)) return true;
+  if (isUspsAutoJunk(email)) return true;
   if (isBankMarketingFrom(from)) return true;
   return MARKETING_SENDER_PATTERNS.some((re) => re.test(blob));
 }
@@ -139,7 +151,7 @@ function emailBlob(email) {
 function isProtected(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const blob = emailBlob(email);
-  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email)) return false;
+  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email) || isUspsAutoJunk(email)) return false;
   if (PROTECTED_PATTERNS.some((re) => re.test(blob))) return true;
   // Bank mail that is not a routine statement stays protected (OTP, alerts, invoices).
   if (PROTECTED_BANK_NON_STATEMENT.test(blob) && !STATEMENT_PATTERNS.test(blob)) return true;
