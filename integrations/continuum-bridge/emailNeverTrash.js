@@ -41,6 +41,15 @@ const BUILTIN_NEVER_TRASH = [
       'massachusetts housing finance agency',
     ],
   },
+  {
+    label: 'Boston Sailing Center',
+    needles: [
+      'boston sailing center',
+      'bostonsailingcenter',
+      'bostonsailingcenter.com',
+      '@bostonsailingcenter',
+    ],
+  },
 ];
 
 const INVALID_SENDER_LABELS = new Set([
@@ -147,7 +156,20 @@ function parseNeverTrashSender(message) {
     };
   }
 
+  if (/\bboston\s+sailing\s+center\b/i.test(text) || /\bbostonsailingcenter\b/i.test(text)) {
+    return {
+      label: 'Boston Sailing Center',
+      needles: [
+        'boston sailing center',
+        'bostonsailingcenter',
+        'bostonsailingcenter.com',
+        '@bostonsailingcenter',
+      ],
+    };
+  }
+
   const patterns = [
+    /\bkeep\s+emails?\s+from\s+([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)(?:\s*$|,|\.|and\b)/i,
     /\b(?:never|don't|do not|stop)\s+trash(?:ing)?\s+([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)(?:\s+emails?|\s*$|,|\.|and\b)/i,
     /\b(?:recover|restore|untrash|move\s+back)\s+(?:emails?\s+from\s+)([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)(?:\s+emails?|\s*$|,|\.)/i,
     /\b([A-Za-z][A-Za-z0-9\s'.-]{2,50}?)\s+(?:emails?\s+)?should\s+never\s+be\s+trash(?:ed)?/i,
@@ -182,6 +204,7 @@ function resolveRecoverTargets(message, parsedSender) {
 function wantsNeverTrashRequest(message) {
   const text = String(message || '');
   if (parseNeverTrashSender(text)) return true;
+  if (/\bkeep\s+emails?\s+from\b/i.test(text)) return true;
   return /\b(?:never\s+trash|don't\s+trash|do not\s+trash|stop\s+trash(?:ing)?)\b/i.test(text)
     && /\b(?:recover|restore|untrash|update|scheduled|daily\s+cleanup)\b/i.test(text);
 }
@@ -350,7 +373,7 @@ async function handleNeverTrashRequest(message) {
     : allSenders.find((s) => /michelle/i.test(s.label)) || allSenders[0];
 
   let recoverResult = null;
-  if (wantsRecoverFromTrash(text) || /\brecover\b/i.test(text)) {
+  if (wantsRecoverFromTrash(text) || /\brecover\b/i.test(text) || /\bkeep\s+emails?\s+from\b/i.test(text)) {
     const targets = resolveRecoverTargets(text, sender);
     recoverResult = await recoverNeverTrashSenders(targets);
   }
