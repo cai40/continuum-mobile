@@ -47,6 +47,7 @@ const {
   getLatestJobs,
   startEmailJob,
   cancelEmailJob,
+  cancelAllActiveEmailJobs,
 } = require('./emailJobs');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
@@ -225,6 +226,7 @@ async function handleEmailJobCreate(req, res, config) {
   }
 
   const job = createEmailJob({ message, payload });
+  cancelAllActiveEmailJobs(job.id);
   startEmailJob(job.id, { userAuth, config });
   return json(res, 202, {
     success: true,

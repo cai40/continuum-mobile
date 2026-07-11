@@ -505,24 +505,32 @@ function parseImapProgressLine(line) {
 
   let m;
   if ((m = text.match(/^\[imap\]\s+search\s+(.+?)\.\.\.$/i))) {
-    const direct = m[1].match(/^direct-(\d{4}-\d{2}-\d{2})-since-before/i);
+    const searchLabel = m[1];
+    if (/^on-\d{4}-\d{2}-\d{2}$/i.test(searchLabel)) return null;
+    if (/^weekly-\d{4}-\d{2}-\d{2}-/i.test(searchLabel)) return null;
+    const direct = searchLabel.match(/^direct-(\d{4}-\d{2}-\d{2})-since-before/i);
     if (direct) return null;
-    const label = m[1].replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
-    return `Searching ${label}…`;
+    const friendly = searchLabel.replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
+    return `Searching ${friendly}…`;
   }
   if ((m = text.match(/^\[imap\]\s+search\s+(.+?):\s+(\d+)\s+uid/i))) {
     const count = parseInt(m[2], 10);
-    const direct = m[1].match(/^direct-(\d{4}-\d{2}-\d{2})-since-before/i);
+    const searchLabel = m[1];
+    if (/^on-\d{4}-\d{2}-\d{2}$/i.test(searchLabel)) {
+      return count > 0 ? `Found ${count} on ${searchLabel.slice(3)}…` : null;
+    }
+    if (/^weekly-\d{4}-\d{2}-\d{2}-/i.test(searchLabel)) return null;
+    const direct = searchLabel.match(/^direct-(\d{4}-\d{2}-\d{2})-since-before/i);
     if (direct) {
       const since = direct[1];
       return count === 0
         ? `No mail found from ${since} in this slice`
         : `Found ${count} email(s) from ${since} in this slice`;
     }
-    const label = m[1].replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
+    const friendly = searchLabel.replace(/SINCE\s+(\S+)\s+BEFORE\s+(\S+)/i, '$1 to $2').toLowerCase();
     return count === 0
-      ? `No mail found in ${label}`
-      : `Found ${count} email(s) in ${label}`;
+      ? `No mail found in ${friendly}`
+      : `Found ${count} email(s) in ${friendly}`;
   }
   if ((m = text.match(/^\[imap\]\s+date-range\s+check\s+(\S+)\.\.(\S+)\s+limit=(\d+)/i))) {
     return `Scanning ${m[1]} to ${m[2]} (up to ${m[3]})…`;

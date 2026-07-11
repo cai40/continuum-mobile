@@ -44,6 +44,7 @@ import {
   clearPendingEmailJob,
   clearEmailJobStopped,
   stopActiveEmailJob,
+  cancelBackgroundEmailJob,
   isStopEmailJobMessage,
   wasEmailJobStopped,
   appendJobProgress,
@@ -867,7 +868,7 @@ const ChatSection = () => {
             : bridgeUrl.replace(/\/$/, '');
           const jobSecret = useRenderEmail ? renderEmailSecret : bridgeSecret;
           const jobPayload = buildEmailJobPayload({
-            message: payload.message,
+            message: emailSourceMessage,
             provider,
             persona: payload.persona,
             emailFetch,
@@ -904,11 +905,17 @@ const ChatSection = () => {
           let usingStreamFallback = false;
           setStreamingContent('Starting cloud email job…');
           await clearEmailJobStopped();
-          await clearPendingEmailJob();
+          if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
+          backgroundJobRef.current = null;
+          try {
+            await stopActiveEmailJob(jobSecret, activeToken, jobBaseUrl);
+          } catch {
+            await clearPendingEmailJob();
+          }
           submitBackgroundEmailJob(jobSecret, jobPayload, activeToken, jobBaseUrl)
             .then(async (created) => {
               const jobMeta = {
-                message: payload.message,
+                message: emailSourceMessage,
                 payload: jobPayload,
                 restartCount: 0,
                 checkpoint: null,
@@ -933,6 +940,12 @@ const ChatSection = () => {
                   usingStreamFallback = true;
                   poller.cancel();
                   backgroundJobRef.current = null;
+                  try {
+                    await cancelBackgroundEmailJob(jobSecret, created.job_id, activeToken, jobBaseUrl);
+                  } catch {
+                    // job may already be gone
+                  }
+                  await clearPendingEmailJob();
                   startEmailStream();
                   return;
                 }

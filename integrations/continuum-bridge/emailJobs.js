@@ -406,6 +406,21 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
   }
 }
 
+function cancelAllActiveEmailJobs(exceptJobId = null) {
+  const state = loadJobsState();
+  let cancelled = 0;
+  for (const job of state.jobs) {
+    if (exceptJobId && job.id === exceptJobId) continue;
+    if (job.status !== 'running' && job.status !== 'queued') continue;
+    cancelEmailJob(job.id);
+    cancelled += 1;
+  }
+  if (cancelled > 0) {
+    console.error(`[continuum-bridge] cancelled ${cancelled} older email job(s) for new request`);
+  }
+  return cancelled;
+}
+
 function cancelEmailJob(jobId) {
   const job = getJob(jobId);
   if (!job) return null;
@@ -464,5 +479,6 @@ module.exports = {
   runEmailJob,
   startEmailJob,
   cancelEmailJob,
+  cancelAllActiveEmailJobs,
   wantsBackgroundEmailJob,
 };
