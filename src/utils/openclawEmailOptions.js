@@ -200,7 +200,7 @@ export function resolveEmailFetchPayload({ limit, recent, message }) {
   const yearRange = message ? parseYearRangeFromMessage(message) : null;
   let resolvedLimit = fromMessageLimit ?? clampEmailLimit(limit);
   if (dateRange && fromMessageLimit == null) {
-    resolvedLimit = Math.max(resolvedLimit, yearRange ? 50000 : 5000);
+    resolvedLimit = Math.max(resolvedLimit, 50000);
   }
   let resolvedOffset = fromMessageOffset ?? 0;
 

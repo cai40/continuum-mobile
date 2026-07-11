@@ -8,7 +8,7 @@ const { isComposeEmailRequest } = require('./emailComposeIntent');
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50000;
 /** Minimum fetch cap for month date-range queries (no explicit limit in message). */
-const MONTH_RANGE_MIN_LIMIT = 5000;
+const MONTH_RANGE_MIN_LIMIT = 50000;
 /** Minimum fetch cap for full-year date-range queries. */
 const YEAR_RANGE_MIN_LIMIT = 50000;
 const DEFAULT_RECENT = '7d';
