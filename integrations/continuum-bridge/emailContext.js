@@ -132,7 +132,10 @@ function formatScanDiagnostic(scanMeta, dateRangeLabel, loadedCount = null) {
     : null;
 
   let scanLine;
-  if (dateRangeLabel && scanMeta.scanMode === 'direct') {
+  if (dateRangeLabel && scanMeta.scanMode === 'daily_on_empty') {
+    const days = scanMeta.dailyDaysChecked ?? 31;
+    scanLine = `- Date filter: ${dateRangeLabel}. Matched: 0. Yahoo found 0 INBOX message(s) on any of ${days} day(s) in this month. Headers scanned: 0.`;
+  } else if (dateRangeLabel && scanMeta.scanMode === 'direct') {
     const span = scanMeta.span;
     const spanNote = span ? ` Mail dates: ${span.oldest} through ${span.newest}.` : '';
     scanLine = `- Date filter: ${dateRangeLabel}. Matched: ${matched}.${spanNote} Headers scanned: ${scanMeta.scanned ?? matched} (direct search — no wide inbox lookback).`;
@@ -158,6 +161,67 @@ function formatScanDiagnostic(scanMeta, dateRangeLabel, loadedCount = null) {
     dateRangeLabel ? null : `- Matched: ${matched}${used}.`,
     'Use Matched and Emails loaded only — never claim the whole inbox was scanned.',
   ].filter(Boolean).join('\n');
+}
+
+function formatInboxDateProbe(messages, { maxRows = 100 } = {}) {
+  if (!Array.isArray(messages) || messages.length === 0) return null;
+
+  const rows = messages.slice(0, maxRows).map((msg, i) => {
+    const raw = msg.headerDate || msg.date || msg.receivedDate || '';
+    const t = new Date(raw).getTime();
+    const day = Number.isFinite(t) && t > 0 ? new Date(t).toISOString().slice(0, 10) : '?';
+    const subject = String(msg.subject || '(no subject)').replace(/\s+/g, ' ').slice(0, 90);
+    return `${String(i + 1).padStart(2, ' ')}. ${day} — ${subject}`;
+  });
+
+  const times = messages
+    .map((msg) => new Date(msg.headerDate || msg.date || msg.receivedDate || 0).getTime())
+    .filter((t) => Number.isFinite(t) && t > 0);
+  const span = times.length
+    ? {
+      oldest: new Date(Math.min(...times)).toISOString().slice(0, 10),
+      newest: new Date(Math.max(...times)).toISOString().slice(0, 10),
+    }
+    : null;
+
+  const text = [
+    'INBOX DATE PROBE (newest 100 — date and subject only):',
+    span ? `- Newest ${messages.length} sampled: ${span.oldest} through ${span.newest}` : null,
+    ...rows,
+  ].filter(Boolean).join('\n');
+
+  return { text, span, count: messages.length };
+}
+
+function suggestRetryFromProbe(dateRangeLabel, probe) {
+  if (!dateRangeLabel || !probe?.span) return null;
+  const yearMatch = String(dateRangeLabel).match(/\b(20\d{2})\b/);
+  const requestedYear = yearMatch ? parseInt(yearMatch[1], 10) : null;
+  const oldestYear = parseInt(probe.span.oldest?.slice(0, 4), 10);
+  const newestYear = parseInt(probe.span.newest?.slice(0, 4), 10);
+  if (!requestedYear || !oldestYear || !newestYear) return null;
+
+  if (requestedYear < oldestYear) {
+    return (
+      `INBOX sample has no ${requestedYear} mail — dates run ${probe.span.oldest}–${probe.span.newest}.`
+      + ` Try a month in ${oldestYear}–${newestYear} (e.g. "${probe.span.newest.slice(0, 7)}"),`
+      + ' or check Archive/Trash if mail was filed away.'
+    );
+  }
+  if (requestedYear > newestYear) {
+    return `INBOX sample newest is ${probe.span.newest}; ${requestedYear} is in the future for this mailbox.`;
+  }
+  return (
+    `INBOX sample spans ${probe.span.oldest}–${probe.span.newest}.`
+    + ` No mail indexed for ${dateRangeLabel} — try another month in that range or another folder.`
+  );
+}
+
+function shouldRunInboxDateProbe(result) {
+  if (!result?.fetchOptions?.since || !result.fetchOptions?.before) return false;
+  if ((result.messages?.length ?? 0) > 0) return false;
+  if ((result.scanMeta?.matched ?? 0) > 0) return false;
+  return true;
 }
 
 function inlineScanSummary(scanMeta) {
@@ -351,8 +415,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     const hint = dateRangeLabel
       ? `No messages found in INBOX for ${dateRangeLabel}.${inline ? ` ${inline}` : ''}`
       : `No messages found in INBOX for the requested period.${inline ? ` ${inline}` : ''}`;
-    const footer = 'Next step: fetch last 100 emails — list date and subject only — to see actual inbox dates. If scanned dates show a different year, retry with that year (e.g. 4/1/2025 to 6/15/2025).';
-    const text = [hint, scanBlock, footer].filter(Boolean).join('\n\n');
+    const text = [hint, scanBlock].filter(Boolean).join('\n\n');
     return { text, messages: [], fetchedCount: 0 };
   }
 
@@ -513,6 +576,9 @@ function parseImapProgressLine(line) {
   }
   if (/daily ON: 0 uid\(s\) on all/i.test(text)) {
     return 'No INBOX mail on any day in this month — done';
+  }
+  if (/inbox date probe/i.test(text) || /Sampling newest 100 INBOX dates/i.test(text)) {
+    return 'Sampling newest 100 INBOX dates…';
   }
   if ((m = text.match(/^\[imap\]\s+date-range weekly slice\s+(\S+\.\.\S+):\s+(\d+)\s+uid/i))) {
     return `Searching ${m[1]}… (${m[2]} found)`;
@@ -719,6 +785,39 @@ async function runImapCheck(imapScript, message, payloadOptions = {}, onProgress
       });
     }
   }
+
+  if (shouldRunInboxDateProbe(result)) {
+    if (onProgress) onProgress('No matches — sampling newest 100 INBOX dates…');
+    try {
+      const probeResult = await runImapCheckOnce(
+        imapScript,
+        'list last 100 emails',
+        {
+          ...payloadOptions,
+          email_limit: 100,
+          email_recent: '365d',
+          email_since: null,
+          email_before: null,
+          email_date_override: true,
+        },
+        onProgress,
+      );
+      const probe = formatInboxDateProbe(probeResult.messages);
+      if (probe) {
+        const hint = suggestRetryFromProbe(result.fetchOptions?.dateRangeLabel, probe);
+        result.context = [
+          result.context,
+          '',
+          probe.text,
+          hint ? `\n${hint}` : null,
+        ].filter(Boolean).join('\n');
+        result.inboxProbe = probe;
+      }
+    } catch (err) {
+      console.error('[continuum-bridge] inbox date probe failed:', err.message || err);
+    }
+  }
+
   return result;
 }
 
