@@ -99,6 +99,7 @@ export async function runPhotoCleanupFromChat(message, onProgress) {
     dryRun,
     createdAfter: range?.createdAfter,
     createdBefore: range?.createdBefore,
+    monthKeys: range?.monthKeys || null,
     rangeLabel: range?.label || null,
     onProgress: (phase, done, total) => {
       if (onProgress) onProgress(formatPhotoCleanupProgress(phase, done, total, dryRun));

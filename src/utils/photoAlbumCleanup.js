@@ -5,6 +5,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { scorePhotosForFavorites, loadVisionApiCredentials } from './photoAestheticScore';
+import { assetMatchesMonthFilter } from './cleanupMenu';
 
 const LAST_RUN_KEY = '@photo_cleanup_last_run';
 const FAVORITE_IDS_KEY = '@continuum_favorite_photo_ids';
@@ -100,7 +101,7 @@ async function sampleHash(uri) {
   }
 }
 
-async function loadAllPhotos(onProgress, { createdAfter, createdBefore } = {}) {
+async function loadAllPhotos(onProgress, { createdAfter, createdBefore, monthKeys } = {}) {
   const assets = [];
   let hasNext = true;
   let after;
@@ -118,6 +119,10 @@ async function loadAllPhotos(onProgress, { createdAfter, createdBefore } = {}) {
     hasNext = page.hasNextPage;
     after = page.endCursor;
     onProgress?.('scan', assets.length, assets.length + (hasNext ? 200 : 0));
+  }
+
+  if (monthKeys?.size) {
+    return assets.filter((asset) => assetMatchesMonthFilter(asset.creationTime, monthKeys));
   }
 
   return assets;
@@ -351,6 +356,7 @@ export async function cleanUpPhotoAlbum({
   onProgress,
   createdAfter,
   createdBefore,
+  monthKeys = null,
   rangeLabel = null,
 } = {}) {
   const errors = [];
@@ -364,7 +370,7 @@ export async function cleanUpPhotoAlbum({
   }
 
   const protectedIds = await loadProtectedAssetIds();
-  const assets = await loadAllPhotos(onProgress, { createdAfter, createdBefore });
+  const assets = await loadAllPhotos(onProgress, { createdAfter, createdBefore, monthKeys });
   augmentProtectedFromAssets(assets, protectedIds);
   const protectedCount = protectedIds.size;
 

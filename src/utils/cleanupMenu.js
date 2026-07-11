@@ -31,6 +31,67 @@ function startOfCalendarWeek(date) {
   return start;
 }
 
+function monthKey(month, year) {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function sortMonths(months) {
+  return [...months].sort((a, b) => {
+    if (a.year !== b.year) return a.year - b.year;
+    return a.month - b.month;
+  });
+}
+
+function formatMonthsLabel(sortedMonths) {
+  if (!sortedMonths.length) return '';
+  if (sortedMonths.length === 1) {
+    return `${MONTH_NAMES[sortedMonths[0].month - 1]} ${sortedMonths[0].year}`;
+  }
+  if (sortedMonths.length <= 3) {
+    return sortedMonths.map((m) => `${MONTH_NAMES[m.month - 1]} ${m.year}`).join(', ');
+  }
+  const first = sortedMonths[0];
+  const last = sortedMonths[sortedMonths.length - 1];
+  return `${MONTH_NAMES[first.month - 1]} ${first.year} – ${MONTH_NAMES[last.month - 1]} ${last.year} (${sortedMonths.length} months)`;
+}
+
+/**
+ * Build a cleanup range spanning one or more calendar months.
+ * @param {Array<{ month: number, year: number }>} months
+ */
+export function getCleanupRangeFromMonths(months) {
+  if (!months?.length) return null;
+
+  const unique = Array.from(
+    new Map(months.map((m) => [monthKey(m.month, m.year), m])).values(),
+  );
+  const sorted = sortMonths(unique);
+  if (sorted.length === 1) return getCleanupRange('custom_month', sorted[0]);
+
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const start = new Date(first.year, first.month - 1, 1);
+  const end = new Date(last.year, last.month, 1);
+
+  return {
+    period: 'custom_months',
+    label: formatMonthsLabel(sorted),
+    months: sorted,
+    monthKeys: new Set(sorted.map((m) => monthKey(m.month, m.year))),
+    since: toISODate(start),
+    before: toISODate(end),
+    createdAfter: start.getTime(),
+    createdBefore: end.getTime(),
+  };
+}
+
+/** @param {number} [timestamp] @param {Set<string>} [monthKeys] */
+export function assetMatchesMonthFilter(timestamp, monthKeys) {
+  if (!monthKeys?.size || !timestamp) return true;
+  const d = new Date(timestamp);
+  return monthKeys.has(monthKey(d.getMonth() + 1, d.getFullYear()));
+}
+
 /**
  * @param {'today'|'week'|'month'|'custom_month'} period
  * @param {{ month?: number, year?: number }} [opts]
@@ -113,6 +174,10 @@ export function buildEmailCleanupMessage(range) {
     const endInclusive = usDateFromISO(toISODate(addDays(new Date(`${range.before}T12:00:00`), -1)));
     return `clean up emails from ${usDateFromISO(range.since)} to ${endInclusive}`;
   }
+  if (range.period === 'custom_months') {
+    const endInclusive = usDateFromISO(toISODate(addDays(new Date(`${range.before}T12:00:00`), -1)));
+    return `clean up emails from ${usDateFromISO(range.since)} to ${endInclusive}`;
+  }
   return `clean up ${range.monthName} ${range.year} emails`;
 }
 
@@ -122,6 +187,7 @@ export function buildPhotoCleanupMessage(range, { apply = false } = {}) {
   const prefix = apply ? 'apply photo cleanup' : 'preview photo cleanup';
   if (range.period === 'today') return `${prefix} for today`;
   if (range.period === 'week') return `${prefix} for this week`;
+  if (range.period === 'custom_months') return `${prefix} for ${range.label}`;
   return `${prefix} for ${range.monthName} ${range.year}`;
 }
 
@@ -158,6 +224,26 @@ export function parsePhotoCleanupRangeFromMessage(message) {
     if (monthIndex >= 0) {
       return getCleanupRange('custom_month', { month: monthIndex + 1, year: parseInt(monthYear[2], 10) });
     }
+  }
+
+  const multiMonth = text.match(
+    new RegExp(
+      `\\b(?:for|during|in)\\s+((?:${MONTH_NAME_PATTERN}\\s+20\\d{2})(?:\\s*,\\s*${MONTH_NAME_PATTERN}\\s+20\\d{2})+)\\b`,
+      'i',
+    ),
+  );
+  if (multiMonth) {
+    const parts = multiMonth[1].split(/\s*,\s*/);
+    const months = [];
+    for (const part of parts) {
+      const match = part.trim().match(new RegExp(`^(${MONTH_NAME_PATTERN})\\s+(20\\d{2})$`, 'i'));
+      if (!match) continue;
+      const monthIndex = MONTH_NAMES.findIndex((m) => m.toLowerCase() === match[1].toLowerCase());
+      if (monthIndex >= 0) {
+        months.push({ month: monthIndex + 1, year: parseInt(match[2], 10) });
+      }
+    }
+    if (months.length > 1) return getCleanupRangeFromMonths(months);
   }
 
   const dateRange = text.match(
