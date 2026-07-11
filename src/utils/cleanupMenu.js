@@ -106,6 +106,22 @@ export function getCleanupRange(period, opts = {}) {
 }
 
 /** @param {ReturnType<typeof getCleanupRange>} range */
+export function buildEmailCleanupPreviewMessage(range) {
+  if (!range) return 'preview email cleanup inbox';
+  if (range.period === 'today') return 'preview email cleanup for today';
+  if (range.period === 'week') {
+    const endInclusive = usDateFromISO(toISODate(addDays(new Date(`${range.before}T12:00:00`), -1)));
+    return `preview email cleanup from ${usDateFromISO(range.since)} to ${endInclusive}`;
+  }
+  return `preview email cleanup for ${range.monthName} ${range.year}`;
+}
+
+/** @param {ReturnType<typeof getCleanupRange>} range */
+export function buildEmailCleanupApplyMessage(range) {
+  return buildEmailCleanupMessage(range);
+}
+
+/** @param {ReturnType<typeof getCleanupRange>} range */
 export function buildEmailCleanupMessage(range) {
   if (!range) return 'clean up inbox';
   if (range.period === 'today') return 'clean up today emails';

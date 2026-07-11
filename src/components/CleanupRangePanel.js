@@ -5,7 +5,8 @@ import * as Haptics from 'expo-haptics';
 import { theme } from '../styles/theme';
 import {
   getCleanupRange,
-  buildEmailCleanupMessage,
+  buildEmailCleanupPreviewMessage,
+  buildEmailCleanupApplyMessage,
   buildPhotoCleanupMessage,
   listSelectableMonths,
 } from '../utils/cleanupMenu';
@@ -63,10 +64,26 @@ export default function CleanupRangePanel({
   const [pendingPhotoApply, setPendingPhotoApply] = useState(false);
   const months = listSelectableMonths(24);
 
-  const runEmail = (period, opts) => {
-    const range = getCleanupRange(period, opts);
+  const runEmailWithRange = (range, apply) => {
     if (!range || !onEmailCleanup) return;
-    onEmailCleanup(buildEmailCleanupMessage(range));
+    const message = apply ? buildEmailCleanupApplyMessage(range) : buildEmailCleanupPreviewMessage(range);
+    onEmailCleanup(message);
+  };
+
+  const runEmail = (period, opts, apply = true) => {
+    runEmailWithRange(getCleanupRange(period, opts), apply);
+  };
+
+  const showEmailActionSheet = (period, opts = {}) => {
+    Alert.alert(
+      'Email cleaning',
+      'Preview lists newsletters/promos that would move to Trash. Apply requires Allow move to Trash in Setup.',
+      [
+        { text: 'Preview (dry run)', onPress: () => runEmail(period, opts, false) },
+        { text: 'Apply cleanup', style: 'destructive', onPress: () => runEmail(period, opts, true) },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
   };
 
   const runPhoto = (period, opts, apply) => {
@@ -85,8 +102,11 @@ export default function CleanupRangePanel({
   const onMonthSelected = ({ month, year, label }) => {
     setMonthPickerVisible(false);
     const opts = { month, year };
-    if (mode === 'email') runEmail('custom_month', opts);
-    else runPhoto('custom_month', opts, pendingPhotoApply);
+    if (mode === 'email') {
+      showEmailActionSheet('custom_month', opts);
+    } else {
+      runPhoto('custom_month', opts, pendingPhotoApply);
+    }
   };
 
   const showPhotoActionSheet = (period, opts = {}) => {
@@ -104,7 +124,7 @@ export default function CleanupRangePanel({
         return;
       }
       if (period === 'custom_month') openMonthPicker(false);
-      else runEmail(period);
+      else showEmailActionSheet(period);
       return;
     }
     if (period === 'custom_month') openMonthPicker(false);
@@ -170,7 +190,7 @@ export default function CleanupRangePanel({
       </Text>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 16, lineHeight: 16 }}>
         {mode === 'email'
-          ? 'Fetch and clean newsletters, promos, and junk for the selected period. Requires Render cloud email and Allow move to Trash.'
+          ? 'Fetch and clean newsletters, promos, and junk for the selected period. Preview lists what would move to Trash; apply requires Render cloud email and Allow move to Trash.'
           : 'Remove duplicate photos and coding screenshots for photos taken in the selected period. Preview first, then apply.'}
       </Text>
 

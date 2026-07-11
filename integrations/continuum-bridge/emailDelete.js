@@ -27,9 +27,24 @@ function wantsEmailCleanup(message) {
   return false;
 }
 
+/** Dry-run cleanup: fetch + classify targets without moving to Trash. */
+function wantsEmailCleanupPreview(message) {
+  const text = message || '';
+  if (!wantsEmailCleanup(text)) return false;
+  if (/\b(apply|confirm|proceed|yes\s+proceed|go\s+ahead|for\s+real|actually\s+(?:delete|trash|clean))\b/i.test(text)) {
+    return false;
+  }
+  if (/\b(preview|dry\s*run|scan\s+only|without\s+(?:deleting|trashing)|show\s+(?:me\s+)?(?:what|which)|would\s+be\s+trash)\b/i.test(text)) {
+    return true;
+  }
+  if (/\bpreview\s+email\s+(?:album\s+)?cleanup\b/i.test(text)) return true;
+  return false;
+}
+
 function wantsEmailDelete(message) {
   const text = message || '';
   if (DELETE_BLOCKED.test(text)) return false;
+  if (wantsEmailCleanupPreview(text)) return false;
   if (wantsEmailCleanup(text)) return true;
   if (DELETE_INTENT.test(text)) return true;
   if (/\bmove\b/i.test(text) && /\b(trash|bin)\b/i.test(text)) return true;
@@ -137,6 +152,74 @@ function countCleanupTargets(emails) {
     if (matchesCleanupTarget(triaged[i], emails[i])) count += 1;
   }
   return count;
+}
+
+function formatSender(email, row) {
+  return String(row?.from || email?.from?.text || email?.from || email?.fromAddress || 'Unknown')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+}
+
+function listCleanupTargets(emails, maxCap = CLEANUP_DELETE_MAX) {
+  if (!Array.isArray(emails) || emails.length === 0) return [];
+
+  const triaged = triageMessages(emails);
+  const rows = [];
+  for (let i = 0; i < triaged.length; i += 1) {
+    const row = triaged[i];
+    const email = emails[i];
+    if (!matchesCleanupTarget(row, email)) continue;
+    rows.push({
+      uid: Number(row.uid),
+      subject: String(row.subject || email?.subject || '(no subject)').replace(/\s+/g, ' ').trim().slice(0, 200),
+      from: formatSender(email, row),
+      category: row.category || 'other',
+    });
+    if (rows.length >= maxCap) break;
+  }
+  return rows;
+}
+
+const CLEANUP_PREVIEW_LIST_MAX = 150;
+
+function formatCleanupPreviewBlock(emails, { maxList = CLEANUP_PREVIEW_LIST_MAX } = {}) {
+  const targets = listCleanupTargets(emails);
+  const lines = [
+    '[EMAIL CLEANUP PREVIEW — dry run, nothing moved to Trash]',
+    '',
+    `**Would move to Trash (${targets.length})**`,
+    '_Newsletters, promos, junk, statements, and dev/marketing mail matching cleanup rules._',
+    '',
+  ];
+
+  if (!targets.length) {
+    lines.push('- _(none in this batch)_');
+  } else {
+    for (const row of targets.slice(0, maxList)) {
+      lines.push(`- UID ${row.uid}: "${row.subject}" — ${row.from}`);
+    }
+    if (targets.length > maxList) {
+      lines.push(`- _…and ${targets.length - maxList} more_`);
+    }
+  }
+
+  lines.push(
+    '',
+    '_Turn on **Allow move to Trash** in Setup, then say **apply email cleanup** (or tap Apply) to move these._',
+  );
+
+  return {
+    text: lines.join('\n'),
+    targets,
+    count: targets.length,
+    truncated: targets.length > maxList,
+  };
+}
+
+function extractEmailCleanupPreviewBlock(text) {
+  const match = String(text || '').match(/\[EMAIL CLEANUP PREVIEW[\s\S]*?(?=\n\[PREFILLED SUMMARY|\n\[\/PREFILLED SUMMARY|$)/i);
+  return match ? match[0].trim() : null;
 }
 
 function matchesSummaryCategory(row, catNum) {
@@ -520,11 +603,16 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false,
 module.exports = {
   MAX_DELETE_PER_REQUEST,
   CLEANUP_DELETE_MAX,
+  CLEANUP_PREVIEW_LIST_MAX,
   wantsEmailDelete,
   wantsEmailCleanup,
+  wantsEmailCleanupPreview,
   resolveDeleteUids,
   resolveCleanupUids,
   countCleanupTargets,
+  listCleanupTargets,
+  formatCleanupPreviewBlock,
+  extractEmailCleanupPreviewBlock,
   resolveChurchCommunityUids,
   parseExplicitUids,
   mergeDeleteResults,
