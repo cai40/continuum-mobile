@@ -8,6 +8,7 @@
 
 const Imap = require('imap');
 const { simpleParser } = require('mailparser');
+const libmime = require('libmime');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -197,7 +198,24 @@ function fetchByUids(imap, uids, fetchOptions) {
 }
 
 function decodeHeaderValue(raw) {
-  return String(raw || '').replace(/\r?\n[ \t]+/g, ' ').trim();
+  const folded = String(raw || '').replace(/\r?\n[ \t]+/g, ' ').trim();
+  if (!folded) return '';
+  try {
+    return libmime.decodeWords(folded);
+  } catch {
+    return folded;
+  }
+}
+
+function parseEmailDateHeader(dateRaw) {
+  if (!dateRaw) return null;
+  const parsed = new Date(dateRaw);
+  if (Number.isFinite(parsed.getTime())) return parsed;
+  // Some senders omit weekday/timezone; try stripping parenthetical TZ.
+  const trimmed = String(dateRaw).replace(/\s+\([^)]+\)\s*$/, '').trim();
+  const retry = new Date(trimmed);
+  if (Number.isFinite(retry.getTime())) return retry;
+  return null;
 }
 
 function parseHeaderFieldsBody(body) {
@@ -205,11 +223,7 @@ function parseHeaderFieldsBody(body) {
   const subject = decodeHeaderValue((text.match(/^Subject:\s*(.*)$/im) || [])[1]);
   const from = decodeHeaderValue((text.match(/^From:\s*(.*)$/im) || [])[1]);
   const dateRaw = decodeHeaderValue((text.match(/^Date:\s*(.*)$/im) || [])[1]);
-  let headerDate;
-  if (dateRaw) {
-    const parsed = new Date(dateRaw);
-    if (Number.isFinite(parsed.getTime())) headerDate = parsed;
-  }
+  const headerDate = parseEmailDateHeader(dateRaw);
   return {
     from: from || 'Unknown',
     subject: subject || '(no subject)',
@@ -499,6 +513,10 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
           sinceStr, beforeStr, limit, offset, lite, unreadOnly,
         });
         if (weekly != null) return weekly;
+        const dailyOn = await tryFetchDateRangeDailyOn(imap, {
+          sinceStr, beforeStr, limit, offset, lite,
+        });
+        if (dailyOn != null) return dailyOn;
       }
       if (rangeDays <= 8) {
         console.error(`[imap] date-range: skipping lookback for short window ${sinceStr}..${beforeStr}`);
@@ -723,6 +741,24 @@ function buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime, useI
   else if (recentTime) criteria.push(['SINCE', parseRelativeTime(recentTime)]);
   if (criteria.length === 0) criteria.push('ALL');
   return criteria;
+}
+
+function buildOnSearchCriteria(isoDay, unreadOnly = false) {
+  const criteria = [];
+  if (unreadOnly) criteria.push('UNSEEN');
+  criteria.push(['ON', imapDateFromIso(isoDay)]);
+  return criteria;
+}
+
+function eachDayInRange(sinceStr, beforeStr) {
+  const days = [];
+  const endMs = dayStartUtcMs(beforeStr);
+  let cur = sinceStr;
+  while (dayStartUtcMs(cur) < endMs) {
+    days.push(cur);
+    cur = addDaysIso(cur, 1);
+  }
+  return days;
 }
 
 function filterByDateRange(rows, sinceStr, beforeStr) {
@@ -1019,6 +1055,95 @@ async function tryFetchDateRangeWeeklySlices(imap, { sinceStr, beforeStr, limit,
     scanned: totalScanned,
     totalUids: allRows.length,
     scanMode: 'weekly_slices',
+    span,
+    matched: filtered.length,
+    wanted: { since: sinceStr, before: beforeStr },
+    used: { since: usedSince, before: usedBefore },
+  })}`);
+  return compactRows(sorted.slice(offset, offset + limit), lite);
+}
+
+// Yahoo often ignores SINCE+BEFORE on older months — ON (single day) usually works.
+async function tryFetchDateRangeDailyOn(imap, { sinceStr, beforeStr, limit, offset, lite }) {
+  const days = eachDayInRange(sinceStr, beforeStr);
+  console.error(`[imap] date-range daily ON: ${days.length} day(s) for ${sinceStr}..${beforeStr}`);
+
+  let allRows = [];
+  let totalScanned = 0;
+  let daysWithMail = 0;
+
+  for (const day of days) {
+    let uids = [];
+    try {
+      uids = await searchUidsLogged(
+        imap,
+        buildOnSearchCriteria(day, false),
+        `on-${day}`,
+        30000,
+      );
+    } catch (err) {
+      console.error(`[imap] date-range ON ${day} failed (${err.message}); continuing`);
+      continue;
+    }
+    if (uids.length === 0) continue;
+
+    daysWithMail++;
+    console.error(`[imap] date-range ON ${day}: ${uids.length} uid(s)`);
+    for (let i = 0; i < uids.length; i += 100) {
+      const batch = uids.slice(i, i + 100);
+      const batchRows = await fetchHeaderRowsByUids(imap, batch);
+      totalScanned += batchRows.length;
+      allRows = mergeRowsByUid(allRows.concat(batchRows));
+    }
+
+    const { filtered: running } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
+    if (running.length >= offset + limit) break;
+  }
+
+  const { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
+
+  if (daysWithMail === 0) {
+    console.error(
+      `[imap] date-range daily ON: 0 uid(s) on all ${days.length} day(s)`
+      + ` — no INBOX mail indexed for ${sinceStr}..${addDaysIso(beforeStr, -1)}`,
+    );
+    console.error(`SCAN_META:${JSON.stringify({
+      scanned: 0,
+      scanMode: 'daily_on_empty',
+      dailyDaysChecked: days.length,
+      matched: 0,
+      wanted: { since: sinceStr, before: beforeStr },
+      used: { since: sinceStr, before: beforeStr },
+    })}`);
+    return [];
+  }
+
+  if (filtered.length === 0) {
+    const span = scanDateSpan(allRows);
+    const sampleDates = sortRowsNewestFirst([...allRows]).slice(0, 5).map((row) => {
+      const t = emailTimestampMs(row);
+      return t > 0 ? new Date(t).toISOString().slice(0, 10) : null;
+    }).filter(Boolean);
+    console.error(
+      `[imap] date-range daily ON: 0 matched in ${sinceStr}..${beforeStr}`
+      + ` after ${totalScanned} header(s) on ${daysWithMail} day(s)`
+      + (span ? `; span ${span.oldest}..${span.newest}` : '')
+      + (sampleDates.length ? `; sample: ${sampleDates.join(', ')}` : ''),
+    );
+    return null;
+  }
+
+  const span = scanDateSpan(filtered);
+  const sorted = sortRowsNewestFirst(filtered);
+  console.error(
+    `[imap] date-range daily ON: matched ${filtered.length} for ${usedSince}..${usedBefore}`
+    + ` (${totalScanned} header(s) on ${daysWithMail} day(s))`,
+  );
+  console.error(`SCAN_META:${JSON.stringify({
+    scanned: totalScanned,
+    totalUids: allRows.length,
+    scanMode: 'daily_on',
+    dailyDaysWithMail: daysWithMail,
     span,
     matched: filtered.length,
     wanted: { since: sinceStr, before: beforeStr },

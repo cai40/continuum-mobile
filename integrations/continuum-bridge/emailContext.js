@@ -473,7 +473,11 @@ function parseImapProgressLine(line) {
   if ((m = text.match(/^\[imap\]\s+date-range\s+lookback\s+\d+d:\s+fetched\s+(\d+)\s+row/i))) {
     const matched = text.match(/matched\s+(\d+)/i);
     const matchedN = matched ? parseInt(matched[1], 10) : null;
+    const span = text.match(/dates (\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})/i);
     if (matchedN === 0) {
+      if (span) {
+        return `Scan complete: ${m[1]} headers checked, 0 in range (mail dated ${span[1]}–${span[2]})`;
+      }
       return `Scan complete: ${m[1]} headers checked, 0 in date range`;
     }
     return `Scan complete: ${m[1]} fetched${matched ? `, ${matched[1]} matched` : ''}`;
@@ -499,6 +503,16 @@ function parseImapProgressLine(line) {
   }
   if (/date-range weekly:/i.test(text)) {
     return 'Searching week-by-week for target month…';
+  }
+  if (/date-range daily ON:/i.test(text)) {
+    return 'Searching each day in target month…';
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range ON (\d{4}-\d{2}-\d{2}):\s+(\d+) uid/i))) {
+    const n = parseInt(m[2], 10);
+    return n > 0 ? `Found ${n} on ${m[1]}…` : null;
+  }
+  if (/daily ON: 0 uid\(s\) on all/i.test(text)) {
+    return 'No INBOX mail on any day in this month — done';
   }
   if ((m = text.match(/^\[imap\]\s+date-range weekly slice\s+(\S+\.\.\S+):\s+(\d+)\s+uid/i))) {
     return `Searching ${m[1]}… (${m[2]} found)`;
