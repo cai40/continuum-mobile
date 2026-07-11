@@ -55,6 +55,10 @@ export function findPriorEmailUserMessage(messages) {
 export function isEmailConfirmMessage(text) {
   const input = String(text || '').trim();
   if (input.length > 120) return false;
+  if (/\b(apply|proceed|yes|yeah|yep|ok(?:ay)?|confirm|go ahead|do it|run)\b/i.test(input)
+    && /\b(emails?|inbox|mail|yahoo)\b/i.test(input)) {
+    return true;
+  }
   return /\b(yes|yeah|yep|ok(?:ay)?|apply|confirm|confirmed|proceed|go ahead|do it|approved|approve|run)\b/i.test(input)
     && !/\b(emails?|inbox|clean|fetch|apr|april|yahoo|preview)\b/i.test(input);
 }

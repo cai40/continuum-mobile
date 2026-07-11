@@ -53,7 +53,7 @@ import {
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
-import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from '../utils/photoCleanupCancel';
+import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
 import { wantsDraftOutput, DRAFT_OUTPUT_APPEND, buildDraftAssistantMessages } from '../utils/draftOutput';
 import { styles, theme } from '../styles/theme';
@@ -527,7 +527,10 @@ const ChatSection = () => {
 
       const wantsCopyDraft = wantsDraftOutput(finalInput);
 
-      const isEmailConfirm = renderEmailEnabled && isGenericCleanupConfirm(finalInput) && confirmCleanupKind !== 'photo';
+      const isEmailConfirm = renderEmailEnabled && (
+        confirmCleanupKind === 'email'
+        || (isGenericCleanupConfirm(finalInput) && confirmCleanupKind !== 'photo')
+      );
       const isEmailQuery = !isPhotoCleanupQuery && !isComposeEmailRequest(finalInput) && (
         /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
         || /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to|through|until|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i.test(finalInput)
@@ -640,6 +643,10 @@ const ChatSection = () => {
           setStreamingContent('');
         }
         return;
+      }
+
+      if (!isPhotoCleanupQuery) {
+        clearPhotoCleanupCancel();
       }
 
       if (isVoiceMode) {
