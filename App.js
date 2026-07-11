@@ -93,7 +93,7 @@ const AppShell = () => {
     deepseek_v4_flash: 'DEEPSEEK',
     qwen: 'QWEN',
     gpt4o_mini: '4O MINI',
-    kimi_k2.6: 'KIMI',
+    'kimi_k2.6': 'KIMI',
     minimax: 'MINIMAX',
     gemini: 'GEMINI',
     groq: 'GROQ',
