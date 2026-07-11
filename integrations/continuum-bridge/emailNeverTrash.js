@@ -32,6 +32,15 @@ const STATE_PATH = path.join(
 
 const BUILTIN_NEVER_TRASH = [
   { label: 'Michelle Wang', needles: ['michelle wang', 'bingjing6699@gmail.com'] },
+  {
+    label: 'MassHousing',
+    needles: [
+      'masshousing',
+      'masshousing.com',
+      '@masshousing.com',
+      'massachusetts housing finance agency',
+    ],
+  },
 ];
 
 const INVALID_SENDER_LABELS = new Set([
@@ -124,6 +133,18 @@ function parseNeverTrashSender(message) {
 
   if (/\bmichelle\s+wang\b/i.test(text)) {
     return { label: 'Michelle Wang', needles: ['michelle wang', 'bingjing6699@gmail.com'] };
+  }
+
+  if (/\bmass\s*housing\b/i.test(text) || /\bmasshousing\b/i.test(text)) {
+    return {
+      label: 'MassHousing',
+      needles: [
+        'masshousing',
+        'masshousing.com',
+        '@masshousing.com',
+        'massachusetts housing finance agency',
+      ],
+    };
   }
 
   const patterns = [

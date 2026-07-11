@@ -49,6 +49,7 @@ const PROTECTED_PATTERNS = [
   /hetzner|termius|render services|stripe/i,
   /verification code|one.?time passcode|otp|fraud alert|unauthorized/i,
   /michelle\s+wang|bingjing6699@gmail\.com/i,
+  /mass\s*housing|masshousing\.com|@masshousing\.com|massachusetts housing finance agency/i,
 ];
 
 const PROTECTED_BANK_NON_STATEMENT = /\b(bank of america|fidelity|greenwood credit|peoplesbank|charles schwab|chase|wells fargo|capital one|citi|american express)\b/i;
