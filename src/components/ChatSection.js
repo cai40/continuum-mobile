@@ -50,7 +50,7 @@ import {
   buildEmailJobPayload,
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
-import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
+import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -524,7 +524,7 @@ const ChatSection = () => {
         && !activeAttachments.length;
 
       const isEmailConfirm = renderEmailEnabled && isEmailConfirmMessage(finalInput);
-      const isEmailQuery = !isPhotoCleanupQuery && (
+      const isEmailQuery = !isPhotoCleanupQuery && !isComposeEmailRequest(finalInput) && (
         /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
         || /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to|through|until|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i.test(finalInput)
         || /\b(delete|remove|trash|move)\b.*\b(emails?|mail|inbox|message|junk|spam)\b/i.test(finalInput)

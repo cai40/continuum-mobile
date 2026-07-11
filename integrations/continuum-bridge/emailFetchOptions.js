@@ -3,6 +3,7 @@
 const { parseDateRangeFromMessage, parseYearRangeFromMessage, addDays } = require('./emailDateRange');
 const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
+const { isComposeEmailRequest } = require('./emailComposeIntent');
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50000;
@@ -206,6 +207,7 @@ function formatPostEmailFetchStatus({ fetchOptions, scanMeta, loadedCount } = {}
 
 function wantsEmailFetch(message, payloadOptions = {}) {
   const text = message || '';
+  if (isComposeEmailRequest(text)) return false;
   if (EMAIL_TRIGGER.test(text)) return true;
   if (parseDateRangeFromMessage(text)) return true;
   if (parseOffsetFromMessage(text) != null) return true;
