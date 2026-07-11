@@ -17,7 +17,7 @@ const {
 } = require('./emailFetchOptions');
 const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
-const { wantsEmailMoveToFolder } = require('./emailMove');
+const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
 const {
   appendGroundingPersona,
   EMAIL_LIVE_INBOX_APPEND,
@@ -203,6 +203,7 @@ function createEmailJob({ message, payload }) {
     progress: 'Queued',
     message: String(message || '').slice(0, 500),
     payload,
+    checkpoint: payload.email_year_checkpoint || null,
     result: null,
     error: null,
     created_at: new Date().toISOString(),
@@ -259,7 +260,25 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       status(detail);
     };
 
-    const emailResult = await fetchEmailContext(message, emailPayloadOptions, onScanProgress);
+    let emailResult;
+    if (wantsYearCleanup(message)) {
+      const { parseYearRangeFromMessage } = require('./emailDateRange');
+      const yearRange = parseYearRangeFromMessage(message);
+      if (!yearRange) {
+        throw new Error('Could not parse year for whole-year cleanup.');
+      }
+      const resumeCheckpoint = job.checkpoint || payload.email_year_checkpoint || null;
+      emailResult = await runYearCleanup({
+        message,
+        yearRange,
+        payloadOptions: emailPayloadOptions,
+        onProgress: onScanProgress,
+        checkpoint: resumeCheckpoint,
+        onCheckpoint: (checkpoint) => updateJob(jobId, { checkpoint }),
+      });
+    } else {
+      emailResult = await fetchEmailContext(message, emailPayloadOptions, onScanProgress);
+    }
     if (emailResult.error) {
       throw new Error(emailResult.error);
     }
@@ -302,6 +321,7 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
         progress: 'Done',
         result: prefilledResult,
         error: null,
+        checkpoint: null,
       });
     }
 
@@ -345,6 +365,7 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       progress: 'Done',
       result: reply,
       error: null,
+      checkpoint: null,
     });
   } catch (err) {
     return updateJob(jobId, {

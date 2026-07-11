@@ -97,27 +97,86 @@ function buildYearScanBlock(year, totalMatched, totalLoaded) {
   ].join('\n');
 }
 
+function normalizeYearCheckpoint(checkpoint, year) {
+  if (!checkpoint || parseInt(String(checkpoint.year || year), 10) !== year) return null;
+  const startIndex = Math.min(
+    Math.max(parseInt(checkpoint.completedMonthIndex, 10) || 0, 0),
+    MONTH_NAMES.length,
+  );
+  return {
+    startIndex,
+    monthResults: Array.isArray(checkpoint.monthResults) ? checkpoint.monthResults.slice(0, MONTH_NAMES.length) : [],
+    totalMatched: parseInt(checkpoint.totalMatched, 10) || 0,
+    totalLoaded: parseInt(checkpoint.totalLoaded, 10) || 0,
+    totalTrashed: parseInt(checkpoint.totalTrashed, 10) || 0,
+    totalCleanupTargets: parseInt(checkpoint.totalCleanupTargets, 10) || 0,
+    mergedDelete: checkpoint.mergedDelete || { executed: false, summary: null, error: null, uids: [], skippedUids: [] },
+    hadError: checkpoint.hadError || null,
+    lastFetchOptions: checkpoint.lastFetchOptions || null,
+  };
+}
+
+function buildYearCheckpoint({
+  year,
+  completedMonthIndex,
+  monthResults,
+  totalMatched,
+  totalLoaded,
+  totalTrashed,
+  totalCleanupTargets,
+  mergedDelete,
+  hadError,
+  lastFetchOptions,
+}) {
+  return {
+    year,
+    completedMonthIndex,
+    monthResults,
+    totalMatched,
+    totalLoaded,
+    totalTrashed,
+    totalCleanupTargets,
+    mergedDelete,
+    hadError,
+    lastFetchOptions,
+  };
+}
+
 /**
  * Run cleanup month-by-month for a full calendar year.
  * Lazy-requires fetchEmailContext to avoid circular module dependency at load time.
+ * Optional checkpoint resumes after server restart (skips completed months).
  */
-async function runYearCleanup({ message, yearRange, payloadOptions = {}, onProgress = null }) {
+async function runYearCleanup({
+  message,
+  yearRange,
+  payloadOptions = {},
+  onProgress = null,
+  checkpoint = null,
+  onCheckpoint = null,
+}) {
   const year = parseInt(String(yearRange?.since || '').slice(0, 4), 10);
   if (!year || year < 1970) {
     throw new Error('Invalid year for whole-year cleanup.');
   }
 
   const { fetchEmailContext } = require('./emailContext');
-  const monthResults = [];
-  let totalMatched = 0;
-  let totalLoaded = 0;
-  let totalTrashed = 0;
-  let totalCleanupTargets = 0;
-  let mergedDelete = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
-  let lastFetchOptions = null;
-  let hadError = null;
+  const restored = normalizeYearCheckpoint(checkpoint, year);
+  const monthResults = restored?.monthResults ? [...restored.monthResults] : [];
+  let totalMatched = restored?.totalMatched || 0;
+  let totalLoaded = restored?.totalLoaded || 0;
+  let totalTrashed = restored?.totalTrashed || 0;
+  let totalCleanupTargets = restored?.totalCleanupTargets || 0;
+  let mergedDelete = restored?.mergedDelete || { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
+  let lastFetchOptions = restored?.lastFetchOptions || null;
+  let hadError = restored?.hadError || null;
+  const startIndex = restored?.startIndex || 0;
 
-  for (let i = 0; i < MONTH_NAMES.length; i += 1) {
+  if (startIndex > 0 && onProgress) {
+    onProgress(`Resuming whole-year cleanup from ${MONTH_NAMES[startIndex]} ${year} (${startIndex + 1}/12)…`);
+  }
+
+  for (let i = startIndex; i < MONTH_NAMES.length; i += 1) {
     const monthName = MONTH_NAMES[i];
     const monthMessage = monthCleanupMessage(monthName, year);
     const stepLabel = `${monthName} ${year} (${i + 1}/12)`;
@@ -178,6 +237,21 @@ async function runYearCleanup({ message, yearRange, payloadOptions = {}, onProgr
       hadError = err.message || String(err);
       monthResults.push({ month: monthName, matched: 0, loaded: 0, trashed: 0, cleanupTargets: 0, error: hadError });
     }
+
+    if (onCheckpoint) {
+      onCheckpoint(buildYearCheckpoint({
+        year,
+        completedMonthIndex: i + 1,
+        monthResults,
+        totalMatched,
+        totalLoaded,
+        totalTrashed,
+        totalCleanupTargets,
+        mergedDelete,
+        hadError,
+        lastFetchOptions,
+      }));
+    }
   }
 
   if (onProgress) onProgress('Whole-year cleanup: building summary…');
@@ -227,5 +301,7 @@ async function runYearCleanup({ message, yearRange, payloadOptions = {}, onProgr
 module.exports = {
   wantsYearCleanup,
   runYearCleanup,
+  buildYearCheckpoint,
+  normalizeYearCheckpoint,
   MONTH_NAMES,
 };

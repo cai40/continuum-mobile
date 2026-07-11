@@ -39,6 +39,9 @@ import {
   pollEmailJobUntilDone,
   savePendingEmailJob,
   loadPendingEmailJob,
+  loadPendingEmailJobMeta,
+  peekEmailJobStatus,
+  clearPendingEmailJob,
   buildEmailJobPayload,
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
@@ -216,12 +219,32 @@ const ChatSection = () => {
     const token = session?.access_token?.trim();
     if (!secret || !token) return;
 
+    const meta = await loadPendingEmailJobMeta();
+    const existing = await peekEmailJobStatus(secret, pendingId, token);
+    if (!existing) {
+      await clearPendingEmailJob();
+      return;
+    }
+    if (existing.status === 'completed' && existing.result) {
+      await clearPendingEmailJob();
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now().toString(), role: 'assistant', content: existing.result },
+      ]);
+      return;
+    }
+    if (existing.status === 'failed') {
+      await clearPendingEmailJob();
+      return;
+    }
+
     setIsTyping(true);
     setStreamingContent('Resuming cloud email job…');
     const poller = pollEmailJobUntilDone({
       bridgeSecret: secret,
       jobId: pendingId,
       authToken: token,
+      jobMeta: meta,
       onProgress: (detail) => setStreamingContent(detail),
     });
     backgroundJobRef.current = poller;
@@ -232,11 +255,13 @@ const ChatSection = () => {
         { id: Date.now().toString(), role: 'assistant', content: result },
       ]);
     } catch (e) {
-      const msg = friendlyChatError(e.message || String(e));
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now().toString(), role: 'assistant', content: msg },
-      ]);
+      if (e?.code !== 'EMAIL_JOB_NOT_FOUND') {
+        const msg = friendlyChatError(e.message || String(e));
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now().toString(), role: 'assistant', content: msg },
+        ]);
+      }
     } finally {
       backgroundJobRef.current = null;
       setIsTyping(false);
@@ -802,15 +827,23 @@ const ChatSection = () => {
 
           let usingStreamFallback = false;
           setStreamingContent('Starting cloud email job…');
+          await clearPendingEmailJob();
           submitBackgroundEmailJob(jobSecret, jobPayload, activeToken, jobBaseUrl)
             .then(async (created) => {
-              await savePendingEmailJob(created.job_id);
+              const jobMeta = {
+                message: payload.message,
+                payload: jobPayload,
+                restartCount: 0,
+                checkpoint: null,
+              };
+              await savePendingEmailJob(created.job_id, jobMeta);
               setStreamingContent('Running in cloud — safe to switch apps…');
               const poller = pollEmailJobUntilDone({
                 bridgeSecret: jobSecret,
                 jobId: created.job_id,
                 authToken: activeToken,
                 baseUrl: jobBaseUrl,
+                jobMeta,
                 onProgress: (detail) => setStreamingContent(detail),
               });
               backgroundJobRef.current = poller;
