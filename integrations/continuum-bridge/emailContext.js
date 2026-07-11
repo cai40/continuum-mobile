@@ -6,7 +6,7 @@ const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
-const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, extractEmailCleanupPreviewBlock } = require('./emailDelete');
+const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
@@ -295,7 +295,24 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
       '',
       '**Cleanup:** Preview only — no mail was moved.',
       `- **Would trash:** ${cleanupCount}`,
-      '- See the **[EMAIL CLEANUP PREVIEW]** block below for subject + sender of each message.',
+      '',
+      '**Would move to Trash (subject + sender):**',
+    );
+    const targets = cleanupPreviewBlock?.targets || [];
+    const maxInline = CLEANUP_PREVIEW_LIST_MAX;
+    if (!targets.length) {
+      lines.push('- _(none in this batch)_');
+    } else {
+      for (const row of targets.slice(0, maxInline)) {
+        lines.push(`- UID ${row.uid}: "${row.subject}" — ${row.from}`);
+      }
+      if (targets.length > maxInline) {
+        lines.push(`- _…and ${targets.length - maxInline} more_`);
+      }
+    }
+    lines.push(
+      '',
+      '_Turn on Allow move to Trash in Setup, then say apply email cleanup (or tap Apply) to move these._',
     );
   } else if (cleanupRequested && cleanupCount > 0) {
     lines.push(

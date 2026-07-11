@@ -218,8 +218,12 @@ function formatCleanupPreviewBlock(emails, { maxList = CLEANUP_PREVIEW_LIST_MAX 
 }
 
 function extractEmailCleanupPreviewBlock(text) {
-  const match = String(text || '').match(/\[EMAIL CLEANUP PREVIEW[\s\S]*?(?=\n\[PREFILLED SUMMARY|\n\[\/PREFILLED SUMMARY|$)/i);
-  return match ? match[0].trim() : null;
+  const src = String(text || '');
+  const idx = src.search(/\[EMAIL CLEANUP PREVIEW/i);
+  if (idx < 0) return null;
+  const slice = src.slice(idx);
+  const cut = slice.search(/\n\[(?:PREFILLED|Email cleanup executed|Email trash|Email auto-trash|\/PREFILLED)/i);
+  return (cut > 0 ? slice.slice(0, cut) : slice).trim();
 }
 
 function matchesSummaryCategory(row, catNum) {
