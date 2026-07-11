@@ -5,6 +5,32 @@ import { resolveEmailFetchPayload } from './openclawEmailOptions';
 
 const PENDING_JOB_KEY = '@continuum_pending_email_job';
 const PENDING_JOB_META_KEY = '@continuum_pending_email_job_meta';
+const EMAIL_JOB_STOPPED_KEY = '@continuum_email_job_stopped';
+
+export function isStopEmailJobMessage(message) {
+  return /\b(?:stop|cancel|abort|kill)\b(?:\s+(?:the|my|this|cloud|background|running))?\s+(?:email|mail|inbox|cleanup|scan|job)\b/i.test(String(message || ''))
+    || /\b(?:stop|cancel)\s+(?:email\s+)?(?:cleanup|scan|job)\b/i.test(String(message || ''));
+}
+
+export async function markEmailJobStopped() {
+  await AsyncStorage.setItem(EMAIL_JOB_STOPPED_KEY, '1');
+}
+
+export async function wasEmailJobStopped() {
+  try {
+    return (await AsyncStorage.getItem(EMAIL_JOB_STOPPED_KEY)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export async function clearEmailJobStopped() {
+  try {
+    await AsyncStorage.removeItem(EMAIL_JOB_STOPPED_KEY);
+  } catch {
+    // ignore
+  }
+}
 
 /** Mirror bridge wantsBackgroundEmailJob for client-side routing. */
 export function shouldRunEmailInBackground(message) {
@@ -68,6 +94,34 @@ export async function clearPendingEmailJob() {
     await AsyncStorage.multiRemove([PENDING_JOB_KEY, PENDING_JOB_META_KEY]);
   } catch {
     // ignore
+  }
+}
+
+export async function cancelBackgroundEmailJob(bridgeSecret, jobId, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
+  if (!jobId) return null;
+  const root = baseUrl.replace(/\/$/, '');
+  const res = await fetch(`${root}/email-jobs/${jobId}/cancel`, {
+    method: 'POST',
+    headers: jobHeaders(bridgeSecret, authToken),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.detail || `Cancel job failed (${res.status})`);
+  }
+  return data;
+}
+
+/** Stop client polling, cancel server job, and clear saved pending state. */
+export async function stopActiveEmailJob(bridgeSecret, authToken, baseUrl = RENDER_EMAIL_BRIDGE_URL) {
+  await markEmailJobStopped();
+  const jobId = await loadPendingEmailJob();
+  await clearPendingEmailJob();
+  if (jobId && bridgeSecret) {
+    try {
+      await cancelBackgroundEmailJob(bridgeSecret, jobId, authToken, baseUrl);
+    } catch {
+      // Server may have already lost the job — local stop still wins.
+    }
   }
 }
 
@@ -318,6 +372,12 @@ export function pollEmailJobUntilDone({
       if (job.status === 'completed') {
         await clearPendingEmailJob();
         return job.result || '';
+      }
+      if (job.status === 'cancelled') {
+        await clearPendingEmailJob();
+        const err = new Error('Background email job cancelled.');
+        err.code = 'EMAIL_JOB_CANCELLED';
+        throw err;
       }
       if (job.status === 'failed') {
         await clearPendingEmailJob();

@@ -467,13 +467,16 @@ function parseImapProgressLine(line) {
  * Run the IMAP script via spawn, streaming stderr to onProgress in real time.
  * Collects stdout for later parsing.
  */
-function runImapSpawned(args, { timeoutMs, cwd, env, onProgress }) {
+function runImapSpawned(args, { timeoutMs, cwd, env, onProgress, cancelJobId = null }) {
+  const { isJobCancelled, registerImapChild } = require('./emailJobCancel');
   return new Promise((resolve, reject) => {
     const child = spawn('node', args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    if (cancelJobId) registerImapChild(cancelJobId, child);
     let stdout = '';
     let stderr = '';
     let stderrBuf = '';
     let timedOut = false;
+    let killedForCancel = false;
     let lastProgressAt = 0;
     let lastProgressMsg = '';
 
@@ -481,6 +484,16 @@ function runImapSpawned(args, { timeoutMs, cwd, env, onProgress }) {
       timedOut = true;
       try { child.kill('SIGKILL'); } catch { /* ignore */ }
     }, timeoutMs);
+
+    let cancelTimer = null;
+    if (cancelJobId) {
+      cancelTimer = setInterval(() => {
+        if (isJobCancelled(cancelJobId)) {
+          killedForCancel = true;
+          try { child.kill('SIGKILL'); } catch { /* ignore */ }
+        }
+      }, 500);
+    }
 
     child.stdout.on('data', (chunk) => {
       stdout += chunk.toString();
@@ -515,11 +528,19 @@ function runImapSpawned(args, { timeoutMs, cwd, env, onProgress }) {
 
     child.on('error', (err) => {
       clearTimeout(timer);
+      if (cancelTimer) clearInterval(cancelTimer);
       reject(err);
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      if (cancelTimer) clearInterval(cancelTimer);
+      if (killedForCancel || (cancelJobId && isJobCancelled(cancelJobId))) {
+        const err = new Error('Email job cancelled by user.');
+        err.code = 'EMAIL_JOB_CANCELLED';
+        reject(err);
+        return;
+      }
       if (timedOut) {
         const err = new Error(`Yahoo IMAP timed out after ${Math.round(timeoutMs / 1000)}s`);
         err.stderr = stderr;
@@ -560,6 +581,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
         cwd: skillRoot,
         env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
         onProgress,
+        cancelJobId: payloadOptions._cancel_job_id || null,
       })
     : await execFileAsync(
         'node',

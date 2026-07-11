@@ -26,6 +26,12 @@ const {
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
 } = require('./groundingPrompt');
 
+const {
+  isJobCancelled,
+  markJobCancelled,
+  clearJobCancelled,
+  assertJobActive,
+} = require('./emailJobCancel');
 const MAX_STORED_JOBS = 40;
 const MAX_LLM_MESSAGE_CHARS = 320_000;
 
@@ -219,7 +225,11 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
   const job = getJob(jobId);
   if (!job) throw new Error('Job not found');
   if (job.status === 'completed') return job;
+  if (job.status === 'cancelled' || isJobCancelled(jobId)) {
+    return updateJob(jobId, { status: 'cancelled', progress: 'Cancelled' });
+  }
 
+  clearJobCancelled(jobId);
   updateJob(jobId, { status: 'running', progress: 'Starting…' });
   const status = (detail) => {
     if (onStatus) onStatus(detail);
@@ -240,7 +250,10 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       email_delete_enabled: payload.email_delete_enabled,
       email_auto_trash_junk: payload.email_auto_trash_junk,
       history: payload.history,
+      _cancel_job_id: jobId,
     };
+
+    assertJobActive(jobId);
 
     if (!wantsEmailFetch(message)) {
       throw new Error('Background jobs support email fetch/cleanup requests only.');
@@ -368,6 +381,13 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       checkpoint: null,
     });
   } catch (err) {
+    if (err.code === 'EMAIL_JOB_CANCELLED' || isJobCancelled(jobId)) {
+      return updateJob(jobId, {
+        status: 'cancelled',
+        progress: 'Cancelled',
+        error: null,
+      });
+    }
     return updateJob(jobId, {
       status: 'failed',
       progress: 'Failed',
@@ -376,9 +396,25 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
   }
 }
 
+function cancelEmailJob(jobId) {
+  const job = getJob(jobId);
+  if (!job) return null;
+  if (job.status === 'completed' || job.status === 'cancelled') return job;
+  markJobCancelled(jobId);
+  return updateJob(jobId, {
+    status: 'cancelled',
+    progress: 'Cancelled',
+    error: null,
+  });
+}
+
 function startEmailJob(jobId, options) {
   setImmediate(() => {
     runEmailJob(jobId, options).catch((err) => {
+      if (err.code === 'EMAIL_JOB_CANCELLED' || isJobCancelled(jobId)) {
+        updateJob(jobId, { status: 'cancelled', progress: 'Cancelled', error: null });
+        return;
+      }
       updateJob(jobId, {
         status: 'failed',
         progress: 'Failed',
@@ -417,5 +453,6 @@ module.exports = {
   getLatestJobs,
   runEmailJob,
   startEmailJob,
+  cancelEmailJob,
   wantsBackgroundEmailJob,
 };
