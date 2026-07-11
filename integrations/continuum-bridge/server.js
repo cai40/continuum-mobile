@@ -45,6 +45,7 @@ const {
   getJob,
   getLatestJobs,
   startEmailJob,
+  cancelEmailJob,
 } = require('./emailJobs');
 
 const PORT = parseInt(process.env.CONTINUUM_BRIDGE_PORT || '8787', 10);
@@ -254,6 +255,22 @@ async function handleEmailJobGet(req, res, config, jobId) {
       created_at: job.created_at,
       updated_at: job.updated_at,
     },
+  });
+}
+
+async function handleEmailJobCancel(req, res, config, jobId) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  const job = cancelEmailJob(jobId);
+  if (!job) {
+    return json(res, 404, { success: false, error: 'Job not found' });
+  }
+  return json(res, 200, {
+    success: true,
+    job_id: job.id,
+    status: job.status,
+    progress: job.progress,
   });
 }
 
@@ -564,6 +581,11 @@ const server = http.createServer(async (req, res) => {
       return await handleEmailJobGet(req, res, config, jobMatch[1]);
     }
 
+    const cancelMatch = req.method === 'POST' && req.url?.match(/^\/email-jobs\/([a-f0-9]+)\/cancel$/);
+    if (cancelMatch) {
+      return await handleEmailJobCancel(req, res, config, cancelMatch[1]);
+    }
+
     if (req.method === 'POST' && req.url === '/ask') {
       if (!verifyBridgeSecret(req, config)) {
         return json(res, 401, { success: false, error: 'Invalid bridge secret' });
@@ -590,6 +612,7 @@ server.listen(PORT, HOST, () => {
   console.log('  POST /email-jobs       (background email fetch/cleanup)');
   console.log('  GET  /email-jobs/latest');
   console.log('  GET  /email-jobs/:id');
+  console.log('  POST /email-jobs/:id/cancel');
   console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');
   console.log('  POST /ask          (CLI / skill)');
 });

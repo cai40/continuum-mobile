@@ -42,6 +42,10 @@ import {
   loadPendingEmailJobMeta,
   peekEmailJobStatus,
   clearPendingEmailJob,
+  clearEmailJobStopped,
+  stopActiveEmailJob,
+  isStopEmailJobMessage,
+  wasEmailJobStopped,
   buildEmailJobPayload,
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
@@ -196,10 +200,23 @@ const ChatSection = () => {
     };
   }, []);
 
-  const handleStop = () => {
+  const handleStop = async () => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
     backgroundJobRef.current = null;
+    if (renderEmailEnabled) {
+      const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
+      const token = session?.access_token?.trim();
+      if (secret && token) {
+        try {
+          await stopActiveEmailJob(secret, token);
+        } catch {
+          await clearPendingEmailJob();
+        }
+      } else {
+        await clearPendingEmailJob();
+      }
+    }
     setIsTyping(false);
     setStreamingContent('');
     if (soundRef.current) {
@@ -213,6 +230,10 @@ const ChatSection = () => {
 
   const resumePendingEmailJob = useCallback(async () => {
     if (!renderEmailEnabled || isTyping || backgroundJobRef.current) return;
+    if (await wasEmailJobStopped()) {
+      await clearPendingEmailJob();
+      return;
+    }
     const pendingId = await loadPendingEmailJob();
     if (!pendingId) return;
     const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
@@ -233,7 +254,7 @@ const ChatSection = () => {
       ]);
       return;
     }
-    if (existing.status === 'failed') {
+    if (existing.status === 'failed' || existing.status === 'cancelled') {
       await clearPendingEmailJob();
       return;
     }
@@ -255,7 +276,9 @@ const ChatSection = () => {
         { id: Date.now().toString(), role: 'assistant', content: result },
       ]);
     } catch (e) {
-      if (e?.code !== 'EMAIL_JOB_NOT_FOUND') {
+      if (e?.code === 'EMAIL_JOB_NOT_FOUND' || e?.code === 'EMAIL_JOB_CANCELLED') {
+        // User stopped or server lost the job — stay quiet.
+      } else {
         const msg = friendlyChatError(e.message || String(e));
         setMessages((prev) => [
           ...prev,
@@ -461,6 +484,28 @@ const ChatSection = () => {
         : attachments;
       const finalInput = isFromVoice ? localTranscript : input;
       if (!finalInput.trim() && activeAttachments.length === 0) return;
+
+      if (renderEmailEnabled && isStopEmailJobMessage(finalInput)) {
+        const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
+        const token = session?.access_token?.trim();
+        if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
+        backgroundJobRef.current = null;
+        if (secret && token) {
+          await stopActiveEmailJob(secret, token);
+        } else {
+          await clearPendingEmailJob();
+        }
+        setInput('');
+        setLocalTranscript('');
+        setIsTyping(false);
+        setStreamingContent('');
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now().toString(), role: 'user', content: finalInput.trim() },
+          { id: (Date.now() + 1).toString(), role: 'assistant', content: 'Cloud email cleanup stopped.' },
+        ]);
+        return;
+      }
 
       const isPhotoCleanupQuery = (wantsPhotoCleanup(finalInput) || wantsPhotoCleanupStatus(finalInput))
         && !activeAttachments.length;
@@ -827,6 +872,7 @@ const ChatSection = () => {
 
           let usingStreamFallback = false;
           setStreamingContent('Starting cloud email job…');
+          await clearEmailJobStopped();
           await clearPendingEmailJob();
           submitBackgroundEmailJob(jobSecret, jobPayload, activeToken, jobBaseUrl)
             .then(async (created) => {

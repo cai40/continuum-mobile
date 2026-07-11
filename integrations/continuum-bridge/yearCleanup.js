@@ -97,6 +97,9 @@ async function runMonthCleanup({
   };
 
   for (let w = 0; w < weeks.length; w += 1) {
+    const { assertJobActive } = require('./emailJobCancel');
+    assertJobActive(payloadOptions._cancel_job_id);
+
     const week = weeks[w];
     const weekLabel = weeks.length > 1 ? `${stepLabel} week ${w + 1}/${weeks.length}` : stepLabel;
     if (onProgress) onProgress(`Whole-year cleanup: ${weekLabel}…`);
@@ -130,6 +133,7 @@ async function runMonthCleanup({
       }
       mergeMonthScanResults(accum, result);
     } catch (err) {
+      if (err.code === 'EMAIL_JOB_CANCELLED') throw err;
       accum.error = err.message || String(err);
     }
   }
@@ -275,6 +279,9 @@ async function runYearCleanup({
   }
 
   for (let i = startIndex; i < MONTH_NAMES.length; i += 1) {
+    const { assertJobActive } = require('./emailJobCancel');
+    assertJobActive(payloadOptions._cancel_job_id);
+
     const monthName = MONTH_NAMES[i];
     const stepLabel = `${monthName} ${year} (${i + 1}/12)`;
 
@@ -311,6 +318,7 @@ async function runYearCleanup({
         error: monthScan.error && monthScan.matched === 0 ? monthScan.error : null,
       });
     } catch (err) {
+      if (err.code === 'EMAIL_JOB_CANCELLED') throw err;
       hadError = err.message || String(err);
       monthResults.push({ month: monthName, matched: 0, loaded: 0, trashed: 0, cleanupTargets: 0, error: hadError });
     }

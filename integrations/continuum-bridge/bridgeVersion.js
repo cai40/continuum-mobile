@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = {
-  version: '2026.07.10f',
+  version: '2026.07.10g',
   features: {
     date_range: true,
     date_range_mode: 'recent_lookback_filter',
@@ -18,5 +18,6 @@ module.exports = {
     year_cleanup: true,
     year_cleanup_checkpoint: true,
     year_cleanup_weekly_slices: true,
+    email_job_cancel: true,
   },
 };
