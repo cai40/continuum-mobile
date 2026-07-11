@@ -494,8 +494,14 @@ function parseImapProgressLine(line) {
     }
     return `Found ${count} email(s) in date range — fetching headers…`;
   }
-  if (/date-range direct:\s+0 matched after JS filter/i.test(text)) {
-    return 'No matches in search slice — expanding to older mail…';
+  if (/date-range:\s+0 matched after JS filter/i.test(text)) {
+    return 'No matches in search slice — trying weekly slices…';
+  }
+  if (/date-range weekly:/i.test(text)) {
+    return 'Searching week-by-week for target month…';
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range weekly slice\s+(\S+\.\.\S+):\s+(\d+)\s+uid/i))) {
+    return `Searching ${m[1]}… (${m[2]} found)`;
   }
   if (/date-range\s+direct:\s+hit\s+yahoo/i.test(text)) {
     return 'Yahoo search cap hit — switching to lookback scan…';

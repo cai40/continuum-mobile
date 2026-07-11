@@ -172,8 +172,12 @@ function formatPreEmailFetchStatus(fetchOptions) {
   if (!fetchOptions) return 'Fetching Yahoo inbox (if requested)…';
   const { limit = 0, dateRangeLabel } = fetchOptions;
   if (dateRangeLabel) {
-    if (limit >= 10000) {
+    const isFullYear = /\(full year\)/i.test(String(dateRangeLabel));
+    if (limit >= 10000 && isFullYear) {
       return `Scanning ${dateRangeLabel}… (load cap ${limit}; full-year scan — may take 15–45 minutes)`;
+    }
+    if (limit >= 10000) {
+      return `Scanning ${dateRangeLabel}… (load cap ${limit}; month scan — may take 5–20 minutes)`;
     }
     if (limit >= 1500) {
       return `Scanning ${dateRangeLabel}… (load cap ${limit}; large scan — may take 5–15 minutes)`;

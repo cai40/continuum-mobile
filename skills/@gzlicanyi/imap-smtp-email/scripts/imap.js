@@ -494,6 +494,12 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
       if (direct != null) return direct;
+      if (rangeDays > 8 && rangeDays <= 31) {
+        const weekly = await tryFetchDateRangeWeeklySlices(imap, {
+          sinceStr, beforeStr, limit, offset, lite, unreadOnly,
+        });
+        if (weekly != null) return weekly;
+      }
       if (rangeDays <= 8) {
         console.error(`[imap] date-range: skipping lookback for short window ${sinceStr}..${beforeStr}`);
         emptyDirectScanMeta(sinceStr, beforeStr);
@@ -675,7 +681,7 @@ function isoRangeToMs(sinceStr, beforeStr) {
 }
 
 function emailDayUtcMs(row) {
-  for (const v of [row.date, row.headerDate]) {
+  for (const v of [row.headerDate, row.date]) {
     const t = new Date(v).getTime();
     if (Number.isFinite(t) && t > 0) {
       const dt = new Date(t);
@@ -683,6 +689,18 @@ function emailDayUtcMs(row) {
     }
   }
   return 0;
+}
+
+function rowInDateRange(row, sinceMs, beforeMs) {
+  // Prefer sender Date header, but accept either header or internal date (OR).
+  for (const v of [row.headerDate, row.date]) {
+    const t = new Date(v).getTime();
+    if (!Number.isFinite(t) || t <= 0) continue;
+    const dt = new Date(t);
+    const dayMs = Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+    if (dayMs >= sinceMs && dayMs < beforeMs) return true;
+  }
+  return false;
 }
 
 function emptyDirectScanMeta(sinceStr, beforeStr, { scanned = 0, matched = 0, scanMode = 'direct', sampleDates = [] } = {}) {
@@ -713,11 +731,6 @@ function filterByDateRange(rows, sinceStr, beforeStr) {
   return rows.filter((row) => rowInDateRange(row, sinceMs, beforeMs));
 }
 
-function rowInDateRange(row, sinceMs, beforeMs) {
-  const dayMs = emailDayUtcMs(row);
-  return dayMs > 0 && dayMs >= sinceMs && dayMs < beforeMs;
-}
-
 function filterTimestampMs(row) {
   const times = [row.date, row.headerDate]
     .map((v) => new Date(v).getTime())
@@ -742,6 +755,28 @@ function shiftIsoYear(isoStr, deltaYears) {
   const [y, m, d] = String(isoStr).split('-').map(Number);
   if (!y || !m || !d) return isoStr;
   return `${y + deltaYears}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+function addDaysIso(isoStr, days) {
+  const [y, m, d] = String(isoStr).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
+
+function splitDateRangeIntoSlices(sinceStr, beforeStr, sliceDays = 7) {
+  const slices = [];
+  const endMs = dayStartUtcMs(beforeStr);
+  let cur = sinceStr;
+  while (dayStartUtcMs(cur) < endMs) {
+    let next = addDaysIso(cur, sliceDays);
+    if (dayStartUtcMs(next) > endMs) next = beforeStr;
+    const lastDay = addDaysIso(next, -1);
+    slices.push({ since: cur, before: next, label: `${cur}..${lastDay}` });
+    if (next === beforeStr || dayStartUtcMs(next) >= endMs) break;
+    cur = next;
+  }
+  return slices;
 }
 
 function scanDateSpan(rows) {
@@ -807,17 +842,23 @@ function mergeRowsByUid(rows) {
 async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
   const rangeDays = rangeWidthDays(sinceStr, beforeStr);
   const shortWindow = rangeDays <= 8;
+  const monthWindow = rangeDays > 8 && rangeDays <= 31;
   const searchAttempts = shortWindow
     ? [
       { unreadOnly, useImapBefore: true, label: 'since-before' },
       { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
     ]
-    : [
-      { unreadOnly, useImapBefore: true, label: 'since-before' },
-      { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
-      { unreadOnly, useImapBefore: false, label: 'since-only' },
-      { unreadOnly: false, useImapBefore: false, label: 'since-only-all' },
-    ];
+    : monthWindow
+      ? [
+        { unreadOnly, useImapBefore: true, label: 'since-before' },
+        { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
+      ]
+      : [
+        { unreadOnly, useImapBefore: true, label: 'since-before' },
+        { unreadOnly: false, useImapBefore: true, label: 'since-before-all' },
+        { unreadOnly, useImapBefore: false, label: 'since-only' },
+        { unreadOnly: false, useImapBefore: false, label: 'since-only-all' },
+      ];
 
   try {
     let uids = [];
@@ -877,7 +918,7 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
         });
         return [];
       }
-      console.error('[imap] date-range direct: 0 matched after JS filter; falling back to lookback');
+      console.error('[imap] date-range direct: 0 matched after JS filter; trying weekly slices / lookback');
       return null;
     }
 
@@ -901,6 +942,89 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
     console.error(`[imap] date-range direct failed (${err.message}); falling back to lookback`);
     return null;
   }
+}
+
+// Yahoo often returns 0 for full-month SINCE+BEFORE on older mail — search week-by-week instead.
+async function tryFetchDateRangeWeeklySlices(imap, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
+  const slices = splitDateRangeIntoSlices(sinceStr, beforeStr, 7);
+  console.error(
+    `[imap] date-range weekly: ${slices.length} slice(s) for ${sinceStr}..${beforeStr}`,
+  );
+
+  let allRows = [];
+  let totalScanned = 0;
+
+  for (const slice of slices) {
+    const attempts = [
+      { unreadOnly, label: 'since-before' },
+      { unreadOnly: false, label: 'since-before-all' },
+    ];
+    let uids = [];
+    for (const attempt of attempts) {
+      if (uids.length > 0) break;
+      uids = await searchUidsLogged(
+        imap,
+        buildSearchCriteria({
+          unreadOnly: attempt.unreadOnly,
+          sinceStr: slice.since,
+          beforeStr: slice.before,
+          useImapBefore: true,
+        }),
+        `weekly-${slice.since}-${attempt.label}`,
+        45000,
+      );
+    }
+
+    if (uids.length === 0) {
+      console.error(`[imap] date-range weekly slice ${slice.label}: 0 uid(s)`);
+      continue;
+    }
+
+    console.error(`[imap] date-range weekly slice ${slice.label}: ${uids.length} uid(s)`);
+    for (let i = 0; i < uids.length; i += 100) {
+      const batch = uids.slice(i, i + 100);
+      const batchRows = await fetchHeaderRowsByUids(imap, batch);
+      totalScanned += batchRows.length;
+      allRows = mergeRowsByUid(allRows.concat(batchRows));
+    }
+
+    const { filtered: sliceFiltered } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
+    console.error(
+      `[imap] date-range weekly slice ${slice.label}:`
+      + ` scanned ${totalScanned}, matched ${sliceFiltered.length} in ${sinceStr}..${beforeStr}`,
+    );
+    if (sliceFiltered.length >= offset + limit) break;
+  }
+
+  const { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
+  if (filtered.length === 0) {
+    const sampleDates = sortRowsNewestFirst([...allRows]).slice(0, 5).map((row) => {
+      const t = emailTimestampMs(row);
+      return t > 0 ? new Date(t).toISOString().slice(0, 10) : null;
+    }).filter(Boolean);
+    console.error(
+      `[imap] date-range weekly: 0 matched after ${totalScanned} header(s)`
+      + (sampleDates.length ? `; sample dates: ${sampleDates.join(', ')}` : ''),
+    );
+    return null;
+  }
+
+  const span = scanDateSpan(filtered);
+  const sorted = sortRowsNewestFirst(filtered);
+  console.error(
+    `[imap] date-range weekly: matched ${filtered.length} for ${usedSince}..${usedBefore}`
+    + ` (${totalScanned} header(s) scanned)`,
+  );
+  console.error(`SCAN_META:${JSON.stringify({
+    scanned: totalScanned,
+    totalUids: allRows.length,
+    scanMode: 'weekly_slices',
+    span,
+    matched: filtered.length,
+    wanted: { since: sinceStr, before: beforeStr },
+    used: { since: usedSince, before: usedBefore },
+  })}`);
+  return compactRows(sorted.slice(offset, offset + limit), lite);
 }
 
 // Yahoo IMAP SINCE/BEFORE is unreliable for exact ranges — scan INBOX UIDs and filter dates in JS.
@@ -1048,14 +1172,6 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
       if (times.length > 0) {
         const newestInBatch = Math.max(...times);
         if (newestInBatch > 0 && newestInBatch < sinceMs) break;
-      }
-    }
-
-    if (batchResults.length > 0) {
-      const batchDays = batchResults.map(emailDayUtcMs).filter((t) => t > 0);
-      if (batchDays.length > 0) {
-        const oldestDay = Math.min(...batchDays);
-        if (oldestDay > 0 && oldestDay < sinceMs - (beforeMs - sinceMs)) break;
       }
     }
   }
