@@ -29,7 +29,7 @@ export const AppProvider = ({ children }) => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isBiometricAuthenticated, setIsBiometricAuthenticated] = useState(false);
   const [serverStatus, setServerStatus] = useState("checking"); // 'healthy', 'degraded', 'offline'
-  const [provider, setProvider] = useState("gemini");
+  const [provider, setProvider] = useState("deepseek");
   const [groqKey, setGroqKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");

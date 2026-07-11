@@ -6,6 +6,8 @@ import * as Updates from 'expo-updates';
 import { AppProvider, useAppContext } from './src/context/AppContext';
 import ChatSection from './src/components/ChatSection';
 import SettingsSection from './src/components/SettingsSection';
+import EmailCleanupSection from './src/components/EmailCleanupSection';
+import PhotoCleanupSection from './src/components/PhotoCleanupSection';
 import LoginSection from './src/components/LoginSection';
 import SubscriptionSection from './src/components/SubscriptionSection';
 import LegalGate from './src/components/LegalGate';
@@ -75,6 +77,28 @@ const AppShell = () => {
     return <LoginSection />;
   }
 
+  const headerTitle = {
+    chat: 'Continuum',
+    email: 'Email',
+    photos: 'Photos',
+    settings: 'Setup',
+  }[activeTab] || 'Continuum';
+
+  const providerLabel = {
+    openrouter: 'CLAUDE',
+    or_free: 'OR FREE',
+    deepseek: 'DEEPSEEK',
+    'deepseek_v3.2': 'DEEPSEEK',
+    deepseek_v4_pro: 'DEEPSEEK',
+    deepseek_v4_flash: 'DEEPSEEK',
+    qwen: 'QWEN',
+    gpt4o_mini: '4O MINI',
+    kimi_k2.6: 'KIMI',
+    minimax: 'MINIMAX',
+    gemini: 'GEMINI',
+    groq: 'GROQ',
+    openai: 'OPENAI',
+  }[provider] || String(provider || '').toUpperCase();
 
   return (
     <SafeAreaView style={styles.container}>
@@ -93,7 +117,7 @@ const AppShell = () => {
         <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1}}>
           <View style={{flexDirection: 'row', alignItems: 'center'}}>
             <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
-              {activeTab === 'chat' ? 'Continuum' : 'Setup'}
+              {headerTitle}
             </Text>
           </View>
           
@@ -101,11 +125,7 @@ const AppShell = () => {
             {activeTab === 'chat' && (
               <View style={{backgroundColor: theme.colors.light, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4}}>
                 <Text style={{color: theme.colors.gray, fontSize: 8, fontWeight: '900'}}>
-                  {provider === 'openrouter' ? 'CLAUDE' : 
-                   (provider === 'or_free' ? 'OR FREE' : 
-                   (provider === 'deepseek' ? 'DEEPSEEK' :
-                   (provider === 'qwen' ? 'QWEN' : 
-                   (provider === 'gpt4o_mini' ? '4o MINI' : provider.toUpperCase()))))}
+                  {providerLabel}
                 </Text>
               </View>
             )}
@@ -134,6 +154,26 @@ const AppShell = () => {
           <ChatSection />
         </View>
 
+        <View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { opacity: activeTab === 'email' ? 1 : 0, zIndex: activeTab === 'email' ? 10 : 0 }
+          ]}
+          pointerEvents={activeTab === 'email' ? 'auto' : 'none'}
+        >
+          <EmailCleanupSection />
+        </View>
+
+        <View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { opacity: activeTab === 'photos' ? 1 : 0, zIndex: activeTab === 'photos' ? 10 : 0 }
+          ]}
+          pointerEvents={activeTab === 'photos' ? 'auto' : 'none'}
+        >
+          <PhotoCleanupSection />
+        </View>
+
         {/* SETUP LAYER */}
         <View 
           style={[
@@ -156,6 +196,8 @@ const AppShell = () => {
       {/* NAVIGATION BAR */}
       <View style={styles.tabBar}>
         <TabItem icon="chatbubble-ellipses" label="Continuum" tab="chat" activeTab={activeTab} setActiveTab={setActiveTab} />
+        <TabItem icon="mail" label="Email" tab="email" activeTab={activeTab} setActiveTab={setActiveTab} />
+        <TabItem icon="images" label="Photos" tab="photos" activeTab={activeTab} setActiveTab={setActiveTab} />
         <TabItem icon="options" label="Setup" tab="settings" activeTab={activeTab} setActiveTab={setActiveTab} />
       </View>
 
