@@ -82,24 +82,32 @@ function stripHtml(value) {
 
 function parseScanMeta(stderr) {
   const text = String(stderr || '');
-  const idx = text.indexOf('SCAN_META:');
-  if (idx >= 0) {
+  let lastMeta = null;
+  let searchFrom = 0;
+  while (searchFrom < text.length) {
+    const idx = text.indexOf('SCAN_META:', searchFrom);
+    if (idx < 0) break;
     const jsonStart = text.indexOf('{', idx);
-    if (jsonStart >= 0) {
-      let depth = 0;
-      for (let i = jsonStart; i < text.length; i += 1) {
-        if (text[i] === '{') depth += 1;
-        if (text[i] === '}') depth -= 1;
-        if (depth === 0) {
-          try {
-            return JSON.parse(text.slice(jsonStart, i + 1));
-          } catch {
-            break;
-          }
+    if (jsonStart < 0) break;
+    let depth = 0;
+    let parsed = null;
+    for (let i = jsonStart; i < text.length; i += 1) {
+      if (text[i] === '{') depth += 1;
+      if (text[i] === '}') depth -= 1;
+      if (depth === 0) {
+        try {
+          parsed = JSON.parse(text.slice(jsonStart, i + 1));
+        } catch {
+          parsed = null;
         }
+        searchFrom = i + 1;
+        break;
       }
     }
+    if (parsed) lastMeta = parsed;
+    if (searchFrom <= idx) searchFrom = idx + 1;
   }
+  if (lastMeta) return lastMeta;
   const log = text.match(
     /fetched (\d+)\/(\d+) uid\(s\),\s*scanned ([^,]+),\s*matched (\d+) for (\S+)\.\.(\S+)/,
   );
@@ -132,7 +140,13 @@ function formatScanDiagnostic(scanMeta, dateRangeLabel, loadedCount = null) {
     : null;
 
   let scanLine;
-  if (dateRangeLabel && scanMeta.scanMode === 'daily_on_empty') {
+  if (dateRangeLabel && scanMeta.scanMode === 'inbox_archive_empty') {
+    const days = scanMeta.dailyDaysChecked ?? 31;
+    const archiveName = scanMeta.archiveMailbox || 'Archive';
+    scanLine = `- Date filter: ${dateRangeLabel}. Matched: 0. INBOX: 0 on ${days} day(s). ${archiveName}: also 0. Headers scanned: 0.`;
+  } else if (dateRangeLabel && scanMeta.mailbox && scanMeta.inboxEmpty && (scanMeta.matched ?? 0) > 0) {
+    scanLine = `- Date filter: ${dateRangeLabel}. Matched: ${matched} in ${scanMeta.mailbox} (INBOX had 0). Headers scanned: ${scanMeta.scanned ?? matched}.`;
+  } else if (dateRangeLabel && scanMeta.scanMode === 'daily_on_empty') {
     const days = scanMeta.dailyDaysChecked ?? 31;
     scanLine = `- Date filter: ${dateRangeLabel}. Matched: 0. Yahoo found 0 INBOX message(s) on any of ${days} day(s) in this month. Headers scanned: 0.`;
   } else if (dateRangeLabel && scanMeta.scanMode === 'direct') {
@@ -202,10 +216,14 @@ function suggestRetryFromProbe(dateRangeLabel, probe) {
   if (!requestedYear || !oldestYear || !newestYear) return null;
 
   if (requestedYear < oldestYear) {
+    const archiveNote = probe.archiveAlreadyScanned
+      ? ' Archive was also scanned — no mail there either.'
+      : '';
     return (
       `INBOX sample has no ${requestedYear} mail — dates run ${probe.span.oldest}–${probe.span.newest}.`
+      + archiveNote
       + ` Try a month in ${oldestYear}–${newestYear} (e.g. "${probe.span.newest.slice(0, 7)}"),`
-      + ' or check Archive/Trash if mail was filed away.'
+      + ' or check Trash/other folders if mail was filed away.'
     );
   }
   if (requestedYear > newestYear) {
@@ -583,7 +601,13 @@ function parseImapProgressLine(line) {
     return n > 0 ? `Found ${n} on ${m[1]}…` : null;
   }
   if (/daily ON: 0 uid\(s\) on all/i.test(text)) {
-    return 'No INBOX mail on any day in this month — done';
+    return /Archive/i.test(text) ? null : 'No mail on any day in this month — trying other search paths…';
+  }
+  if (/INBOX returned 0 for .*scanning Archive/i.test(text)) {
+    return 'INBOX empty for this month — scanning Archive…';
+  }
+  if (/Archive \(.*\) also returned 0/i.test(text)) {
+    return 'Archive also empty for this month';
   }
   if (/inbox date probe/i.test(text) || /Sampling newest 100 INBOX dates/i.test(text)) {
     return 'Sampling newest 100 INBOX dates…';
@@ -812,7 +836,11 @@ async function runImapCheck(imapScript, message, payloadOptions = {}, onProgress
       );
       const probe = formatInboxDateProbe(probeResult.messages);
       if (probe) {
-        const hint = suggestRetryFromProbe(result.fetchOptions?.dateRangeLabel, probe);
+        const hint = suggestRetryFromProbe(result.fetchOptions?.dateRangeLabel, {
+          ...probe,
+          archiveAlreadyScanned: result.scanMeta?.scanMode === 'inbox_archive_empty'
+            || !!(result.scanMeta?.mailbox && result.scanMeta?.inboxEmpty),
+        });
         result.context = [
           result.context,
           '',
