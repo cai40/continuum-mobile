@@ -743,7 +743,12 @@ const ChatSection = () => {
           finishError(hint);
           return;
         }
-        if (isHandled) return;
+        if (isHandled) {
+          clearTypingSafety();
+          setIsTyping(false);
+          setStreamingContent('');
+          return;
+        }
         isHandled = true;
         clearTypingSafety();
         setIsTyping(false);
@@ -784,7 +789,12 @@ const ChatSection = () => {
           startRenderStream();
           return;
         }
-        if (isHandled) return;
+        if (isHandled) {
+          clearTypingSafety();
+          setIsTyping(false);
+          setStreamingContent('');
+          return;
+        }
         isHandled = true;
         clearTypingSafety();
         setIsTyping(false);
@@ -909,8 +919,25 @@ const ChatSection = () => {
               });
               backgroundJobRef.current = poller;
               abortControllerRef.current = { abort: () => poller.cancel() };
-              const result = await poller.promise;
-              finishSuccess(result);
+              try {
+                const result = await poller.promise;
+                finishSuccess(result);
+              } catch (err) {
+                if (isNetworkFailure(err)) {
+                  usingStreamFallback = true;
+                  poller.cancel();
+                  backgroundJobRef.current = null;
+                  startEmailStream();
+                  return;
+                }
+                finishError(err);
+              } finally {
+                if (!usingStreamFallback) {
+                  backgroundJobRef.current = null;
+                  setIsTyping(false);
+                  setStreamingContent('');
+                }
+              }
             })
             .catch((err) => {
               if (isNetworkFailure(err)) {
@@ -920,9 +947,6 @@ const ChatSection = () => {
                 return;
               }
               finishError(err);
-            })
-            .finally(() => {
-              if (!usingStreamFallback) backgroundJobRef.current = null;
             });
           return;
         }
@@ -1224,7 +1248,15 @@ const ChatSection = () => {
       {(recording || isTyping || isSpeaking) && (
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, marginBottom: 8 }}>
           <Text style={[styles.typingIndicator, { flex: 1 }]}>
-            {recording ? "Listening..." : (isSpeaking ? "Speaking..." : "Analyzing...")}
+            {recording
+              ? "Listening..."
+              : isSpeaking
+                ? "Speaking..."
+                : (() => {
+                    const lastLine = streamingContent.trim().split('\n').filter(Boolean).pop() || '';
+                    if (lastLine === 'Done') return 'Finishing…';
+                    return lastLine || 'Analyzing...';
+                  })()}
           </Text>
           {(isTyping || isSpeaking) && (
             <TouchableOpacity style={[styles.stopButton, { backgroundColor: theme.colors.danger }]} onPress={handleStop}>
