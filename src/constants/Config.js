@@ -13,6 +13,6 @@ export const SYNC_COOLDOWN = 30000; // 30s
 export const SILENCE_THRESHOLD = -35; // dB
 export const SHORT_SILENCE_TIMEOUT = 2000; // 2s
 export const LONG_SILENCE_TIMEOUT = 10000; // 10s
-export const BUILD_ID = "3.4.96-SingleEmailJob";
+export const BUILD_ID = "3.4.97-PhotoCleanupStop";
 export const APP_VERSION = "3.4.96";
 export const GIT_COMMIT = '5e3ea5e';
