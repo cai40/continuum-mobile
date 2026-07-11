@@ -14,11 +14,9 @@ function RangeButton({ label, subtitle, icon, onPress, disabled }) {
   return (
     <TouchableOpacity
       onPress={() => {
-        if (disabled) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         onPress();
       }}
-      disabled={disabled}
       style={{
         flexDirection: 'row',
         alignItems: 'center',
