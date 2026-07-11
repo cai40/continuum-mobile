@@ -4,6 +4,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 
 const SCREENSHOT_NAME_RE = /screenshot|screen.?shot|screencapture|simulator|capture|screenrecording/i;
 const CODING_NAME_RE = /vscode|xcode|android.?studio|terminal|ide|code|debug|console|stack\s*trace/i;
+const RECEIPT_NAME_RE = /\b(receipt|receipts|invoice|invoices|e-?receipt|order\s*confirm|purchase|transaction|payment|paid|refund|reimburs|expense|parking\s*(?:ticket|pass|receipt)|ticket|barcode|tax|w-?2|1099|statement|billing|checkout|venmo|paypal|zelle|cash\s*app|apple\s*pay|google\s*pay|square|toast|pos)\b/i;
 const MONITOR_RATIOS = [16 / 9, 16 / 10, 4 / 3, 3 / 2, 19.5 / 9, 20 / 9, 21 / 9];
 
 const VISION_BATCH_SIZE = 6;
@@ -34,8 +35,33 @@ export function isCodingScreenshot(asset) {
   return false;
 }
 
+/** Receipt / invoice / payment photos — never pick as favorites. */
+export function isReceiptPhoto(asset) {
+  const name = String(asset.filename || '');
+  const lower = name.toLowerCase();
+  if (RECEIPT_NAME_RE.test(name)) return true;
+
+  // Document-style screenshot: tall narrow capture, not a full camera photo.
+  if (isScreenshotFilename(name)) {
+    const w = asset.width || 0;
+    const h = asset.height || 0;
+    if (w > 0 && h > 0) {
+      const ratio = Math.max(w, h) / Math.min(w, h);
+      if (ratio >= 2.2 && ratio <= 4.5 && Math.min(w, h) < 1400) {
+        return true;
+      }
+    }
+    if (/scan|document|doc_|camscanner|genius\s*scan|adobe\s*scan|microsoft\s*lens/i.test(lower)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /** Fast metadata score — resolution, non-screenshot, recency. */
 export function scorePhotoQuick(asset) {
+  if (isReceiptPhoto(asset)) return 0;
   const pixels = (asset.width || 0) * (asset.height || 0);
   const resolution = pixels > 0 ? Math.log10(pixels) / 7 : 0;
   const notScreenshot = isCodingScreenshot(asset) || isScreenshotFilename(asset.filename) ? 0 : 0.25;

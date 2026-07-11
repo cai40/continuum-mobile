@@ -4,7 +4,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import * as ImageManipulator from 'expo-image-manipulator';
-import { scorePhotosForFavorites, loadVisionApiCredentials } from './photoAestheticScore';
+import { scorePhotosForFavorites, loadVisionApiCredentials, isReceiptPhoto } from './photoAestheticScore';
 import { assetMatchesMonthFilter } from './cleanupMenu';
 import { capPreviewItems, toPhotoPreviewItem } from './photoCleanupPreview';
 
@@ -253,20 +253,24 @@ function findCodingScreenshotDeletes(assets, { protectedIds }) {
 }
 
 async function selectFavorites(assets, favoritePercent = 0.05, { onProgress, visionCredentials } = {}) {
-  if (!assets.length) return { favorites: [], method: 'heuristic' };
+  const eligible = assets.filter((asset) => !isReceiptPhoto(asset));
+  if (!eligible.length) return { favorites: [], method: 'heuristic' };
 
   const creds = visionCredentials !== undefined ? visionCredentials : await loadVisionApiCredentials();
-  const scoreMap = await scorePhotosForFavorites(assets, {
+  const scoreMap = await scorePhotosForFavorites(eligible, {
     visionCredentials: creds,
     onProgress: (done, total, stage) => {
       if (stage === 'vision' || stage === 'texture') onProgress?.('favorites', done, total);
     },
   });
 
-  const scored = assets
+  const scored = eligible
     .map((asset) => ({ asset, score: scoreMap.get(asset.id) || 0 }))
     .sort((a, b) => b.score - a.score);
-  const count = Math.max(1, Math.ceil(assets.length * favoritePercent));
+  const count = Math.min(
+    Math.max(1, Math.ceil(eligible.length * favoritePercent)),
+    eligible.length,
+  );
 
   return {
     favorites: scored.slice(0, count).map((row) => row.asset),
@@ -317,7 +321,7 @@ function buildSummary(report) {
     `- **Protected favorites:** ${report.protectedCount} never deleted`,
     `- **Duplicates:** ${report.duplicates.found} found${report.dryRun ? '' : `, ${report.duplicates.deleted} deleted`}`,
     `- **Coding screenshots:** ${report.codingScreenshots.found} found${report.dryRun ? '' : `, ${report.codingScreenshots.deleted} deleted`}`,
-    `- **New favorites (top 5%, ${favoriteMethod}):** ${report.favorites.selected} selected`,
+    `- **New favorites (top 5%, ${favoriteMethod}; receipts excluded):** ${report.favorites.selected} selected`,
     report.dryRun ? '- **Mode:** dry run (no changes made)' : '- **Mode:** applied',
   ];
   if (report.errors.length) {
@@ -383,7 +387,7 @@ export async function cleanUpPhotoAlbum({
   const { toDelete: screenshotDeletes, survivors, found: ssFound } =
     findCodingScreenshotDeletes(afterDupes, { protectedIds });
 
-  const favoriteCandidates = survivors.filter((a) => !protectedIds.has(a.id));
+  const favoriteCandidates = survivors.filter((a) => !protectedIds.has(a.id) && !isReceiptPhoto(a));
   onProgress?.('favorites', 0, favoriteCandidates.length);
   const { favorites, method: favoriteMethod } = await selectFavorites(
     favoriteCandidates,

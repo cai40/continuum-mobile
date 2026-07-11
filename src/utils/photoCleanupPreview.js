@@ -171,7 +171,7 @@ export function formatPhotoCleanupPreviewNextSteps({ rangeLabel = null, hasChang
     '',
     '**Notes:**',
     '- Trash goes to Recently Deleted (recoverable on iOS).',
-    '- Favorites are added to Continuum Favorites.',
+    '- Favorites are added to Continuum Favorites (receipts are never favorited).',
     '- **To skip:** do nothing — this preview made no changes.',
   );
   return lines.join('\n');

@@ -1004,7 +1004,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           Smart photo library cleanup
         </Text>
         <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-          Removes duplicate photos and coding screenshots, then picks the prettiest top 5% as favorites (AI vision when a Gemini or OpenAI key is set in Setup). System favorites, Continuum Favorites, and prior picks are never deleted. Always preview with dry run first.
+          Removes duplicate photos and coding screenshots, then picks the prettiest top 5% as favorites (AI vision when a Gemini or OpenAI key is set in Setup). Receipts and invoices are never favorited. System favorites, Continuum Favorites, and prior picks are never deleted. Always preview with dry run first.
         </Text>
         {photoCleanup?.ran_at ? (
           <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
