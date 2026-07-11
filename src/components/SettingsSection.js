@@ -29,6 +29,7 @@ import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumCleanup";
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
+import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
 
 const SettingsSection = (props) => {
@@ -1049,9 +1050,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               });
               setPhotoCleanup(report);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              if (!report.trash?.total && !report.favorites?.total) {
-                Alert.alert("Photo cleanup preview", "Nothing would be deleted or favorited.");
-              }
+              Alert.alert("Photo cleanup preview", formatPhotoPreviewAlertSummary(report));
             } catch (e) {
               Alert.alert("Photo cleanup failed", e.message || String(e));
             } finally {

@@ -106,6 +106,30 @@ export function formatDryRunDetailMarkdown(report) {
   return lines.join('\n');
 }
 
+/** Short alert body after a photo cleanup preview finishes. */
+export function formatPhotoPreviewAlertSummary(report) {
+  if (!report) return 'Preview complete.';
+  const trash = report.trash?.total ?? 0;
+  const fav = report.favorites?.total ?? report.favorites?.selected ?? 0;
+  const period = report.rangeLabel ? ` for ${report.rangeLabel}` : '';
+  const lines = [
+    `Scanned ${report.scanned} photo(s)${period}.`,
+    '',
+  ];
+  if (trash || fav) {
+    lines.push(
+      `Would trash: ${trash}`,
+      `Would favorite: ${fav}`,
+      '',
+      'Reply apply, proceed, yes, or ok in chat to apply.',
+      'Or tap Apply cleanup on the Photos tab.',
+    );
+  } else {
+    lines.push('Nothing would be deleted or favorited for this period.');
+  }
+  return lines.join('\n');
+}
+
 export function formatPhotoCleanupPreviewNextSteps({ rangeLabel = null, hasChanges = true } = {}) {
   const period = rangeLabel ? `**${rangeLabel}**` : 'the **same period** you just previewed';
 
