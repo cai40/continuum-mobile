@@ -51,6 +51,7 @@ import {
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
+import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
