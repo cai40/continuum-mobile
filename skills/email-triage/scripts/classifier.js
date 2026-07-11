@@ -69,17 +69,22 @@ const VENMO_PAYMENT_KEEP = /\b(paid you|you paid|payment|transfer|sent you|recei
 /** USPS automated / auto-reply bulk mail (keep package tracking notices). */
 const USPS_AUTO_FROM = /auto-reply@usps\.com|@email\.usps\.gov/i;
 
+/** UPS My Choice marketing digests (keep package in-transit notices). */
+const UPS_MARKETING_FROM = /mcinfo@ups\.com|@ups\.com.*(?:marketing|promo)/i;
+
+const PACKAGE_ESSENTIAL_KEEP = /\b(out for delivery|on the way|in transit|delivered|delivery (?:confirm|update|scheduled)|tracking number|track your package|package (?:has|was) (?:shipped|delivered)|expected delivery|ready for pickup|pickup ready|shipment (?:confirm|update))\b/i;
+
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
   /mattressfirm|mattress\s+firm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
-  /auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure\.|@search\.foreclosure/i,
+  /auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure\.|@search\.foreclosure|@convo\.zillow\.com|convo\.zillow/i,
   /shopifyemail\.com|@t\.shopifyemail|myshopify\.com/i,
   /hit-reply@linkedin|linkedin.*(?:promoted|digest|newsletter)/i,
   /mailer\.appfolio|communications@.*appfolio|jbutlerpm\.mailer/i,
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
   /yahoo@daily\.comms\.yahoo\.net/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
-  /@welcome\.americanexpress|bostonsailingcenter/i,
+  /@welcome\.americanexpress|bostonsailingcenter|update\.strava\.com|mail@update\.strava|gopassport\.com/i,
 ];
 
 function isBankMarketingFrom(from) {
@@ -108,6 +113,25 @@ function isUspsAutoJunk(email) {
   if (!USPS_AUTO_FROM.test(from)) return false;
   const blob = emailBlob(email);
   if (ORDER_RECEIPT_KEEP.test(blob)) return false;
+  if (PACKAGE_ESSENTIAL_KEEP.test(blob)) return false;
+  return true;
+}
+
+function isUpsMarketing(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
+  if (!UPS_MARKETING_FROM.test(from)) return false;
+  const blob = emailBlob(email);
+  if (ORDER_RECEIPT_KEEP.test(blob)) return false;
+  if (PACKAGE_ESSENTIAL_KEEP.test(blob)) return false;
+  return true;
+}
+
+function isGopassportPromo(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
+  if (!/gopassport\.com/i.test(from)) return false;
+  const blob = emailBlob(email);
+  if (ORDER_RECEIPT_KEEP.test(blob)) return false;
+  if (/\bparking (?:receipt|confirm|confirmation|ticket|pass)\b/i.test(blob)) return false;
   return true;
 }
 
@@ -119,6 +143,8 @@ function isMarketingSender(email) {
   if (isAirlineMarketing(email)) return true;
   if (isVenmoPromo(email)) return true;
   if (isUspsAutoJunk(email)) return true;
+  if (isUpsMarketing(email)) return true;
+  if (isGopassportPromo(email)) return true;
   if (isBankMarketingFrom(from)) return true;
   return MARKETING_SENDER_PATTERNS.some((re) => re.test(blob));
 }
@@ -151,7 +177,7 @@ function emailBlob(email) {
 function isProtected(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const blob = emailBlob(email);
-  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email) || isUspsAutoJunk(email)) return false;
+  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email) || isUspsAutoJunk(email) || isUpsMarketing(email) || isGopassportPromo(email)) return false;
   if (PROTECTED_PATTERNS.some((re) => re.test(blob))) return true;
   // Bank mail that is not a routine statement stays protected (OTP, alerts, invoices).
   if (PROTECTED_BANK_NON_STATEMENT.test(blob) && !STATEMENT_PATTERNS.test(blob)) return true;
