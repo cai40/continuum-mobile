@@ -80,14 +80,14 @@ const AMAZON_CLEANUP_FROM = /shipment-tracking@amazon\.com|order-update@amazon\.
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
   /mattressfirm|mattress\s+firm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
-  /auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure\.|@search\.foreclosure|@convo\.zillow\.com|convo\.zillow|affordablehousing\.com|@e\.stessa\.com|stessa\.com/i,
+  /auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure\.|@search\.foreclosure|@convo\.zillow\.com|convo\.zillow|@e\.stessa\.com|stessa\.com/i,
   /shopifyemail\.com|@t\.shopifyemail|myshopify\.com/i,
   /hit-reply@linkedin|linkedin.*(?:promoted|digest|newsletter)/i,
   /mailer\.appfolio|communications@.*appfolio|jbutlerpm\.mailer/i,
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
   /yahoo@daily\.comms\.yahoo\.net/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
-  /@welcome\.americanexpress|bostonsailingcenter|update\.strava\.com|mail@update\.strava|gopassport\.com|notification\.us\.moomoo\.com|moomoo\.com/i,
+  /@welcome\.americanexpress|bostonsailingcenter|update\.strava\.com|mail@update\.strava|gopassport\.com/i,
 ];
 
 function isBankMarketingFrom(from) {
