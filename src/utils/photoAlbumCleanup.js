@@ -254,7 +254,9 @@ function findCodingScreenshotDeletes(assets, { protectedIds }) {
 
 async function selectFavorites(assets, favoritePercent = 0.05, { onProgress, visionCredentials } = {}) {
   const eligible = assets.filter((asset) => !isReceiptPhoto(asset));
-  if (!eligible.length) return { favorites: [], method: 'heuristic' };
+  if (!eligible.length) {
+    return { favorites: [], method: 'heuristic', scoreMap: new Map(), allScored: [] };
+  }
 
   const creds = visionCredentials !== undefined ? visionCredentials : await loadVisionApiCredentials();
   const scoreMap = await scorePhotosForFavorites(eligible, {
@@ -271,21 +273,96 @@ async function selectFavorites(assets, favoritePercent = 0.05, { onProgress, vis
     Math.max(1, Math.ceil(eligible.length * favoritePercent)),
     eligible.length,
   );
+  const picked = scored.slice(0, count);
 
   return {
-    favorites: scored.slice(0, count).map((row) => row.asset),
+    favorites: picked.map((row) => row.asset),
     method: creds?.apiKey ? 'ai' : 'heuristic',
+    scoreMap,
+    allScored: scored,
   };
 }
 
-async function batchDeleteAssets(assets, onProgress) {
-  const ids = assets.map((a) => a.id);
+async function batchDeleteAssetIds(ids, onProgress) {
   const chunkSize = 50;
   for (let i = 0; i < ids.length; i += chunkSize) {
     const chunk = ids.slice(i, i + chunkSize);
     await MediaLibrary.deleteAssetsAsync(chunk);
     onProgress?.('delete', Math.min(i + chunkSize, ids.length), ids.length);
   }
+}
+
+async function loadAssetsByIds(ids) {
+  const assets = [];
+  for (const id of ids) {
+    try {
+      const info = await MediaLibrary.getAssetInfoAsync(id);
+      if (info?.id) assets.push(info);
+    } catch {
+      // skip missing assets
+    }
+  }
+  return assets;
+}
+
+/**
+ * Apply a user-edited preview plan (delete + favorite only what remains in the plan).
+ * @param {{ trashIds: Iterable<string>, favoriteIds: Iterable<string>, onProgress?: Function }} options
+ */
+export async function applyPhotoCleanupPlan({ trashIds, favoriteIds, onProgress }) {
+  const permission = await MediaLibrary.requestPermissionsAsync();
+  if (permission.status !== 'granted') {
+    throw new Error('Photo library permission denied');
+  }
+
+  const deleteIds = [...new Set(trashIds)];
+  const favoriteIdList = [...new Set(favoriteIds)].filter((id) => !deleteIds.includes(id));
+  const errors = [];
+
+  if (deleteIds.length) {
+    try {
+      await batchDeleteAssetIds(deleteIds, onProgress);
+    } catch (e) {
+      errors.push(e.message || String(e));
+    }
+  }
+
+  let favorited = 0;
+  if (favoriteIdList.length) {
+    try {
+      const assets = await loadAssetsByIds(favoriteIdList);
+      if (assets.length) {
+        await markFavorites(assets);
+        favorited = assets.length;
+      }
+    } catch (e) {
+      errors.push(e.message || String(e));
+    }
+  }
+
+  onProgress?.('done', 1, 1);
+
+  const report = {
+    dryRun: false,
+    scanned: 0,
+    protectedCount: 0,
+    rangeLabel: null,
+    duplicates: { found: 0, deleted: deleteIds.length, kept: 0 },
+    codingScreenshots: { found: 0, deleted: 0 },
+    trash: { total: deleteIds.length },
+    favorites: { selected: favorited, ids: favoriteIdList, method: 'manual' },
+    errors,
+    ran_at: new Date().toISOString(),
+    summary: [
+      '## Photo cleanup applied',
+      '',
+      `- **Deleted:** ${deleteIds.length} photo(s)`,
+      `- **Favorited:** ${favorited} photo(s)`,
+    ].join('\n'),
+  };
+
+  await saveLastPhotoCleanupRun(report);
+  return report;
 }
 
 async function markFavorites(favorites) {
@@ -389,7 +466,7 @@ export async function cleanUpPhotoAlbum({
 
   const favoriteCandidates = survivors.filter((a) => !protectedIds.has(a.id) && !isReceiptPhoto(a));
   onProgress?.('favorites', 0, favoriteCandidates.length);
-  const { favorites, method: favoriteMethod } = await selectFavorites(
+  const { favorites, method: favoriteMethod, scoreMap } = await selectFavorites(
     favoriteCandidates,
     favoritePercent,
     { onProgress, visionCredentials },
@@ -407,10 +484,18 @@ export async function cleanUpPhotoAlbum({
   const trashScreenshots = trashPreviewAll.filter((item) => item.reason === 'coding_screenshot');
   const favoritePreviewAll = favorites.map((asset) => toPhotoPreviewItem(asset));
   const favoritePreviewCapped = capPreviewItems(favoritePreviewAll);
+  const rankedItems = favorites.map((asset) => ({
+    ...toPhotoPreviewItem(asset),
+    score: scoreMap.get(asset.id) || 0,
+  })).sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+  const scores = Object.fromEntries([...scoreMap.entries()]);
+  const previewItemCap = 500;
+  const visibleTrashItems = trashPreviewAll.slice(0, previewItemCap);
+  const hiddenTrashCount = Math.max(0, trashPreviewAll.length - visibleTrashItems.length);
 
   if (!dryRun) {
     try {
-      if (uniqueDeletes.length) await batchDeleteAssets(uniqueDeletes, onProgress);
+      if (uniqueDeletes.length) await batchDeleteAssetIds(uniqueDeletes.map((a) => a.id), onProgress);
       if (favorites.length) await markFavorites(favorites);
     } catch (e) {
       errors.push(e.message || String(e));
@@ -434,6 +519,9 @@ export async function cleanUpPhotoAlbum({
     },
     trash: {
       total: uniqueDeletes.length,
+      allIds: uniqueDeletes.map((a) => a.id),
+      allItems: visibleTrashItems,
+      hiddenTrashCount,
       duplicates: capPreviewItems(trashDuplicates),
       codingScreenshots: capPreviewItems(trashScreenshots),
     },
@@ -441,6 +529,8 @@ export async function cleanUpPhotoAlbum({
       selected: favorites.length,
       ids: favorites.map((a) => a.id),
       method: favoriteMethod,
+      scores,
+      rankedItems,
       total: favoritePreviewCapped.total,
       items: favoritePreviewCapped.items,
       truncated: favoritePreviewCapped.truncated,

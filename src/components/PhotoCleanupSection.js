@@ -1,27 +1,33 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, View, Text, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { loadLastPhotoCleanupRun } from '../utils/photoAlbumCleanup';
+import { applyPhotoCleanupPlan, loadLastPhotoCleanupRun } from '../utils/photoAlbumCleanup';
 import { runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
 import { formatPhotoPreviewAlertSummary } from '../utils/photoCleanupPreview';
+import { createPreviewPlan, planSummary } from '../utils/photoPreviewPlan';
 import { styles, theme } from '../styles/theme';
 import CleanupRangePanel from './CleanupRangePanel';
 import PhotoCleanupPreviewPanel from './PhotoCleanupPreviewPanel';
 
 export default function PhotoCleanupSection() {
   const [photoCleanup, setPhotoCleanup] = useState(null);
+  const [previewPlan, setPreviewPlan] = useState(null);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState('');
   const [expandedPreview, setExpandedPreview] = useState(false);
   const scrollRef = useRef(null);
 
   useEffect(() => {
-    loadLastPhotoCleanupRun().then(setPhotoCleanup).catch(() => {});
+    loadLastPhotoCleanupRun().then((report) => {
+      setPhotoCleanup(report);
+      if (report?.dryRun) setPreviewPlan(createPreviewPlan(report));
+    }).catch(() => {});
   }, []);
 
   const showPreviewResult = (report, { alertTitle = 'Preview complete' } = {}) => {
     if (!report) return;
     setPhotoCleanup(report);
+    setPreviewPlan(createPreviewPlan(report));
     setExpandedPreview(!!report.dryRun);
     if (report.dryRun) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -50,34 +56,57 @@ export default function PhotoCleanupSection() {
     }
   };
 
-  const runApply = (msg) => {
+  const applyPlan = async () => {
+    if (!previewPlan) return;
+    const { trashCount, favoriteCount } = planSummary(previewPlan);
     Alert.alert(
-      'Apply photo cleanup?',
-      'This permanently deletes duplicate photos and coding screenshots in the selected period. Favorites are never deleted.',
+      'Apply changes?',
+      `Trash ${trashCount} photo(s) and favorite ${favoriteCount} photo(s)? Deleted items go to Recently Deleted on iOS.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Apply',
+          text: 'Apply changes',
           style: 'destructive',
           onPress: async () => {
             setRunning(true);
             setExpandedPreview(false);
-            setProgress('Applying photo cleanup…');
+            setProgress('Applying your changes…');
             try {
-              const result = await runPhotoCleanupFromChat(msg, setProgress);
-              if (result.report) {
-                setPhotoCleanup(result.report);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                Alert.alert('Photo cleanup complete', result.content?.slice(0, 800) || 'Done.');
-              }
+              const report = await applyPhotoCleanupPlan({
+                trashIds: previewPlan.trashIds,
+                favoriteIds: previewPlan.favoriteIds,
+                onProgress: setProgress,
+              });
+              setPhotoCleanup(report);
+              setPreviewPlan(null);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert(
+                'Changes applied',
+                `Deleted ${report.duplicates.deleted} photo(s). Favorited ${report.favorites.selected} photo(s).`,
+              );
             } catch (e) {
-              Alert.alert('Photo cleanup failed', e.message || String(e));
+              Alert.alert('Apply failed', e.message || String(e));
             } finally {
               setRunning(false);
               setProgress('');
             }
           },
         },
+      ],
+    );
+  };
+
+  const runApply = (msg) => {
+    if (previewPlan && photoCleanup?.dryRun) {
+      applyPlan();
+      return;
+    }
+    Alert.alert(
+      'Apply photo cleanup?',
+      'Run preview first to review and edit trash/favorite lists, then tap Apply changes.',
+      [
+        { text: 'Run preview', onPress: () => runPreview(msg.replace(/^apply\s+/i, 'preview ')) },
+        { text: 'Cancel', style: 'cancel' },
       ],
     );
   };
@@ -114,23 +143,32 @@ export default function PhotoCleanupSection() {
           <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.black }}>
             {photoCleanup.dryRun ? 'Preview results' : 'Last applied cleanup'}
           </Text>
-          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
-            {photoCleanup.duplicates?.found || 0} duplicates · {photoCleanup.codingScreenshots?.found || 0} coding screenshots · {photoCleanup.favorites?.selected || 0} favorites
-          </Text>
+          {photoCleanup.dryRun && previewPlan ? (
+            <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+              Trash {planSummary(previewPlan).trashCount} · Favorites {planSummary(previewPlan).favoriteCount}
+            </Text>
+          ) : (
+            <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+              {photoCleanup.duplicates?.found || 0} duplicates · {photoCleanup.codingScreenshots?.found || 0} coding screenshots · {photoCleanup.favorites?.selected || 0} favorites
+            </Text>
+          )}
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 4 }}>
             {new Date(photoCleanup.ran_at).toLocaleString()} · {photoCleanup.scanned} scanned
             {photoCleanup.rangeLabel ? ` · ${photoCleanup.rangeLabel}` : ''}
           </Text>
-          {photoCleanup.dryRun ? (
-            <Text style={{ fontSize: 11, color: theme.colors.primary, marginTop: 8, fontWeight: '600' }}>
-              Reply apply, proceed, yes, or ok in chat — or tap Apply cleanup above.
-            </Text>
-          ) : null}
-          <PhotoCleanupPreviewPanel report={photoCleanup} compact={!expandedPreview} />
+          <PhotoCleanupPreviewPanel
+            report={photoCleanup}
+            plan={previewPlan}
+            onPlanChange={setPreviewPlan}
+            onApply={applyPlan}
+            applying={running}
+            editable={!!photoCleanup.dryRun && !!previewPlan}
+            compact={!expandedPreview}
+          />
         </View>
       ) : !running ? (
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 16, paddingHorizontal: 4 }}>
-          Choose a period above and tap Preview (dry run) to see what would be trashed or favorited.
+          Choose a period above and tap Preview (dry run) to review trash and favorites, edit the lists, then tap Apply changes.
         </Text>
       ) : null}
     </ScrollView>

@@ -121,8 +121,8 @@ export function formatPhotoPreviewAlertSummary(report) {
       `Would trash: ${trash}`,
       `Would favorite: ${fav}`,
       '',
-      'Reply apply, proceed, yes, or ok in chat to apply.',
-      'Or tap Apply cleanup on the Photos tab.',
+      'Edit trash/favorite lists on the Photos tab, then tap Apply changes.',
+      'Or reply apply / proceed in chat.',
     );
   } else {
     lines.push('Nothing would be deleted or favorited for this period.');
@@ -166,7 +166,7 @@ export function formatPhotoCleanupPreviewNextSteps({ rangeLabel = null, hasChang
     '',
     '**Or apply from the Photos tab:**',
     '',
-    `1. **Photos** tab → choose ${period} → tap **Apply cleanup**.`,
+    `1. **Photos** tab → choose ${period} → edit trash/favorites → tap **Apply changes**.`,
     '2. Wait until the reply shows **Done**.',
     '',
     '**Notes:**',
