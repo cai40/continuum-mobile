@@ -83,6 +83,7 @@ const ChatSection = () => {
     setActiveTab,
     pendingChatMessage,
     setPendingChatMessage,
+    markServerHealthy,
   } = useAppContext();
 
   const [input, setInput] = useState('');
@@ -754,6 +755,7 @@ const ChatSection = () => {
         clearTypingSafety();
         setIsTyping(false);
         setStreamingContent('');
+        if (finalText.trim()) markServerHealthy();
         if (!finalText.trim()) return;
 
         setMessages(prev => {

@@ -5,7 +5,7 @@ import React, {
   useEffect,
   useRef,
 } from "react";
-import { Platform, Alert } from "react-native";
+import { Platform, Alert, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { supabase } from "../services/supabase";
@@ -22,6 +22,24 @@ import { sanitizeUserVisibleContent } from "../utils/helpers";
 
 const AppContext = createContext();
 
+async function pulseServerHealth(maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const res = await fetch(`${API_URL}/health`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) return 'healthy';
+      if (res.status === 503) return 'degraded';
+    } catch {
+      // Render cold start — retry before marking offline
+    }
+    if (attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+  return 'offline';
+}
+
 export const AppProvider = ({ children }) => {
   const [activeTab, setActiveTab] = useState("chat");
   const [user, setUser] = useState(null);
@@ -29,6 +47,11 @@ export const AppProvider = ({ children }) => {
   const [isInitializing, setIsInitializing] = useState(true);
   const [isBiometricAuthenticated, setIsBiometricAuthenticated] = useState(false);
   const [serverStatus, setServerStatus] = useState("checking"); // 'healthy', 'degraded', 'offline'
+  const serverStatusRef = useRef("checking");
+  const markServerHealthy = () => {
+    serverStatusRef.current = 'healthy';
+    setServerStatus('healthy');
+  };
   const [provider, setProvider] = useState("deepseek");
   const [groqKey, setGroqKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
@@ -166,22 +189,22 @@ export const AppProvider = ({ children }) => {
 
     // Production Health Monitoring: Phase 3
     const checkPulse = async () => {
-      try {
-        const res = await fetch(`${API_URL}/health`);
-        if (res.ok) setServerStatus("healthy");
-        else if (res.status === 503) setServerStatus("degraded");
-        else setServerStatus("offline");
-      } catch (e) {
-        setServerStatus("offline");
-      }
+      const status = await pulseServerHealth(3);
+      serverStatusRef.current = status;
+      setServerStatus(status);
     };
 
     checkPulse();
-    const pulseInterval = setInterval(checkPulse, 60000); // Pulse check every 60s
+    const pulseInterval = setInterval(checkPulse, 30000);
+
+    const appStateSub = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') checkPulse();
+    });
 
     return () => {
       subscription.unsubscribe();
       clearInterval(pulseInterval);
+      appStateSub.remove();
     };
   }, []);
 
@@ -618,6 +641,7 @@ export const AppProvider = ({ children }) => {
         setCloudWakingUp,
         serverStatus,
         setServerStatus,
+        markServerHealthy,
         serverVersion,
         backendStatus,
         setBackendStatus,
