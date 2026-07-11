@@ -110,6 +110,7 @@ const ChatSection = () => {
   const silenceTimerRef = useRef(null);
   const longSilenceTimerRef = useRef(null);
   const stopRecordingRef = useRef(null);
+  const sendMessageRef = useRef(null);
 
   const dismissKeyboard = useCallback(() => {
     inputRef.current?.blur();
@@ -121,16 +122,6 @@ const ChatSection = () => {
       dismissKeyboard();
     }
   }, [activeTab, dismissKeyboard]);
-
-  useEffect(() => {
-    if (activeTab !== 'chat' || !pendingChatMessage) return undefined;
-    const msg = pendingChatMessage;
-    setPendingChatMessage(null);
-    const timer = setTimeout(() => {
-      sendMessage(null, false, msg);
-    }, 150);
-    return () => clearTimeout(timer);
-  }, [activeTab, pendingChatMessage, setPendingChatMessage]);
 
   useEffect(() => {
     if (activeTab !== 'chat' || !renderEmailEnabled) return undefined;
@@ -989,6 +980,22 @@ const ChatSection = () => {
       Alert.alert("Send failed", e.message || String(e));
     }
   };
+  sendMessageRef.current = sendMessage;
+
+  useEffect(() => {
+    if (activeTab !== 'chat' || !pendingChatMessage) return undefined;
+    const msg = pendingChatMessage;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      setPendingChatMessage(null);
+      sendMessageRef.current?.(null, false, msg);
+    }, 100);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [activeTab, pendingChatMessage, setPendingChatMessage]);
 
   const onPressSend = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
