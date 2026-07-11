@@ -52,6 +52,7 @@ import {
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
+import { wantsDraftOutput, DRAFT_OUTPUT_APPEND, buildDraftAssistantMessages } from '../utils/draftOutput';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
@@ -525,6 +526,8 @@ const ChatSection = () => {
       const isPhotoCleanupQuery = (wantsPhotoCleanup(finalInput) || wantsPhotoCleanupStatus(finalInput))
         && !activeAttachments.length;
 
+      const wantsCopyDraft = wantsDraftOutput(finalInput);
+
       const isEmailConfirm = renderEmailEnabled && isEmailConfirmMessage(finalInput);
       const isEmailQuery = !isPhotoCleanupQuery && !isComposeEmailRequest(finalInput) && (
         /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
@@ -700,6 +703,7 @@ const ChatSection = () => {
       const personaExtras = [
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
         ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
+        ...(wantsCopyDraft ? [DRAFT_OUTPUT_APPEND] : []),
       ];
 
       formData.append('message', chatMessage);
@@ -759,16 +763,19 @@ const ChatSection = () => {
         if (!finalText.trim()) return;
 
         setMessages(prev => {
-          const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: finalText };
+          const aiMsgs = buildDraftAssistantMessages(finalText, {
+            requestedDraft: wantsCopyDraft,
+            baseId: Date.now(),
+          });
           if (isFromVoice) {
             return prev.map(m => {
               if (m.id === userMsg.id && m.content.includes("Transcribing...")) {
                 return { ...m, content: voiceTranscript || "[Voice Message]" };
               }
               return m;
-            }).concat(aiMsg);
+            }).concat(aiMsgs);
           }
-          return [...prev, aiMsg];
+          return [...prev, ...aiMsgs];
         });
       };
 
@@ -1059,23 +1066,36 @@ const ChatSection = () => {
   const renderChatItem = ({ item }) => {
     if (!item || !item.content) return null;
     const isSelected = selectedIds.has(item.id);
+    const isCopyDraft = Boolean(item.copyDraft);
+
+    const copyDraftToClipboard = async () => {
+      await Clipboard.setStringAsync(item.content);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    };
 
     return (
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => isSelectionMode ? toggleSelection(item.id) : null}
+        onPress={() => {
+          if (isSelectionMode) {
+            toggleSelection(item.id);
+          } else if (isCopyDraft) {
+            copyDraftToClipboard();
+          }
+        }}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          if (isCopyDraft) {
+            copyDraftToClipboard();
+            return;
+          }
           Alert.alert(
             "Message Options",
             null,
             [
               { 
                 text: "Copy Text", 
-                onPress: async () => {
-                  await Clipboard.setStringAsync(item.content);
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                }
+                onPress: copyDraftToClipboard,
               },
               { 
                 text: "Select Messages", 
@@ -1090,11 +1110,24 @@ const ChatSection = () => {
         }}
         style={[
           item.role === 'user' ? styles.userBubble : styles.aiBubble,
+          isCopyDraft && {
+            borderWidth: 1,
+            borderColor: theme.colors.primary + '55',
+            backgroundColor: theme.colors.white,
+          },
           isSelected && { borderLeftWidth: 4, borderLeftColor: theme.colors.primary, backgroundColor: theme.colors.light }
         ]}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexShrink: 1 }}>
+            {isCopyDraft ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                <Ionicons name="copy-outline" size={12} color={theme.colors.primary} />
+                <Text style={{ marginLeft: 4, fontSize: 9, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5 }}>
+                  TAP TO COPY DRAFT
+                </Text>
+              </View>
+            ) : null}
             {(item.attachments?.length ? item.attachments : (item.attachment ? [item.attachment] : [])).map((file, fileIdx) => (
               <View key={`${item.id}-file-${fileIdx}`} style={{ marginBottom: 8 }}>
                 {file.type?.startsWith('image/') ? (
@@ -1113,7 +1146,10 @@ const ChatSection = () => {
                 )}
               </View>
             ))}
-            <Text style={item.role === 'user' ? styles.userChatText : styles.chatText}>
+            <Text style={[
+              item.role === 'user' ? styles.userChatText : styles.chatText,
+              isCopyDraft && { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 13, lineHeight: 19 },
+            ]}>
               {item.role === 'user' ? sanitizeUserVisibleContent(item.content) : item.content}
             </Text>
           </View>
