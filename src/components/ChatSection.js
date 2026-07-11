@@ -51,7 +51,7 @@ import {
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
-import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
+import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, isPhotoConfirmMessage, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { wantsDraftOutput, DRAFT_OUTPUT_APPEND, buildDraftAssistantMessages } from '../utils/draftOutput';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
@@ -514,7 +514,8 @@ const ChatSection = () => {
         return;
       }
 
-      const isPhotoCleanupQuery = (wantsPhotoCleanup(finalInput) || wantsPhotoCleanupStatus(finalInput))
+      const isPhotoConfirm = isPhotoConfirmMessage(finalInput);
+      const isPhotoCleanupQuery = (wantsPhotoCleanup(finalInput) || wantsPhotoCleanupStatus(finalInput) || isPhotoConfirm)
         && !activeAttachments.length;
 
       const wantsCopyDraft = wantsDraftOutput(finalInput);
@@ -609,9 +610,10 @@ const ChatSection = () => {
       if (isPhotoCleanupQuery) {
         setStreamingContent('Starting photo cleanup…');
         try {
+          const priorPhotoMessage = isPhotoConfirm ? findPriorPhotoUserMessage(messages) : null;
           const result = await runPhotoCleanupFromChat(finalInput, (detail) => {
             setStreamingContent(detail);
-          });
+          }, { priorMessage: priorPhotoMessage });
           setMessages((prev) => [
             ...prev,
             { id: (Date.now() + 1).toString(), role: 'assistant', content: result.content },

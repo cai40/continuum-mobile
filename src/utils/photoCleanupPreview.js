@@ -105,3 +105,50 @@ export function formatDryRunDetailMarkdown(report) {
 
   return lines.join('\n');
 }
+
+export function formatPhotoCleanupPreviewNextSteps({ rangeLabel = null, hasChanges = true } = {}) {
+  const period = rangeLabel ? `**${rangeLabel}**` : 'the **same period** you just previewed';
+
+  const lines = [
+    '',
+    '---',
+    '',
+    '## What to do next',
+    '',
+    'This was a **preview only** — no photos were deleted or favorited.',
+    '',
+  ];
+
+  if (!hasChanges) {
+    lines.push(
+      'Nothing to delete or favorite in this batch.',
+      '',
+      '**Options:**',
+      '- Try another date range from the **Photos** tab.',
+      '- Preview again: **Photos** tab → period → **Preview (dry run)**.',
+    );
+    return lines.join('\n');
+  }
+
+  lines.push(
+    '**Reply in chat with one word:**',
+    '',
+    '- **`apply`** (recommended)',
+    '- **`proceed`**',
+    '- **`yes`**',
+    '- **`ok`**',
+    '',
+    'Same period as this preview. Do not say "preview" again.',
+    '',
+    '**Or apply from the Photos tab:**',
+    '',
+    `1. **Photos** tab → choose ${period} → tap **Apply cleanup**.`,
+    '2. Wait until the reply shows **Done**.',
+    '',
+    '**Notes:**',
+    '- Trash goes to Recently Deleted (recoverable on iOS).',
+    '- Favorites are added to Continuum Favorites.',
+    '- **To skip:** do nothing — this preview made no changes.',
+  );
+  return lines.join('\n');
+}

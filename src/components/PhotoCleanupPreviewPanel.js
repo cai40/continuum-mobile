@@ -120,6 +120,16 @@ export default function PhotoCleanupPreviewPanel({ report, compact = false }) {
         total={favoriteTotal}
         defaultOpen={!compact}
       />
+      {!compact ? (
+        <View style={{ marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.light }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.black, marginBottom: 6 }}>
+            What to do next
+          </Text>
+          <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 18 }}>
+            Reply in chat: apply, proceed, yes, or ok — same period. Or tap Apply cleanup above.
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }

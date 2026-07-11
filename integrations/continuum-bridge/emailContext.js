@@ -296,6 +296,8 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
       '**Cleanup:** Preview only — no mail was moved.',
       `- **Would trash:** ${cleanupCount}`,
       '',
+      '**Reply in chat:** **`apply`**, **`proceed`**, **`yes`**, or **`ok`** — same period, no need to say "preview" again.',
+      '',
       '**Would move to Trash (subject + sender):**',
     );
     const targets = cleanupPreviewBlock?.targets || [];
