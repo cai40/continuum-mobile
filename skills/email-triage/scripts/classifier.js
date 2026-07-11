@@ -74,6 +74,9 @@ const UPS_MARKETING_FROM = /mcinfo@ups\.com|@ups\.com.*(?:marketing|promo)/i;
 
 const PACKAGE_ESSENTIAL_KEEP = /\b(out for delivery|on the way|in transit|delivered|delivery (?:confirm|update|scheduled)|tracking number|track your package|package (?:has|was) (?:shipped|delivered)|expected delivery|ready for pickup|pickup ready|shipment (?:confirm|update))\b/i;
 
+/** Amazon shipment / delivery status mail (keep order confirmations and returns). */
+const AMAZON_SHIPPING_FROM = /shipment-tracking@amazon\.com|order-update@amazon\.com/i;
+
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
   /mattressfirm|mattress\s+firm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
@@ -135,10 +138,16 @@ function isGopassportPromo(email) {
   return true;
 }
 
+function isAmazonShippingJunk(email) {
+  const from = String(email.from?.text || email.from || email.fromAddress || '');
+  return AMAZON_SHIPPING_FROM.test(from);
+}
+
 function isMarketingSender(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const subject = String(email.subject || '');
   const blob = `${from} ${subject}`;
+  if (isAmazonShippingJunk(email)) return true;
   if (ORDER_RECEIPT_KEEP.test(emailBlob(email))) return false;
   if (isAirlineMarketing(email)) return true;
   if (isVenmoPromo(email)) return true;
@@ -177,7 +186,7 @@ function emailBlob(email) {
 function isProtected(email) {
   const from = String(email.from?.text || email.from || email.fromAddress || '');
   const blob = emailBlob(email);
-  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email) || isUspsAutoJunk(email) || isUpsMarketing(email) || isGopassportPromo(email)) return false;
+  if (isBankMarketingFrom(from) || isAirlineMarketing(email) || isVenmoPromo(email) || isUspsAutoJunk(email) || isUpsMarketing(email) || isGopassportPromo(email) || isAmazonShippingJunk(email)) return false;
   if (PROTECTED_PATTERNS.some((re) => re.test(blob))) return true;
   // Bank mail that is not a routine statement stays protected (OTP, alerts, invoices).
   if (PROTECTED_BANK_NON_STATEMENT.test(blob) && !STATEMENT_PATTERNS.test(blob)) return true;
