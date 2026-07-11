@@ -51,14 +51,13 @@ import {
   isNetworkFailure,
 } from '../utils/emailBackgroundJobs';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
-import CleanupMenuBar from './CleanupMenuBar';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
 const ChatSection = () => {
   const {
     messages, setMessages,
-    provider, setProvider, groqKey, geminiKey, openaiKey, openrouterKey,
+    provider, groqKey, geminiKey, openaiKey, openrouterKey,
     selectedVoice, persona,
     sttLang, setSttLang,
     activeTab,
@@ -1147,30 +1146,7 @@ const ChatSection = () => {
               </TouchableOpacity>
             </>
           ) : (
-            ['gemini', 'openrouter', 'gpt4o_mini'].map((p) => (
-              <TouchableOpacity
-                key={p}
-                onPress={() => {
-                  setProvider(p);
-                }}
-                style={{
-                  paddingHorizontal: 8,
-                  paddingVertical: 5,
-                  borderRadius: 12,
-                  backgroundColor: provider === p ? theme.colors.primary : theme.colors.white,
-                  borderWidth: 1,
-                  borderColor: provider === p ? theme.colors.primary : theme.colors.border
-                }}
-              >
-                <Text style={{ 
-                  fontSize: 8, 
-                  fontWeight: '800', 
-                  color: provider === p ? 'white' : theme.colors.gray 
-                }}>
-                  {p === 'openrouter' ? 'Claude' : (p === 'gpt4o_mini' ? '4o MINI' : p.toUpperCase())}
-                </Text>
-              </TouchableOpacity>
-            ))
+            <View style={{ flex: 1 }} />
           )}
         </View>
 
@@ -1207,16 +1183,6 @@ const ChatSection = () => {
           </TouchableOpacity>
         </View>
       </View>
-
-      {!isSelectionMode && (
-        <CleanupMenuBar
-          onEmailCleanup={(msg) => sendMessage(null, false, msg)}
-          onPhotoPreview={(msg) => sendMessage(null, false, msg)}
-          onPhotoApply={(msg) => sendMessage(null, false, msg)}
-          emailDisabled={!renderEmailEnabled}
-          emailDisabledHint="Turn on Render cloud email in Setup → OpenClaw Gateway."
-        />
-      )}
 
       <FlatList
         ref={chatListRef}

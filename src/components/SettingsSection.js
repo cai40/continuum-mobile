@@ -28,8 +28,6 @@ import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumCleanup";
-import { runPhotoCleanupFromChat } from "../utils/photoCleanupChat";
-import CleanupRangePanel from "./CleanupRangePanel";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
 
 const SettingsSection = (props) => {
@@ -75,9 +73,6 @@ const SettingsSection = (props) => {
     isSuperUser,
     serverVersion,
     onRefreshMemories,
-    renderEmailEnabled,
-    setActiveTab,
-    setPendingChatMessage,
   } = useAppContext();
 
   const onUpgrade = props.onUpgrade;
@@ -1971,96 +1966,6 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
   // MAIN MENU RENDER
   // ---------------------------------------------------------------------------
 
-  const renderEmailCleanupSettings = () => (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingBottom: 400 }}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      {renderHeader("Email Cleaning")}
-      <View style={styles.groupedCard}>
-        <CleanupRangePanel
-          mode="email"
-          emailDisabled={!renderEmailEnabled}
-          emailDisabledHint="Turn on Render cloud email in Setup → OpenClaw Gateway and set your bridge secret."
-          onEmailCleanup={(msg) => {
-            setPendingChatMessage(msg);
-            setActiveTab("chat");
-            setActiveSubTab(null);
-          }}
-        />
-      </View>
-    </ScrollView>
-  );
-
-  const renderPhotoCleanupMenuSettings = () => (
-    <ScrollView
-      style={{ flex: 1 }}
-      contentContainerStyle={{ paddingBottom: 400 }}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      {renderHeader("Photo Cleaning")}
-      <View style={styles.groupedCard}>
-        <CleanupRangePanel
-          mode="photo"
-          onPhotoPreview={async (msg) => {
-            setRunningPhotoCleanup(true);
-            setPhotoCleanupProgress("Starting photo cleanup preview…");
-            try {
-              const result = await runPhotoCleanupFromChat(msg, (detail) => {
-                setPhotoCleanupProgress(detail);
-              });
-              if (result.report) setPhotoCleanup(result.report);
-              Alert.alert("Photo cleanup preview", result.content?.slice(0, 800) || "Preview complete.");
-            } catch (e) {
-              Alert.alert("Photo cleanup failed", e.message || String(e));
-            } finally {
-              setRunningPhotoCleanup(false);
-              setPhotoCleanupProgress("");
-            }
-          }}
-          onPhotoApply={async (msg) => {
-            Alert.alert(
-              "Apply photo cleanup?",
-              "This permanently deletes duplicate photos and coding screenshots in the selected period.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Apply",
-                  style: "destructive",
-                  onPress: async () => {
-                    setRunningPhotoCleanup(true);
-                    setPhotoCleanupProgress("Applying photo cleanup…");
-                    try {
-                      const result = await runPhotoCleanupFromChat(msg, (detail) => {
-                        setPhotoCleanupProgress(detail);
-                      });
-                      if (result.report) setPhotoCleanup(result.report);
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                      Alert.alert("Photo cleanup complete", result.content?.slice(0, 800) || "Done.");
-                    } catch (e) {
-                      Alert.alert("Photo cleanup failed", e.message || String(e));
-                    } finally {
-                      setRunningPhotoCleanup(false);
-                      setPhotoCleanupProgress("");
-                    }
-                  },
-                },
-              ],
-            );
-          }}
-        />
-      </View>
-      {photoCleanupProgress ? (
-        <Text style={{ fontSize: 11, color: theme.colors.primary, paddingHorizontal: 20, marginTop: 8 }}>
-          {photoCleanupProgress}
-        </Text>
-      ) : null}
-    </ScrollView>
-  );
-
   const renderActiveSubTab = () => {
     switch (activeSubTab) {
       case "api": 
@@ -2069,8 +1974,6 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       case "voice": return renderVoiceSettings();
       case "persona": return renderPersonaSettings();
       case "data": return renderDataSettings();
-      case "emailCleanup": return renderEmailCleanupSettings();
-      case "photoCleanupMenu": return renderPhotoCleanupMenuSettings();
       case "openclaw":
         return <OpenClawIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "diag": return renderDiagnostics();
@@ -2145,18 +2048,6 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             icon="server-outline"
             label="Data & Memory Vault"
             onPress={() => setActiveSubTab("data")}
-          />
-          <Divider />
-          <MenuRow
-            icon="mail-outline"
-            label="Email Cleaning"
-            onPress={() => setActiveSubTab("emailCleanup")}
-          />
-          <Divider />
-          <MenuRow
-            icon="images-outline"
-            label="Photo Cleaning"
-            onPress={() => setActiveSubTab("photoCleanupMenu")}
           />
           <Divider />
           <MenuRow
