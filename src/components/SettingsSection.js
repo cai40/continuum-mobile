@@ -28,6 +28,7 @@ import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumCleanup";
+import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
 
 const SettingsSection = (props) => {
@@ -1015,6 +1016,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 4 }}>
               {new Date(photoCleanup.ran_at).toLocaleString()} · {photoCleanup.scanned} scanned
             </Text>
+            <PhotoCleanupPreviewPanel report={photoCleanup} compact />
           </View>
         ) : (
           <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 12 }}>
@@ -1047,10 +1049,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               });
               setPhotoCleanup(report);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              Alert.alert(
-                "Photo cleanup preview",
-                `${report.duplicates.found} duplicate(s), ${report.codingScreenshots.found} coding screenshot(s), ${report.favorites.selected} favorite(s) selected.\n\nNo changes were made.`,
-              );
+              if (!report.trash?.total && !report.favorites?.total) {
+                Alert.alert("Photo cleanup preview", "Nothing would be deleted or favorited.");
+              }
             } catch (e) {
               Alert.alert("Photo cleanup failed", e.message || String(e));
             } finally {
