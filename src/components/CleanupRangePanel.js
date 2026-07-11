@@ -6,7 +6,8 @@ import { theme } from '../styles/theme';
 import {
   getCleanupRange,
   getCleanupRangeFromMonths,
-  buildEmailCleanupMessage,
+  buildEmailCleanupPreviewMessage,
+  buildEmailCleanupApplyMessage,
   buildPhotoCleanupMessage,
   listSelectableMonths,
 } from '../utils/cleanupMenu';
@@ -63,13 +64,38 @@ export default function CleanupRangePanel({
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
   const months = listSelectableMonths(24);
 
-  const runEmailWithRange = (range) => {
+  const runEmailWithRange = (range, apply) => {
     if (!range || !onEmailCleanup) return;
-    onEmailCleanup(buildEmailCleanupMessage(range));
+    const message = apply ? buildEmailCleanupApplyMessage(range) : buildEmailCleanupPreviewMessage(range);
+    onEmailCleanup(message);
   };
 
-  const runEmail = (period, opts) => {
-    runEmailWithRange(getCleanupRange(period, opts));
+  const runEmail = (period, opts, apply) => {
+    runEmailWithRange(getCleanupRange(period, opts), apply);
+  };
+
+  const showEmailActionSheet = (period, opts = {}) => {
+    Alert.alert(
+      'Email cleaning',
+      'Preview lists newsletters/promos that would move to Trash. Apply requires Allow move to Trash in Setup.',
+      [
+        { text: 'Preview (dry run)', onPress: () => runEmail(period, opts, false) },
+        { text: 'Apply cleanup', style: 'destructive', onPress: () => runEmail(period, opts, true) },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  };
+
+  const showEmailActionSheetForRange = (range) => {
+    Alert.alert(
+      'Email cleaning',
+      'Preview lists newsletters/promos that would move to Trash. Apply requires Allow move to Trash in Setup.',
+      [
+        { text: 'Preview (dry run)', onPress: () => runEmailWithRange(range, false) },
+        { text: 'Apply cleanup', style: 'destructive', onPress: () => runEmailWithRange(range, true) },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
   };
 
   const runPhotoWithRange = (range, apply) => {
@@ -81,6 +107,22 @@ export default function CleanupRangePanel({
 
   const runPhoto = (period, opts, apply) => {
     runPhotoWithRange(getCleanupRange(period, opts), apply);
+  };
+
+  const showPhotoActionSheet = (period, opts = {}) => {
+    Alert.alert('Photo cleaning', 'Preview scans without deleting. Apply removes duplicates and coding screenshots. Favorites are never touched.', [
+      { text: 'Preview (dry run)', onPress: () => runPhoto(period, opts, false) },
+      { text: 'Apply cleanup', style: 'destructive', onPress: () => runPhoto(period, opts, true) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
+  const showPhotoActionSheetForRange = (range) => {
+    Alert.alert('Photo cleaning', 'Preview scans without deleting. Apply removes duplicates and coding screenshots. Favorites are never touched.', [
+      { text: 'Preview (dry run)', onPress: () => runPhotoWithRange(range, false) },
+      { text: 'Apply cleanup', style: 'destructive', onPress: () => runPhotoWithRange(range, true) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const openMonthPicker = () => {
@@ -97,23 +139,10 @@ export default function CleanupRangePanel({
     if (!range) return;
 
     if (mode === 'email') {
-      runEmailWithRange(range);
+      showEmailActionSheetForRange(range);
       return;
     }
-
-    Alert.alert('Photo cleaning', 'Preview scans without deleting. Apply removes duplicates and coding screenshots. Favorites are never touched.', [
-      { text: 'Preview (dry run)', onPress: () => runPhotoWithRange(range, false) },
-      { text: 'Apply cleanup', style: 'destructive', onPress: () => runPhotoWithRange(range, true) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
-  const showPhotoActionSheet = (period, opts = {}) => {
-    Alert.alert('Photo cleaning', 'Preview scans without deleting. Apply removes duplicates and coding screenshots. Favorites are never touched.', [
-      { text: 'Preview (dry run)', onPress: () => runPhoto(period, opts, false) },
-      { text: 'Apply cleanup', style: 'destructive', onPress: () => runPhoto(period, opts, true) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+    showPhotoActionSheetForRange(range);
   };
 
   const handleRangePress = (period) => {
@@ -123,7 +152,7 @@ export default function CleanupRangePanel({
         return;
       }
       if (period === 'custom_month') openMonthPicker();
-      else runEmail(period);
+      else showEmailActionSheet(period);
       return;
     }
     if (period === 'custom_month') openMonthPicker();
@@ -189,7 +218,7 @@ export default function CleanupRangePanel({
       </Text>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 16, lineHeight: 16 }}>
         {mode === 'email'
-          ? 'Fetch and clean newsletters, promos, and junk for the selected period. Requires Render cloud email and Allow move to Trash.'
+          ? 'Fetch and clean newsletters, promos, and junk for the selected period. Preview lists what would move to Trash; apply requires Render cloud email and Allow move to Trash.'
           : 'Remove duplicate photos and coding screenshots for photos taken in the selected period. Favorites are never deleted. Preview first, then apply.'}
       </Text>
 

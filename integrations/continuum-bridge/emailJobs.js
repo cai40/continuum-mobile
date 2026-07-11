@@ -15,7 +15,7 @@ const {
   formatPreEmailFetchStatus,
   formatPostEmailFetchStatus,
 } = require('./emailFetchOptions');
-const { wantsEmailCleanup } = require('./emailDelete');
+const { wantsEmailCleanup, wantsEmailCleanupPreview, extractEmailCleanupPreviewBlock } = require('./emailDelete');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
 const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
 const {
@@ -152,7 +152,7 @@ async function callContinuumStream(apiUrl, userAuth, payload) {
   return reply;
 }
 
-function resolvePrefilledJobResult(emailResult, { message, cleanupRequested, summaryOnly }) {
+function resolvePrefilledJobResult(emailResult, { message, cleanupRequested, cleanupPreviewRequested, summaryOnly }) {
   const emailContext = emailResult.context || '';
   let prefilled = extractPrefilledSummaryFromText(emailContext)
     || extractPrefilledSummaryFromText(message)
@@ -166,8 +166,14 @@ function resolvePrefilledJobResult(emailResult, { message, cleanupRequested, sum
       deleteResult: emailResult.deleteResult,
       permission: null,
       cleanupRequested,
+      cleanupPreviewRequested,
     });
     prefilled = extractPrefilledSummaryFromText(built) || built;
+  }
+
+  const previewBlock = extractEmailCleanupPreviewBlock(emailContext);
+  if (previewBlock) {
+    prefilled = prefilled ? `${prefilled}\n\n${previewBlock}` : previewBlock;
   }
 
   if (prefilled) return prefilled;
@@ -309,12 +315,15 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
     }
 
     const cleanupRequested = wantsEmailCleanup(message);
+    const cleanupPreviewRequested = wantsEmailCleanupPreview(message);
     const summaryOnly = (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext))
       && !cleanupRequested;
 
     // If trash/cleanup was executed, surface that stage to the user.
     if (emailResult.deleteResult?.executed) {
       status('Moving cleanup targets to Trash…');
+    } else if (cleanupPreviewRequested) {
+      status('Building cleanup preview…');
     } else if (emailResult.deleteResult && !emailResult.deleteResult.executed && cleanupRequested) {
       status('Analyzing cleanup targets…');
     }
@@ -325,9 +334,10 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
     const prefilledResult = resolvePrefilledJobResult(emailResult, {
       message,
       cleanupRequested,
+      cleanupPreviewRequested,
       summaryOnly,
     });
-    if (prefilledResult && (cleanupRequested || summaryOnly)) {
+    if (prefilledResult && (cleanupRequested || cleanupPreviewRequested || summaryOnly)) {
       return updateJob(jobId, {
         status: 'completed',
         progress: 'Done',
