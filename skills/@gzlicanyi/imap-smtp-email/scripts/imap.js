@@ -50,6 +50,17 @@ const IMAP_ID = {
 
 const DEFAULT_MAILBOX = config.imap.mailbox;
 
+/** Set during date-range scans so SCAN_META can record non-INBOX folders (e.g. Archive). */
+let activeScanMailbox = DEFAULT_MAILBOX;
+let lastDailyDaysChecked = null;
+
+function scanMetaMailboxFields() {
+  if (activeScanMailbox && activeScanMailbox !== DEFAULT_MAILBOX) {
+    return { mailbox: activeScanMailbox, inboxEmpty: true };
+  }
+  return {};
+}
+
 // Parse command-line arguments
 function parseArgs() {
   const args = process.argv.slice(2);
@@ -499,34 +510,52 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox);
-
     if (sinceStr && beforeStr) {
-      console.error(`[imap] date-range check ${sinceStr}..${beforeStr} limit=${limit} offset=${offset}`);
-      const rangeDays = rangeWidthDays(sinceStr, beforeStr);
-      const direct = await tryFetchDateRangeDirect(imap, {
+      activeScanMailbox = mailbox;
+      lastDailyDaysChecked = null;
+      let rows = await fetchDateRangeForMailbox(imap, mailbox, {
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
-      if (direct != null) return direct;
-      if (rangeDays > 8 && rangeDays <= 31) {
-        const weekly = await tryFetchDateRangeWeeklySlices(imap, {
-          sinceStr, beforeStr, limit, offset, lite, unreadOnly,
-        });
-        if (weekly != null) return weekly;
-        const dailyOn = await tryFetchDateRangeDailyOn(imap, {
-          sinceStr, beforeStr, limit, offset, lite,
-        });
-        if (dailyOn != null) return dailyOn;
+      if (rows.length === 0 && String(mailbox).toUpperCase() === 'INBOX') {
+        const archiveBox = await resolveArchiveMailbox(imap);
+        if (archiveBox && archiveBox.toUpperCase() !== 'INBOX') {
+          console.error(
+            `[imap] INBOX returned 0 for ${sinceStr}..${beforeStr}; scanning Archive (${archiveBox})`,
+          );
+          activeScanMailbox = archiveBox;
+          lastDailyDaysChecked = null;
+          rows = await fetchDateRangeForMailbox(imap, archiveBox, {
+            sinceStr, beforeStr, limit, offset, lite, unreadOnly,
+          });
+          if (rows.length === 0) {
+            console.error(`[imap] Archive (${archiveBox}) also returned 0 for ${sinceStr}..${beforeStr}`);
+            console.error(`SCAN_META:${JSON.stringify({
+              scanned: 0,
+              scanMode: 'inbox_archive_empty',
+              dailyDaysChecked: lastDailyDaysChecked,
+              archiveMailbox: archiveBox,
+              matched: 0,
+              wanted: { since: sinceStr, before: beforeStr },
+              used: { since: sinceStr, before: beforeStr },
+              ...scanMetaMailboxFields(),
+            })}`);
+          }
+        } else if (lastDailyDaysChecked != null) {
+          console.error(`SCAN_META:${JSON.stringify({
+            scanned: 0,
+            scanMode: 'daily_on_empty',
+            dailyDaysChecked: lastDailyDaysChecked,
+            matched: 0,
+            wanted: { since: sinceStr, before: beforeStr },
+            used: { since: sinceStr, before: beforeStr },
+          })}`);
+        }
       }
-      if (rangeDays <= 8) {
-        console.error(`[imap] date-range: skipping lookback for short window ${sinceStr}..${beforeStr}`);
-        emptyDirectScanMeta(sinceStr, beforeStr);
-        return [];
-      }
-      return await fetchDateRangeViaRecentLookback(imap, {
-        sinceStr, beforeStr, limit, offset, lite, unreadOnly,
-      });
+      activeScanMailbox = DEFAULT_MAILBOX;
+      return rows;
     }
+
+    await openBox(imap, mailbox);
 
     const searchCriteria = buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime });
     const allUids = await searchUids(imap, searchCriteria);
@@ -561,6 +590,40 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
   } finally {
     imap.end();
   }
+}
+
+async function fetchDateRangeForMailbox(imap, mailboxName, { sinceStr, beforeStr, limit, offset, lite, unreadOnly }) {
+  await openBox(imap, mailboxName);
+  console.error(
+    `[imap] date-range check ${sinceStr}..${beforeStr} mailbox=${mailboxName} limit=${limit} offset=${offset}`,
+  );
+  const rangeDays = rangeWidthDays(sinceStr, beforeStr);
+  const direct = await tryFetchDateRangeDirect(imap, {
+    sinceStr, beforeStr, limit, offset, lite, unreadOnly,
+  });
+  if (direct != null) return direct;
+  if (rangeDays > 8 && rangeDays <= 31) {
+    const weekly = await tryFetchDateRangeWeeklySlices(imap, {
+      sinceStr, beforeStr, limit, offset, lite, unreadOnly,
+    });
+    if (weekly != null) return weekly;
+    const dailyOn = await tryFetchDateRangeDailyOn(imap, {
+      sinceStr, beforeStr, limit, offset, lite,
+    });
+    if (dailyOn != null) return dailyOn;
+  }
+  if (rangeDays <= 8) {
+    const dailyOn = await tryFetchDateRangeDailyOn(imap, {
+      sinceStr, beforeStr, limit, offset, lite,
+    });
+    if (dailyOn != null) return dailyOn;
+    console.error(`[imap] date-range: short window ${sinceStr}..${beforeStr} still empty after daily ON`);
+    emptyDirectScanMeta(sinceStr, beforeStr);
+    return [];
+  }
+  return await fetchDateRangeViaRecentLookback(imap, {
+    sinceStr, beforeStr, limit, offset, lite, unreadOnly,
+  });
 }
 
 // Fetch full email by UID
@@ -730,6 +793,7 @@ function emptyDirectScanMeta(sinceStr, beforeStr, { scanned = 0, matched = 0, sc
     sampleDates,
     wanted: { since: sinceStr, before: beforeStr },
     used: { since: sinceStr, before: beforeStr },
+    ...scanMetaMailboxFields(),
   })}`);
 }
 
@@ -972,6 +1036,7 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
       matched: filtered.length,
       wanted: { since: sinceStr, before: beforeStr },
       used: { since: usedSince, before: usedBefore },
+      ...scanMetaMailboxFields(),
     })}`);
     return compactRows(sorted.slice(offset, offset + limit), lite);
   } catch (err) {
@@ -1059,6 +1124,7 @@ async function tryFetchDateRangeWeeklySlices(imap, { sinceStr, beforeStr, limit,
     matched: filtered.length,
     wanted: { since: sinceStr, before: beforeStr },
     used: { since: usedSince, before: usedBefore },
+    ...scanMetaMailboxFields(),
   })}`);
   return compactRows(sorted.slice(offset, offset + limit), lite);
 }
@@ -1103,19 +1169,13 @@ async function tryFetchDateRangeDailyOn(imap, { sinceStr, beforeStr, limit, offs
   const { filtered, usedSince, usedBefore } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
 
   if (daysWithMail === 0) {
+    lastDailyDaysChecked = days.length;
     console.error(
       `[imap] date-range daily ON: 0 uid(s) on all ${days.length} day(s)`
-      + ` — no INBOX mail indexed for ${sinceStr}..${addDaysIso(beforeStr, -1)}`,
+      + ` — no mail indexed for ${sinceStr}..${addDaysIso(beforeStr, -1)}`
+      + ` in ${activeScanMailbox || DEFAULT_MAILBOX}`,
     );
-    console.error(`SCAN_META:${JSON.stringify({
-      scanned: 0,
-      scanMode: 'daily_on_empty',
-      dailyDaysChecked: days.length,
-      matched: 0,
-      wanted: { since: sinceStr, before: beforeStr },
-      used: { since: sinceStr, before: beforeStr },
-    })}`);
-    return [];
+    return null;
   }
 
   if (filtered.length === 0) {
@@ -1148,6 +1208,7 @@ async function tryFetchDateRangeDailyOn(imap, { sinceStr, beforeStr, limit, offs
     matched: filtered.length,
     wanted: { since: sinceStr, before: beforeStr },
     used: { since: usedSince, before: usedBefore },
+    ...scanMetaMailboxFields(),
   })}`);
   return compactRows(sorted.slice(offset, offset + limit), lite);
 }
@@ -1217,6 +1278,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
       matched: 0,
       wanted: { since: sinceStr, before: beforeStr },
       used: { since: sinceStr, before: beforeStr },
+      ...scanMetaMailboxFields(),
     })}`);
     return [];
   }
@@ -1331,6 +1393,7 @@ async function fetchDateRangeViaRecentLookback(imap, { sinceStr, beforeStr, limi
     sampleDates,
     wanted: { since: sinceStr, before: beforeStr },
     used: { since: usedSince, before: usedBefore },
+    ...scanMetaMailboxFields(),
   })}`);
 
   const sorted = sortRowsNewestFirst(filtered);
@@ -1529,6 +1592,26 @@ function getBoxesAsync(imap) {
 async function resolveTrashMailbox(imap) {
   const boxes = await getBoxesAsync(imap);
   return findTrashMailboxName(boxes) || 'Trash';
+}
+
+function findArchiveMailboxName(boxes, prefix = '') {
+  for (const [name, info] of Object.entries(boxes)) {
+    const fullName = prefix ? `${prefix}${info.delimiter}${name}` : name;
+    const attribs = info.attribs || [];
+    if (attribs.includes('\\Archive') || /^Archive$/i.test(name)) {
+      return fullName;
+    }
+    if (info.children) {
+      const nested = findArchiveMailboxName(info.children, fullName);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+async function resolveArchiveMailbox(imap) {
+  const boxes = await getBoxesAsync(imap);
+  return findArchiveMailboxName(boxes) || findMailboxByName(boxes, 'Archive');
 }
 
 function findMailboxByName(boxes, targetName, prefix = '') {
