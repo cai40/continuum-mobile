@@ -20,5 +20,6 @@ module.exports = {
     year_cleanup_weekly_slices: true,
     email_job_cancel: true,
     email_job_progress_log: true,
+    email_cleanup_preview: true,
   },
 };
