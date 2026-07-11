@@ -58,7 +58,11 @@ const ORDER_RECEIPT_KEEP = /\b(receipt|invoice|order confirm|confirmation number
 
 /** Retail / rewards / digest senders often classified as informational when subject lacks promo keywords. */
 const MARKETING_SENDER_PATTERNS = [
-  /mattressfirm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
+  /mattressfirm|mattress\s+firm|lensmart|puzzlesarcade|recommendedpress|ironchefai|whatsinai|petspiration|kitchenkocktails|americansailing|rakuten\.com|dunkinrewards|xome\.com|redfin\.com|instacartemail|homedepot|informeddelivery\.usps/i,
+  /auction\.com|adc\.auction|realtytrac|foreclosurefortunes|foreclosure\.|@search\.foreclosure/i,
+  /shopifyemail\.com|@t\.shopifyemail|myshopify\.com/i,
+  /hit-reply@linkedin|linkedin.*(?:promoted|digest|newsletter)/i,
+  /mailer\.appfolio|communications@.*appfolio|jbutlerpm\.mailer/i,
   /hello@mail\.|daily@mail\.|@email\.|@emails\.|rewards@email|emails@emails\./i,
   /yahoo@daily\.comms\.yahoo\.net/i,
   /noreply@(?:customers\.|comet\.|mg\.|email\.|emailinfo\.)/i,
@@ -73,7 +77,7 @@ function isMarketingSender(email) {
 }
 
 const TRUSTED_SENDERS = [
-  /security@/i, /billing@/i, /support@/i, /alert@/i, /notifications@/i,
+  /security@/i, /billing@/i, /support@/i, /alert@/i,
 ];
 
 const CATEGORY_SCORE = {
