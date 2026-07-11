@@ -2,6 +2,7 @@
 
 const { hasBulkActionConfirm } = require('./emailPermission');
 const { wantsEmailFetch } = require('./emailFetchOptions');
+const { isComposeEmailRequest } = require('./emailComposeIntent');
 
 function isConfirmOnlyMessage(message) {
   const text = String(message || '').trim();
@@ -18,6 +19,7 @@ function resolvePriorEmailIntent(history) {
     const role = String(row?.role || '').toLowerCase();
     if (role !== 'user' && role !== 'human') continue;
     if (wantsEmailFetch(content)) return content;
+    if (isComposeEmailRequest(content)) continue;
     if (/\b(clean|fetch|apr|april|inbox|emails?|yahoo|mail)\b/i.test(content)) return content;
   }
   return null;

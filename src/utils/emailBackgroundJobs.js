@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import { RENDER_EMAIL_BRIDGE_URL } from '../constants/Config';
 import { resolveEmailFetchPayload } from './openclawEmailOptions';
+import { isComposeEmailRequest } from './emailComposeIntent';
 
 const PENDING_JOB_KEY = '@continuum_pending_email_job';
 const PENDING_JOB_META_KEY = '@continuum_pending_email_job_meta';
@@ -48,6 +49,7 @@ export async function clearEmailJobStopped() {
 /** Mirror bridge wantsBackgroundEmailJob for client-side routing. */
 export function shouldRunEmailInBackground(message) {
   const text = String(message || '');
+  if (isComposeEmailRequest(text)) return false;
   if (!/\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page|clean)\b/i.test(text)) {
     return false;
   }
