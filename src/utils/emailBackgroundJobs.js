@@ -7,6 +7,19 @@ const PENDING_JOB_KEY = '@continuum_pending_email_job';
 const PENDING_JOB_META_KEY = '@continuum_pending_email_job_meta';
 const EMAIL_JOB_STOPPED_KEY = '@continuum_email_job_stopped';
 
+export function appendJobProgress(setStreamingContent, detail) {
+  const line = String(detail || '').trim();
+  if (!line) return;
+  setStreamingContent((prev) => {
+    const text = String(prev || '').trim();
+    if (!text) return line;
+    const lines = text.split('\n');
+    if (lines.includes(line)) return text;
+    const next = `${text}\n${line}`;
+    return next.length > 6000 ? next.slice(-6000) : next;
+  });
+}
+
 export function isStopEmailJobMessage(message) {
   return /\b(?:stop|cancel|abort|kill)\b(?:\s+(?:the|my|this|cloud|background|running))?\s+(?:email|mail|inbox|cleanup|scan|job)\b/i.test(String(message || ''))
     || /\b(?:stop|cancel)\s+(?:email\s+)?(?:cleanup|scan|job)\b/i.test(String(message || ''));

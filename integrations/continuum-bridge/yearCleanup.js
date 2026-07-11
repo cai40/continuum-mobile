@@ -115,21 +115,22 @@ async function runMonthCleanup({
       history: [],
     };
 
-    let weekProgress = null;
     const nestedProgress = onProgress
-      ? (detail) => {
-          if (!weekProgress || weekProgress !== detail) {
-            weekProgress = detail;
-            onProgress(`${weekLabel}: ${detail}`);
-          }
-        }
+      ? (detail) => onProgress(`${weekLabel}: ${detail}`)
       : null;
 
     try {
       const result = await fetchEmailContext(monthMessage, weekPayload, nestedProgress);
       if (result.error) {
         accum.error = result.error;
+        if (onProgress) onProgress(`${weekLabel}: error — ${result.error}`);
         continue;
+      }
+
+      const weekMatched = result.scanMeta?.matched ?? result.messages?.length ?? 0;
+      const weekLoaded = result.messages?.length ?? result.loadedCount ?? 0;
+      if (onProgress) {
+        onProgress(`${weekLabel}: done — ${weekMatched} matched, ${weekLoaded} loaded`);
       }
       mergeMonthScanResults(accum, result);
     } catch (err) {
