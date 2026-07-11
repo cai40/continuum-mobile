@@ -28,6 +28,7 @@ import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumCleanup";
+import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from "../utils/photoCleanupCancel";
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
@@ -1029,6 +1030,22 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             {photoCleanupProgress}
           </Text>
         ) : null}
+        {runningPhotoCleanup ? (
+          <TouchableOpacity
+            onPress={() => requestPhotoCleanupCancel()}
+            style={{
+              backgroundColor: theme.colors.danger,
+              paddingVertical: 12,
+              borderRadius: 12,
+              marginTop: 10,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>
+              Stop photo cleanup
+            </Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onPress={async () => {
             setRunningPhotoCleanup(true);
@@ -1052,7 +1069,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               Alert.alert("Photo cleanup preview", formatPhotoPreviewAlertSummary(report));
             } catch (e) {
-              Alert.alert("Photo cleanup failed", e.message || String(e));
+              if (!isPhotoCleanupCancelledError(e)) {
+                Alert.alert("Photo cleanup failed", e.message || String(e));
+              }
             } finally {
               setRunningPhotoCleanup(false);
               setPhotoCleanupProgress("");
@@ -1101,7 +1120,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                         `Deleted ${report.duplicates.deleted + report.codingScreenshots.deleted} photo(s). Marked ${report.favorites.selected} as favorites.`,
                       );
                     } catch (e) {
-                      Alert.alert("Photo cleanup failed", e.message || String(e));
+                      if (!isPhotoCleanupCancelledError(e)) {
+                        Alert.alert("Photo cleanup failed", e.message || String(e));
+                      }
                     } finally {
                       setRunningPhotoCleanup(false);
                       setPhotoCleanupProgress("");

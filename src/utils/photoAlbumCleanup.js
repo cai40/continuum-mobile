@@ -7,6 +7,11 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { scorePhotosForFavorites, loadVisionApiCredentials, isReceiptPhoto } from './photoAestheticScore';
 import { assetMatchesMonthFilter } from './cleanupMenu';
 import { capPreviewItems, toPhotoPreviewItem } from './photoCleanupPreview';
+import {
+  beginPhotoCleanup,
+  clearPhotoCleanupCancel,
+  throwIfPhotoCleanupCancelled,
+} from './photoCleanupCancel';
 
 const LAST_RUN_KEY = '@photo_cleanup_last_run';
 const FAVORITE_IDS_KEY = '@continuum_favorite_photo_ids';
@@ -109,6 +114,7 @@ async function loadAllPhotos(onProgress, { createdAfter, createdBefore, monthKey
   let after;
 
   while (hasNext) {
+    throwIfPhotoCleanupCancelled();
     const page = await MediaLibrary.getAssetsAsync({
       first: 200,
       after,
@@ -181,6 +187,7 @@ async function findDuplicateDeletes(assets, { onProgress, protectedIds }) {
   const kept = new Set();
 
   for (let i = 0; i < assets.length; i++) {
+    throwIfPhotoCleanupCancelled();
     const asset = assets[i];
     if (protectedIds.has(asset.id)) {
       kept.add(asset.id);
@@ -286,6 +293,7 @@ async function selectFavorites(assets, favoritePercent = 0.05, { onProgress, vis
 async function batchDeleteAssetIds(ids, onProgress) {
   const chunkSize = 50;
   for (let i = 0; i < ids.length; i += chunkSize) {
+    throwIfPhotoCleanupCancelled();
     const chunk = ids.slice(i, i + chunkSize);
     await MediaLibrary.deleteAssetsAsync(chunk);
     onProgress?.('delete', Math.min(i + chunkSize, ids.length), ids.length);
@@ -310,6 +318,8 @@ async function loadAssetsByIds(ids) {
  * @param {{ trashIds: Iterable<string>, favoriteIds: Iterable<string>, onProgress?: Function }} options
  */
 export async function applyPhotoCleanupPlan({ trashIds, favoriteIds, onProgress }) {
+  beginPhotoCleanup();
+  try {
   const permission = await MediaLibrary.requestPermissionsAsync();
   if (permission.status !== 'granted') {
     throw new Error('Photo library permission denied');
@@ -323,9 +333,12 @@ export async function applyPhotoCleanupPlan({ trashIds, favoriteIds, onProgress 
     try {
       await batchDeleteAssetIds(deleteIds, onProgress);
     } catch (e) {
+      if (e?.code === 'PHOTO_CLEANUP_CANCELLED') throw e;
       errors.push(e.message || String(e));
     }
   }
+
+  throwIfPhotoCleanupCancelled();
 
   let favorited = 0;
   if (favoriteIdList.length) {
@@ -336,6 +349,7 @@ export async function applyPhotoCleanupPlan({ trashIds, favoriteIds, onProgress 
         favorited = assets.length;
       }
     } catch (e) {
+      if (e?.code === 'PHOTO_CLEANUP_CANCELLED') throw e;
       errors.push(e.message || String(e));
     }
   }
@@ -363,6 +377,9 @@ export async function applyPhotoCleanupPlan({ trashIds, favoriteIds, onProgress 
 
   await saveLastPhotoCleanupRun(report);
   return report;
+  } finally {
+    clearPhotoCleanupCancel();
+  }
 }
 
 async function markFavorites(favorites) {
@@ -442,6 +459,8 @@ export async function cleanUpPhotoAlbum({
   monthKeys = null,
   rangeLabel = null,
 } = {}) {
+  beginPhotoCleanup();
+  try {
   const errors = [];
   const permission = await MediaLibrary.requestPermissionsAsync();
   if (permission.status !== 'granted') {
@@ -453,6 +472,7 @@ export async function cleanUpPhotoAlbum({
   }
 
   const protectedIds = await loadProtectedAssetIds();
+  throwIfPhotoCleanupCancelled();
   const assets = await loadAllPhotos(onProgress, { createdAfter, createdBefore, monthKeys });
   augmentProtectedFromAssets(assets, protectedIds);
   const protectedCount = protectedIds.size;
@@ -460,6 +480,7 @@ export async function cleanUpPhotoAlbum({
   const { toDelete: duplicateDeletes, survivors: afterDupes, found: dupFound } =
     await findDuplicateDeletes(assets, { onProgress, protectedIds });
 
+  throwIfPhotoCleanupCancelled();
   onProgress?.('screenshots', 0, afterDupes.length);
   const { toDelete: screenshotDeletes, survivors, found: ssFound } =
     findCodingScreenshotDeletes(afterDupes, { protectedIds });
@@ -471,6 +492,7 @@ export async function cleanUpPhotoAlbum({
     favoritePercent,
     { onProgress, visionCredentials },
   );
+  throwIfPhotoCleanupCancelled();
   onProgress?.('favorites', favorites.length, favoriteCandidates.length);
 
   const allDeletes = [...duplicateDeletes, ...screenshotDeletes];
@@ -498,6 +520,7 @@ export async function cleanUpPhotoAlbum({
       if (uniqueDeletes.length) await batchDeleteAssetIds(uniqueDeletes.map((a) => a.id), onProgress);
       if (favorites.length) await markFavorites(favorites);
     } catch (e) {
+      if (e?.code === 'PHOTO_CLEANUP_CANCELLED') throw e;
       errors.push(e.message || String(e));
     }
   }
@@ -545,4 +568,7 @@ export async function cleanUpPhotoAlbum({
   onProgress?.('done', 1, 1);
 
   return report;
+  } finally {
+    clearPhotoCleanupCancel();
+  }
 }
