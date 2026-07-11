@@ -2,7 +2,7 @@ import { findPriorEmailUserMessage, isEmailConfirmMessage } from './openclawBrid
 import { findPriorPhotoUserMessage, isPhotoConfirmMessage } from './photoCleanupChat';
 
 function matchesAny(text, patterns) {
-  return patterns.some((re) => re.test(text));
+  return patterns.some((re) => re instanceof RegExp && re.test(text));
 }
 
 /** e.g. "apply email", "proceed with inbox" */
@@ -61,8 +61,8 @@ function assistantPreviewKind(content) {
     /\bno photos were deleted or favorited\b/i,
     /\bFinding duplicates\b/i,
     /\bContinuum Favorites\b/i,
-    /\bduplicate.*coding screenshot/i.test(text),
-    /\bcoding screenshots?\b/i.test(text) && /\bpreview\b/i.test(text),
+    /\bduplicate.*coding screenshot/i,
+    /\bcoding screenshots?\b/i,
   ];
 
   const email = matchesAny(text, emailPatterns);
