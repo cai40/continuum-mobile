@@ -1,4 +1,5 @@
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from './photoAlbumCleanup';
+import { formatDryRunDetailMarkdown } from './photoCleanupPreview';
 import { parsePhotoCleanupRangeFromMessage } from './cleanupMenu';
 
 const PHOTO_TRIGGER = /\b(photos?|pictures?|images?|selfies?|album|camera\s*roll|photo\s+library|library)\b/i;
@@ -65,6 +66,9 @@ export function formatPhotoCleanupReply(report) {
       ? 'This was a **preview** — no photos were deleted or favorited. Say **apply photo cleanup** to make changes.'
       : `Cleanup **applied**. Deleted ${report.duplicates.deleted + report.codingScreenshots.deleted} photo(s) and marked ${report.favorites.selected} as favorites in Continuum Favorites.`,
   ];
+  if (report.dryRun) {
+    lines.push(formatDryRunDetailMarkdown(report));
+  }
   if (report.errors?.length) {
     lines.push('', '**Notes:**', ...report.errors.map((e) => `- ${e}`));
   }

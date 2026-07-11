@@ -4,6 +4,7 @@ import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import * as Crypto from 'expo-crypto';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { capPreviewItems, toPhotoPreviewItem } from './photoCleanupPreview';
 
 const LAST_RUN_KEY = '@photo_cleanup_last_run';
 const FAVORITES_ALBUM = 'Continuum Favorites';
@@ -26,7 +27,8 @@ const MONITOR_RATIOS = [16 / 9, 16 / 10, 4 / 3, 3 / 2, 19.5 / 9, 20 / 9, 21 / 9]
  * @property {number} scanned
  * @property {{ found: number, deleted: number, kept: number }} duplicates
  * @property {{ found: number, deleted: number }} codingScreenshots
- * @property {{ selected: number, ids: string[] }} favorites
+ * @property {{ selected: number, ids: string[], total?: number, items?: import('./photoCleanupPreview').PhotoPreviewItem[], truncated?: boolean }} favorites
+ * @property {{ total: number, duplicates: { total: number, items: import('./photoCleanupPreview').PhotoPreviewItem[], truncated?: boolean }, codingScreenshots: { total: number, items: import('./photoCleanupPreview').PhotoPreviewItem[], truncated?: boolean } }} [trash]
  * @property {string[]} errors
  * @property {string} summary
  * @property {string} ran_at
@@ -350,6 +352,15 @@ export async function cleanUpPhotoAlbum({
 
   const allDeletes = [...duplicateDeletes, ...screenshotDeletes];
   const uniqueDeletes = Array.from(new Map(allDeletes.map((a) => [a.id, a])).values());
+  const screenshotDeleteIds = new Set(screenshotDeletes.map((a) => a.id));
+  const trashPreviewAll = uniqueDeletes.map((asset) => toPhotoPreviewItem(
+    asset,
+    screenshotDeleteIds.has(asset.id) ? 'coding_screenshot' : 'duplicate',
+  ));
+  const trashDuplicates = trashPreviewAll.filter((item) => item.reason === 'duplicate');
+  const trashScreenshots = trashPreviewAll.filter((item) => item.reason === 'coding_screenshot');
+  const favoritePreviewAll = favorites.map((asset) => toPhotoPreviewItem(asset));
+  const favoritePreviewCapped = capPreviewItems(favoritePreviewAll);
 
   if (!dryRun) {
     try {
@@ -374,9 +385,17 @@ export async function cleanUpPhotoAlbum({
       found: ssFound,
       deleted: dryRun ? 0 : uniqueDeletes.filter((a) => screenshotDeletes.some((d) => d.id === a.id)).length,
     },
+    trash: {
+      total: uniqueDeletes.length,
+      duplicates: capPreviewItems(trashDuplicates),
+      codingScreenshots: capPreviewItems(trashScreenshots),
+    },
     favorites: {
       selected: favorites.length,
       ids: favorites.map((a) => a.id),
+      total: favoritePreviewCapped.total,
+      items: favoritePreviewCapped.items,
+      truncated: favoritePreviewCapped.truncated,
     },
     errors,
     ran_at: new Date().toISOString(),

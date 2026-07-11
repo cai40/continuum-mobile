@@ -5,6 +5,7 @@ import { loadLastPhotoCleanupRun } from '../utils/photoAlbumCleanup';
 import { runPhotoCleanupFromChat } from '../utils/photoCleanupChat';
 import { styles, theme } from '../styles/theme';
 import CleanupRangePanel from './CleanupRangePanel';
+import PhotoCleanupPreviewPanel from './PhotoCleanupPreviewPanel';
 
 export default function PhotoCleanupSection() {
   const [photoCleanup, setPhotoCleanup] = useState(null);
@@ -21,7 +22,9 @@ export default function PhotoCleanupSection() {
     try {
       const result = await runPhotoCleanupFromChat(msg, setProgress);
       if (result.report) setPhotoCleanup(result.report);
-      Alert.alert('Photo cleanup preview', result.content?.slice(0, 800) || 'Preview complete.');
+      if (!result.report?.dryRun) {
+        Alert.alert('Photo cleanup preview', result.content?.slice(0, 800) || 'Preview complete.');
+      }
     } catch (e) {
       Alert.alert('Photo cleanup failed', e.message || String(e));
     } finally {
@@ -85,6 +88,7 @@ export default function PhotoCleanupSection() {
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 4 }}>
             {new Date(photoCleanup.ran_at).toLocaleString()} · {photoCleanup.scanned} scanned
           </Text>
+          <PhotoCleanupPreviewPanel report={photoCleanup} compact />
         </View>
       ) : null}
 
