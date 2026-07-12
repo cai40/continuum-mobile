@@ -173,7 +173,8 @@ function resolvePrefilledJobResult(emailResult, { message, cleanupRequested, cle
   }
 
   const previewBlock = extractEmailCleanupPreviewBlock(emailContext);
-  if (previewBlock) {
+  // Prefilled summary already inlines the trash list for preview runs — skip duplicate block.
+  if (previewBlock && (!prefilled || !/\bWould move to Trash\b/i.test(prefilled))) {
     prefilled = prefilled ? `${prefilled}\n\n${previewBlock}` : previewBlock;
   }
 

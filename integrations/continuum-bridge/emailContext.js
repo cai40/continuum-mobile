@@ -1069,9 +1069,8 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
             messages?.length ?? 0,
           );
           const trashBlocks = [];
-          if (cleanupPreviewBlock?.text) {
-            trashBlocks.push(cleanupPreviewBlock.text);
-          }
+          // Preview trash list + next steps live inside [PREFILLED SUMMARY] only — do not
+          // also append cleanupPreviewBlock.text or the user sees the same list twice.
           if (deleteResult.executed && deleteResult.summary) {
             const label = deleteResult.auto && !deleteRequested
               ? '[Email auto-trash executed]'
