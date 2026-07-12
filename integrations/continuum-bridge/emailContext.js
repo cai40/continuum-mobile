@@ -6,6 +6,14 @@ const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, resolveSenderForMailboxIngest, parseMailboxFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsAttitudeTimelineAnalysis, wantsSequentialEmailIngest, buildPersonaAnalysisNote, imapSearchArgs } = require('./emailSender');
+const {
+  wantsEmailQuoteSearch,
+  parseQuoteSearchPhrase,
+  searchMessagesForPhrase,
+  formatQuoteSearchResults,
+  computeEmailDateSpan,
+  formatEmailDateSpanBlock,
+} = require('./emailQuoteSearch');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, formatEmailCleanupPreviewNextSteps, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, maybeCopyFolderToInbox, wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { maybeAutoFileCleanupFolders } = require('./emailCleanupFolder');
@@ -453,10 +461,15 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
   const fetchedCount = parsed.length;
   const cleanupRequested = wantsEmailCleanup(options.message || '');
-  const summaryOnly = options.summaryOnly
+  const personaAnalysis = wantsSenderPersonaAnalysis(options.message || '');
+  const quoteSearch = wantsEmailQuoteSearch(options.message || '');
+  const summaryOnly = !personaAnalysis && !quoteSearch && (
+    options.summaryOnly
     || wantsEmailSummaryOnly(options.message || '')
     || fetchedCount > 250
-    || cleanupRequested;
+    || cleanupRequested
+  );
+  const previewLen = personaAnalysis || quoteSearch ? 800 : 220;
 
   if (summaryOnly) {
     return {
@@ -492,7 +505,7 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     const uid = msg.uid != null ? String(msg.uid) : '';
     const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
     const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
-    const preview = stripHtml(previewSource).slice(0, 220);
+    const preview = stripHtml(previewSource).slice(0, previewLen);
     const triage = classifyEmail(msg);
     return [
       `--- Email ${idx + 1 + offset}${unread ? ' (unread)' : ''} [${triage.category}] ---`,
@@ -743,8 +756,13 @@ function runImapSpawned(args, { timeoutMs, cwd, env, onProgress, cancelJobId = n
 
 async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProgress = null) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
-  const mailbox = fetchOptions.mailbox || parseMailboxFromMessage(message);
-  const sender = parseMoveSenderFromMessage(message) || resolveSenderForMailboxIngest(message) || parseSenderFromMessage(message);
+  let mailbox = fetchOptions.mailbox || parseMailboxFromMessage(message);
+  let sender = parseMoveSenderFromMessage(message) || resolveSenderForMailboxIngest(message) || parseSenderFromMessage(message);
+  const quoteSearch = wantsEmailQuoteSearch(message);
+  if (quoteSearch && !mailbox && /\b(?:she|min\s*zhang|min\s*z|her)\b/i.test(message)) {
+    mailbox = 'Min';
+    sender = sender || 'Min Zhang';
+  }
   const skillRoot = path.dirname(path.dirname(imapScript));
   const chronological = wantsSequentialEmailIngest(message)
     || wantsAttitudeTimelineAnalysis(message)
@@ -787,7 +805,10 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
     fetchOptions.offset || 0,
     fetchOptions.dateRangeLabel || null,
     scanMeta,
-    { summaryOnly: wantsEmailSummaryOnly(message) && !wantsEmailCleanup(message), message },
+    {
+      summaryOnly: wantsEmailSummaryOnly(message) && !wantsEmailCleanup(message),
+      message,
+    },
   );
   console.error(
     '[continuum-bridge] email fetch result:',
@@ -795,25 +816,50 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
     fetchOptions.dateRangeLabel || fetchOptions.recent || '',
   );
   let context = formatted.text;
+  const messages = formatted.messages;
   if (sender || mailbox) {
     const memoryNote = wantsEmailMemoryIngest(message)
       ? 'MEMORY INGEST: User wants these emails fed into Continuum memory in chronological order when possible. Extract durable facts, commitments, dates, and relationship context. Confirm what you captured.'
       : null;
     const personaNote = buildPersonaAnalysisNote(message);
+    const dateSpanBlock = (personaAnalysis || quoteSearch)
+      ? formatEmailDateSpanBlock(computeEmailDateSpan(messages))
+      : null;
+    const quotePhrase = quoteSearch ? parseQuoteSearchPhrase(message) : null;
+    const quoteBlock = quotePhrase
+      ? formatQuoteSearchResults(quotePhrase, searchMessagesForPhrase(messages, quotePhrase), {
+        totalScanned: messages?.length ?? 0,
+        sender,
+        mailbox,
+      })
+      : null;
     const location = mailbox
       ? `mailbox "${mailbox}"${sender ? ` FROM "${sender}"` : ' (all emails in folder)'}`
       : `FROM "${sender}"`;
     context = [
       `Sender filter: ${location} (${fetchOptions.dateRangeLabel || fetchOptions.recent || 'date range'}, limit ${fetchOptions.limit}${fetchOptions.offset ? `, offset ${fetchOptions.offset}` : ''}${chronological ? ', oldest-first' : ''}).`,
+      dateSpanBlock,
       memoryNote,
       personaNote,
+      quoteBlock,
       '',
       context,
     ].filter(Boolean).join('\n');
+  } else if (quoteSearch && messages?.length) {
+    const quotePhrase = parseQuoteSearchPhrase(message);
+    if (quotePhrase) {
+      context = [
+        formatQuoteSearchResults(quotePhrase, searchMessagesForPhrase(messages, quotePhrase), {
+          totalScanned: messages.length,
+        }),
+        '',
+        context,
+      ].join('\n');
+    }
   }
   return {
     context,
-    messages: formatted.messages,
+    messages,
     fetchOptions: { ...fetchOptions, sender, mailbox },
     scanMeta,
   };

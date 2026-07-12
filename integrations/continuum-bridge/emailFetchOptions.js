@@ -3,6 +3,7 @@
 const { parseDateRangeFromMessage, parseYearRangeFromMessage, addDays } = require('./emailDateRange');
 const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
+const { wantsEmailQuoteSearch } = require('./emailQuoteSearch');
 const {
   parseMailboxFromMessage,
   wantsFolderPersonaIngest,
@@ -229,6 +230,7 @@ function formatPostEmailFetchStatus({ fetchOptions, scanMeta, loadedCount } = {}
 function wantsEmailFetch(message, payloadOptions = {}) {
   const text = message || '';
   if (isComposeEmailRequest(text)) return false;
+  if (wantsEmailQuoteSearch(text)) return true;
   if (EMAIL_TRIGGER.test(text)) return true;
   if (parseDateRangeFromMessage(text)) return true;
   if (parseOffsetFromMessage(text) != null) return true;

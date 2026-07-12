@@ -140,13 +140,18 @@ function defaultFolderPersonaDateRange() {
 function buildPersonaAnalysisNote(message) {
   if (!wantsSenderPersonaAnalysis(message)) return null;
   const lines = [
-    'SENDER PERSONA: Synthesize a persona from this sender\'s emails — communication style, priorities, tone, decision patterns, recurring topics, and relationship to the user. Separate observed facts from inferences; cite approximate time periods.',
+    'SENDER PERSONA (evidence-only): Use ONLY the emails listed below. State the actual earliest and latest Date: in the batch before any timeline.',
+    'NEVER invent dialogue or put words in the sender\'s mouth — in any language.',
+    'Every direct quote MUST appear verbatim in a Preview/body line below, with UID and Date cited on the same line.',
+    'If a phrase is NOT in the fetched emails, say "not found in this batch" — never guess when something was said.',
+    'Relationship labels (ex-partner, divorce, romantic): only if explicit in email text; otherwise label as INFERENCE or omit.',
+    'Describe communication style, tone, priorities, and recurring topics from observed subjects/previews only.',
   ];
   if (wantsAttitudeTimelineAnalysis(message)) {
     lines.push(
-      'ATTITUDE TIMELINE: Build a chronological timeline of how this sender\'s attitude, tone, warmth, distance, conflict, or affection toward the user changed over time.',
-      'Divide into dated or period-based phases (e.g. early 2022, mid-2023). For each phase: dominant tone, representative themes, turning points, and evidence from specific emails (subjects/dates).',
-      'End with a summary arc — how the relationship evolved overall toward the user.',
+      'ATTITUDE TIMELINE (evidence-only): Phase boundaries must align with actual email Date: headers — no invented months or events.',
+      'For each phase: date range, dominant tone (from previews), themes, and 1–3 cited emails (UID + Date + Subject). No uncited Chinese/English quotes.',
+      'If tone shifts are unclear from previews, say so — do not fabricate turning points.',
     );
   }
   return lines.join(' ');
