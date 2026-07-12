@@ -53,6 +53,7 @@ import {
   isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
+import { shouldSkipEmailFetchForFollowUp } from '../utils/emailFollowUpIntent';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -529,12 +530,15 @@ const ChatSection = () => {
 
       const wantsCopyDraft = wantsDraftOutput(finalInput);
 
+      const isEmailFollowUpOnly = shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
+
       const isEmailConfirm = renderEmailEnabled && (
         confirmCleanupKind === 'email'
         || (isGenericCleanupConfirm(finalInput) && confirmCleanupKind !== 'photo')
       );
       const isEmailQuery = !isPhotoCleanupQuery && !isComposeEmailRequest(finalInput) && (
-        /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
+        isEmailFollowUpOnly
+        || /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
         || /\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\s+(?:back\s+to|to|through|until|-)\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})\b/i.test(finalInput)
         || /\b(delete|remove|trash|move)\b.*\b(emails?|mail|inbox|message|junk|spam)\b/i.test(finalInput)
         || /\bemails?\s+\d{1,4}\s*[-–]\s*\d{1,4}\b/i.test(finalInput)
@@ -888,7 +892,8 @@ const ChatSection = () => {
         const useBackgroundEmailJob =
           (useRenderEmail || useOpenClawBridge)
           && shouldRunEmailInBackground(emailSourceMessage)
-          && !isEmailConfirm;
+          && !isEmailConfirm
+          && !isEmailFollowUpOnly;
 
         if (useBackgroundEmailJob) {
           const jobBaseUrl = useRenderEmail

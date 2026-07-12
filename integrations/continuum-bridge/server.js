@@ -18,6 +18,7 @@ const { fetchEmailContext, getEmailHealth } = require('./emailContext');
 const { wantsEmailFetch, wantsEmailSummaryOnly, resolveEmailFetchOptions, formatPreEmailFetchStatus, formatPostEmailFetchStatus } = require('./emailFetchOptions');
 const { wantsEmailCleanup } = require('./emailDelete');
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
+const { shouldSkipEmailFetch, buildFollowUpChatMessage } = require('./emailFollowUpIntent');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
@@ -29,6 +30,7 @@ const {
   EMAIL_LIVE_INBOX_MOVE_APPEND,
   EMAIL_LIVE_INBOX_COPY_APPEND,
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
+  EMAIL_FOLLOW_UP_APPEND,
   WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
 const {
@@ -353,7 +355,11 @@ async function handleChatStream(req, res, config) {
   if (!message) {
     return json(res, 400, { success: false, error: 'message is required' });
   }
-  message = buildEffectiveEmailMessage(message, payload.history || []);
+  const originalMessage = message;
+  const skipEmailFetch = shouldSkipEmailFetch(originalMessage, payload.history || []);
+  message = skipEmailFetch
+    ? buildFollowUpChatMessage(originalMessage, payload.history || [])
+    : buildEffectiveEmailMessage(originalMessage, payload.history || []);
   payload.message = message;
 
   // Open SSE before slow IMAP / upstream work so Cloudflare tunnels stay alive.
@@ -414,10 +420,12 @@ async function handleChatStream(req, res, config) {
     return;
   }
 
-  const isEmailRequest = wantsEmailFetch(message);
+  const isEmailRequest = !skipEmailFetch && wantsEmailFetch(
+    buildEffectiveEmailMessage(originalMessage, payload.history || []),
+  );
   let webContext = null;
   if (!isEmailRequest) {
-    sse.write('status', { detail: 'Searching the web (if needed)…' });
+    sse.write('status', { detail: skipEmailFetch ? 'Using prior email analysis…' : 'Searching the web (if needed)…' });
     const alreadyHasWebSearch = /\[Web search\s*[—-]/i.test(message);
     webContext = alreadyHasWebSearch ? null : await maybeFetchWebContext(message);
   }
@@ -510,6 +518,8 @@ async function handleChatStream(req, res, config) {
           : EMAIL_LIVE_INBOX_DELETE_APPEND;
     }
     payload.persona = appendGroundingPersona(payload.persona || '', [inboxAppend]);
+  } else if (skipEmailFetch) {
+    payload.persona = appendGroundingPersona(payload.persona || '', [EMAIL_FOLLOW_UP_APPEND]);
   } else if (hasWebSearch) {
     payload.persona = appendGroundingPersona(payload.persona || '', [WEB_SEARCH_APPEND]);
   } else {
