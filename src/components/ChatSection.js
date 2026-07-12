@@ -77,12 +77,6 @@ const EMAIL_RECALL_EVIDENCE_APPEND = [
   'Combine with the prior persona analysis in chat history; do not claim zero emails if any appear below.',
 ].join(' ');
 
-const EMAIL_RECALL_EVIDENCE_APPEND = [
-  'EVIDENCE RECALL FETCH: A small IMAP fetch for the requested month only — NOT a full persona rescan.',
-  'List every fetched email with UID and Date. Cite boundary-related previews verbatim.',
-  'Combine with the prior persona analysis in chat history; do not claim zero emails if any appear below.',
-].join(' ');
-
 const ChatSection = () => {
   const {
     messages, setMessages,
