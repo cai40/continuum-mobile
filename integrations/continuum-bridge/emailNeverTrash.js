@@ -50,6 +50,14 @@ const BUILTIN_NEVER_TRASH = [
       '@bostonsailingcenter',
     ],
   },
+  {
+    label: 'Mass.gov notices',
+    needles: [
+      'notice.mass.gov',
+      '@notice.mass.gov',
+      'mass.gov notice',
+    ],
+  },
 ];
 
 const INVALID_SENDER_LABELS = new Set([
@@ -166,6 +174,31 @@ function parseNeverTrashSender(message) {
         '@bostonsailingcenter',
       ],
     };
+  }
+
+  if (/notice\.mass\.gov/i.test(text)) {
+    return {
+      label: 'Mass.gov notices',
+      needles: ['notice.mass.gov', '@notice.mass.gov', 'mass.gov notice'],
+    };
+  }
+
+  const keepFromMatch = text.match(/\bkeep\s+emails?\s+from\s+(@?[A-Za-z0-9._@-]{4,100})/i);
+  if (keepFromMatch?.[1]) {
+    const raw = keepFromMatch[1].trim().toLowerCase();
+    const needles = new Set([raw]);
+    if (raw.startsWith('@')) {
+      needles.add(raw.slice(1));
+    } else if (raw.includes('@')) {
+      needles.add(`@${raw.split('@').pop()}`);
+    } else if (raw.includes('.')) {
+      needles.add(`@${raw}`);
+    }
+    const label = raw.startsWith('@')
+      ? raw.slice(1)
+      : (raw.includes('@') ? raw.split('@').pop() : raw);
+    const merged = [...needles].filter((n) => n.length >= 3);
+    if (merged.length) return { label, needles: merged };
   }
 
   const patterns = [

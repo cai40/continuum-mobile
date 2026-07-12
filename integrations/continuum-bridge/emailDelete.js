@@ -228,7 +228,7 @@ function formatEmailCleanupPreviewNextSteps({ dateRangeLabel = null, cleanupCoun
     '',
     '**Notes:**',
     `- **${cleanupCount}** message(s) above would move to Yahoo **Trash** (recoverable; not permanently deleted).`,
-    '- Protected mail (banks, OTP/security, never-trash senders including MassHousing and Boston Sailing Center) is not in the list above.',
+    '- Protected mail (banks, OTP/security, never-trash senders including MassHousing, Boston Sailing Center, and Mass.gov notices) is not in the list above.',
     '- **To skip:** do nothing — this preview made no changes.',
   );
   return lines;
