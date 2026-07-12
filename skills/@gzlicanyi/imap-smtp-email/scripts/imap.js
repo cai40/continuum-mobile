@@ -602,11 +602,13 @@ async function fetchDateRangeForMailbox(imap, mailboxName, { sinceStr, beforeStr
     sinceStr, beforeStr, limit, offset, lite, unreadOnly,
   });
   if (direct != null) return direct;
-  if (rangeDays > 8 && rangeDays <= 31) {
+  if (rangeDays > 8) {
     const weekly = await tryFetchDateRangeWeeklySlices(imap, {
       sinceStr, beforeStr, limit, offset, lite, unreadOnly,
     });
     if (weekly != null) return weekly;
+  }
+  if (rangeDays > 8 && rangeDays <= 31) {
     const dailyOn = await tryFetchDateRangeDailyOn(imap, {
       sinceStr, beforeStr, limit, offset, lite,
     });
@@ -987,12 +989,14 @@ async function tryFetchDateRangeDirect(imap, { sinceStr, beforeStr, limit, offse
 
     if (uids.length >= YAHOO_SEARCH_UID_CAP) {
       console.error(
-        `[imap] date-range direct: ${uids.length} uid(s) from search`
-        + ' (Yahoo may cap at ~1000 — fetching headers to verify dates)',
+        `[imap] date-range direct: Yahoo SEARCH returned ${uids.length} uid(s)`
+        + ` (cap ~${YAHOO_SEARCH_UID_CAP}) for ${sinceStr}..${beforeStr}`
+        + ' — result is incomplete; falling back to sliced scan',
       );
-    } else {
-      console.error(`[imap] date-range direct: ${uids.length} uid(s) from SINCE+BEFORE — header fetch only`);
+      return null;
     }
+
+    console.error(`[imap] date-range direct: ${uids.length} uid(s) from SINCE+BEFORE — header fetch only`);
     const allRows = [];
     for (let i = 0; i < uids.length; i += 100) {
       const batch = uids.slice(i, i + 100);
@@ -1078,6 +1082,27 @@ async function tryFetchDateRangeWeeklySlices(imap, { sinceStr, beforeStr, limit,
 
     if (uids.length === 0) {
       console.error(`[imap] date-range weekly slice ${slice.label}: 0 uid(s)`);
+      continue;
+    }
+
+    if (uids.length >= YAHOO_SEARCH_UID_CAP) {
+      console.error(
+        `[imap] date-range weekly slice ${slice.label}: hit Yahoo ~${YAHOO_SEARCH_UID_CAP} cap`
+        + ` — scanning day-by-day for this slice`,
+      );
+      const dailyRows = await tryFetchDateRangeDailyOn(imap, {
+        sinceStr: slice.since,
+        beforeStr: slice.before,
+        limit: 50000,
+        offset: 0,
+        lite,
+      });
+      if (dailyRows != null && dailyRows.length > 0) {
+        totalScanned += dailyRows.length;
+        allRows = mergeRowsByUid(allRows.concat(dailyRows));
+      }
+      const { filtered: sliceFiltered } = filterDateRangeWithYearFallback(allRows, sinceStr, beforeStr);
+      if (sliceFiltered.length >= offset + limit) break;
       continue;
     }
 
