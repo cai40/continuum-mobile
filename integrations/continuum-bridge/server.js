@@ -30,7 +30,7 @@ const {
 const { slimHistoryForEmailRecall } = require('./emailRecallHistory');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
-const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
+const { wantsEmailMemoryIngest, parseSenderFromMessage, shouldBypassEmailSummaryMode } = require('./emailSender');
 const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
 const {
   appendGroundingPersona,
@@ -496,7 +496,9 @@ async function handleChatStream(req, res, config) {
   if (emailContext) {
     const deleteEnabled = !!payload.email_delete_enabled;
     const cleanupRequested = wantsEmailCleanup(message);
-    const summaryOnly = (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext)) && !cleanupRequested;
+    const summaryOnly = !shouldBypassEmailSummaryMode(message)
+      && (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext))
+      && !cleanupRequested;
     message = [
       'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
       summaryOnly
