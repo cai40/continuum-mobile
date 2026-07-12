@@ -760,7 +760,7 @@ const ChatSection = () => {
       const finishSuccess = (finalText, voiceTranscript) => {
         if (!finalText.trim() && bridgeAttempted && !renderFallbackUsed) {
           const hint = useRenderEmail
-            ? "Email bridge returned no reply. Check Render email secret, your API key for the selected model (Gemini / 4o MINI), and turn ON Allow email delete for cleanup. Large fetches can take 1–2 minutes — retry with “Fetch and clean Apr 2026 emails limit 50”."
+            ? "Email bridge returned no reply. Large folder persona scans (e.g. Min folder) may take 1–2 minutes — they now run in the background when possible. Check your Gemini / 4o MINI API key and Render email secret. Retry: “Read every email from Min in Min folder — build persona, cite UID and Date.”"
             : "Bridge returned empty reply. Check VPS bridge secret, HTTPS URL, and API key for your selected model.";
           finishError(hint);
           return;

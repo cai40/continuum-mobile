@@ -437,6 +437,44 @@ function formatUidList(uids) {
   return `${uids.slice(0, 50).join(', ')} ... and ${uids.length - 50} more (use summary mode for large batches)`;
 }
 
+const PERSONA_COMPACT_THRESHOLD = 80;
+/** Keep persona LLM payload under ~180k chars so Gemini/4o-mini respond reliably. */
+const PERSONA_LLM_MAX_CHARS = 180_000;
+
+function resolvePersonaPreviewLen(fetchedCount, quoteSearch) {
+  if (quoteSearch) return 800;
+  if (fetchedCount <= PERSONA_COMPACT_THRESHOLD) return 800;
+  if (fetchedCount <= 150) return 400;
+  return Math.max(160, Math.min(280, Math.floor(90000 / fetchedCount)));
+}
+
+function buildPersonaEmailBody(parsed, { offset, previewLen, compact }) {
+  return parsed.map((msg, idx) => {
+    const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
+    const subject = msg.subject || '(no subject)';
+    const date = msg.headerDate || msg.date || msg.receivedDate || '';
+    const uid = msg.uid != null ? String(msg.uid) : '';
+    const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
+    const preview = stripHtml(previewSource).slice(0, previewLen);
+    if (compact) {
+      return [
+        `[${idx + 1 + offset}] UID ${uid || '?'} | Date: ${date || '?'} | Subject: ${subject}`,
+        preview ? `Preview: ${preview}` : null,
+      ].filter(Boolean).join('\n');
+    }
+    const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
+    const triage = classifyEmail(msg);
+    return [
+      `--- Email ${idx + 1 + offset}${unread ? ' (unread)' : ''} [${triage.category}] ---`,
+      uid ? `UID: ${uid}` : null,
+      `From: ${from}`,
+      `Subject: ${subject}`,
+      `Date: ${date}`,
+      preview ? `Preview: ${preview}` : null,
+    ].filter(Boolean).join('\n');
+  }).join('\n\n');
+}
+
 function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null, scanMeta = null, options = {}) {
   let parsed;
   try {
@@ -457,7 +495,6 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     return { text, messages: [], fetchedCount: 0 };
   }
 
-  const maxChars = Math.min(1_000_000, Math.max(10000, limit * 200));
   const uids = parsed.map((msg) => msg.uid).filter((uid) => uid != null);
   const fetchedCount = parsed.length;
   const cleanupRequested = wantsEmailCleanup(options.message || '');
@@ -469,7 +506,14 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     || fetchedCount > 250
     || cleanupRequested
   );
-  const previewLen = personaAnalysis || quoteSearch ? 800 : 220;
+  const personaMode = personaAnalysis || quoteSearch;
+  const compactPersona = personaMode && fetchedCount > PERSONA_COMPACT_THRESHOLD;
+  const previewLen = personaMode
+    ? resolvePersonaPreviewLen(fetchedCount, quoteSearch)
+    : 220;
+  const maxChars = personaMode
+    ? PERSONA_LLM_MAX_CHARS
+    : Math.min(1_000_000, Math.max(10000, limit * 200));
 
   if (summaryOnly) {
     return {
@@ -488,34 +532,40 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
     ? `Skipped newest ${offset} email(s); showing the next batch.`
     : null;
   const dateNote = dateRangeLabel ? `Date filter: ${dateRangeLabel} (inclusive).` : null;
+  const compactNote = compactPersona
+    ? `COMPACT PERSONA MODE: ${fetchedCount} emails — ${previewLen}-char previews. Every UID and Date below is real; cite them for quotes.`
+    : null;
   const header = [
     `Fetched ${fetchedCount} REAL email(s) from Yahoo IMAP (offset ${offset}, limit ${limit}, max ${MAX_LIMIT} per request).`,
     dateNote,
     offsetNote,
+    compactNote,
     uids.length ? `Valid UIDs ONLY: ${uidList}` : null,
     'ANTI-HALLUCINATION: Summarize ONLY the emails listed below. NEVER invent, simulate, reconstruct, or guess emails, UIDs, senders, or subjects not in this list.',
     shortfall || null,
     '',
   ].filter(Boolean).join('\n');
 
-  const body = parsed.map((msg, idx) => {
-    const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
-    const subject = msg.subject || '(no subject)';
-    const date = msg.headerDate || msg.date || msg.receivedDate || '';
-    const uid = msg.uid != null ? String(msg.uid) : '';
-    const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
-    const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
-    const preview = stripHtml(previewSource).slice(0, previewLen);
-    const triage = classifyEmail(msg);
-    return [
-      `--- Email ${idx + 1 + offset}${unread ? ' (unread)' : ''} [${triage.category}] ---`,
-      uid ? `UID: ${uid}` : null,
-      `From: ${from}`,
-      `Subject: ${subject}`,
-      `Date: ${date}`,
-      preview ? `Preview: ${preview}` : null,
-    ].filter(Boolean).join('\n');
-  }).join('\n\n');
+  const body = personaMode
+    ? buildPersonaEmailBody(parsed, { offset, previewLen, compact: compactPersona })
+    : parsed.map((msg, idx) => {
+      const from = msg.from?.text || msg.from || msg.fromAddress || 'Unknown';
+      const subject = msg.subject || '(no subject)';
+      const date = msg.headerDate || msg.date || msg.receivedDate || '';
+      const uid = msg.uid != null ? String(msg.uid) : '';
+      const unread = Array.isArray(msg.flags) && !msg.flags.includes('\\Seen');
+      const previewSource = msg.snippet || msg.text || msg.preview || msg.html || '';
+      const preview = stripHtml(previewSource).slice(0, previewLen);
+      const triage = classifyEmail(msg);
+      return [
+        `--- Email ${idx + 1 + offset}${unread ? ' (unread)' : ''} [${triage.category}] ---`,
+        uid ? `UID: ${uid}` : null,
+        `From: ${from}`,
+        `Subject: ${subject}`,
+        `Date: ${date}`,
+        preview ? `Preview: ${preview}` : null,
+      ].filter(Boolean).join('\n');
+    }).join('\n\n');
 
   return { text: (header + body).slice(0, maxChars), messages: parsed, fetchedCount };
 }
