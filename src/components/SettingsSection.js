@@ -443,7 +443,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
   const handleAddCore = async () => {
     if (!newCoreMemory.trim()) return;
     try {
-      const result = await pinCoreMemory(
+      await pinCoreMemory(
         newCoreMemory.trim(),
         session?.access_token,
         'Manual',
@@ -451,15 +451,30 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       );
       setNewCoreMemory("");
       setShowAddCore(false);
-      onRefreshMemories();
-      if (result?.source === 'local') {
-        Alert.alert(
-          'Pinned locally',
-          'Saved on this device. Cloud pin API is not available on the backend yet.',
-        );
+      try {
+        await onRefreshMemories();
+      } catch {
+        // local pin saved
       }
+      Alert.alert('Pinned to L1', 'Saved on this device.');
     } catch (e) {
       Alert.alert("Error", e?.message || "Could not save core memory.");
+    }
+  };
+
+  const handlePinMemoryFragment = async (text, layerLabel = 'Memory') => {
+    const content = String(text || '').trim();
+    if (!content) return;
+    try {
+      await pinCoreMemory(content, session?.access_token, layerLabel, user?.id);
+      try {
+        await onRefreshMemories();
+      } catch {
+        // local pin saved
+      }
+      Alert.alert('Pinned to L1', 'Saved on this device.');
+    } catch (e) {
+      Alert.alert('Pin failed', e?.message || 'Could not save to Core Memory.');
     }
   };
 
@@ -1244,6 +1259,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           expandedIds={expandedMemoryIds}
           onToggleExpanded={toggleMemoryExpanded}
           questionLogCount={questionLogCount}
+          onPinFragment={handlePinMemoryFragment}
         />
 
         {/* --- LAYER 1: PINNED --- */}

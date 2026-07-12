@@ -117,7 +117,7 @@ export const fetchMemories = async (
 ) => {
   try {
     const [rawLayerData, pinData, analytics, localPins] = await Promise.all([
-      pulseFetch(`${API_URL}/memories`, {}, 3, onStatusUpdate, authToken),
+      pulseFetch(`${API_URL}/memories`, {}, 3, onStatusUpdate, authToken).catch(() => null),
       pulseFetch(
         `${API_URL}/memories/pinned`,
         {},
@@ -165,6 +165,20 @@ export const fetchMemories = async (
     };
   } catch (e) {
     console.warn("Memory Fetch Failed:", e);
+    const localPins = await loadLocalPinnedMemories(userId);
+    if (localPins.length) {
+      return {
+        layeredData: {
+          semanticProfile: [],
+          temporalEvents: [],
+          episodicSegments: [],
+          knowledgeBase: [],
+          trueCounts: { l1: localPins.length, l2: 0, l3: 0, l4: 0, l5: 0 },
+        },
+        pinData: localPins,
+        analytics: {},
+      };
+    }
     throw e;
   }
 };
@@ -174,56 +188,26 @@ export async function pinCoreMemory(content, authToken, label = 'Email evidence'
   if (!trimmed) throw new Error('Empty pin content');
   if (!authToken) throw new Error('Not signed in');
 
-  const saveLocal = async (cloudUnavailable = true) => {
-    const pin = await saveLocalPinnedMemory(userId, trimmed, label);
-    return {
-      status: 'success',
-      pin,
-      source: 'local',
-      cloudUnavailable,
-    };
-  };
-
+  let pin;
   try {
-    const res = await fetch(`${API_URL}/memories/pin`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-        'User-Agent': 'Continuum-Mobile/1.0',
-      },
-      body: JSON.stringify({ content: trimmed, label }),
-    });
-    if (res.ok) {
-      const contentType = res.headers.get('content-type');
-      const data = contentType && contentType.includes('application/json')
-        ? await res.json()
-        : { status: 'success' };
-      return { ...data, source: 'cloud' };
-    }
-    if (res.status === 404 || res.status === 405) {
-      return saveLocal(true);
-    }
-  } catch {
-    // fall through to pulseFetch or local save
+    pin = await saveLocalPinnedMemory(userId, trimmed, label);
+  } catch (e) {
+    throw new Error(e?.message || 'Could not save pin on this device.');
   }
 
-  try {
-    const data = await pulseFetch(
-      `${API_URL}/memories/pin`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ content: trimmed, label }),
-      },
-      3,
-      null,
-      authToken,
-    );
-    return { ...data, source: 'cloud' };
-  } catch {
-    return saveLocal(true);
-  }
+  // Best-effort cloud sync (POST /memories/pin is not on Render today — do not block UI).
+  fetch(`${API_URL}/memories/pin`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+      'User-Agent': 'Continuum-Mobile/1.0',
+    },
+    body: JSON.stringify({ content: trimmed, label }),
+  }).catch(() => {});
+
+  return { status: 'success', pin, source: 'local' };
 }
 
 export const chatStream = (

@@ -900,18 +900,20 @@ const ChatSection = () => {
                   text: 'Pin to L1',
                   onPress: async () => {
                     try {
-                      const result = await pinCoreMemory(
+                      await pinCoreMemory(
                         pinBody,
                         activeToken,
                         'Min email evidence',
                         user?.id,
                       );
-                      onRefreshMemories?.(activeToken);
+                      try {
+                        await onRefreshMemories?.(activeToken);
+                      } catch {
+                        // Pin saved locally even if cloud memory refresh fails
+                      }
                       Alert.alert(
                         'Pinned to L1',
-                        result?.source === 'local'
-                          ? 'Saved on this device (cloud pin API unavailable). Recall and Setup search will use it.'
-                          : 'Saved to Core Memory.',
+                        'Saved on this device. Setup search and recall will use it.',
                       );
                     } catch (e) {
                       Alert.alert('Pin failed', e?.message || 'Could not save to Core Memory.');

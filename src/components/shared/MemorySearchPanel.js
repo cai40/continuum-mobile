@@ -13,6 +13,7 @@ export function MemorySearchPanel({
   expandedIds,
   onToggleExpanded,
   questionLogCount = 0,
+  onPinFragment,
 }) {
   const hasQuery = String(query || '').trim().length > 0;
 
@@ -89,16 +90,33 @@ export function MemorySearchPanel({
           {matches.map((row) => {
             const key = `${row.layer}_${row.id}`;
             return (
-              <MemoryFragmentCard
-                key={key}
-                layerLabel={row.layerLabel}
-                kind={row.kind}
-                text={row.text}
-                meta={row.meta}
-                expanded={!!expandedIds[key]}
-                onToggle={() => onToggleExpanded(key)}
-                borderColor={row.kind === 'evidence' ? theme.colors.success : theme.colors.primary}
-              />
+              <View key={key}>
+                <MemoryFragmentCard
+                  layerLabel={row.layerLabel}
+                  kind={row.kind}
+                  text={row.text}
+                  meta={row.meta}
+                  expanded={!!expandedIds[key]}
+                  onToggle={() => onToggleExpanded(key)}
+                  borderColor={row.kind === 'evidence' ? theme.colors.success : theme.colors.primary}
+                />
+                {onPinFragment ? (
+                  <TouchableOpacity
+                    onPress={() => onPinFragment(row.text, row.layerLabel || row.layer)}
+                    style={{
+                      alignSelf: 'flex-start',
+                      marginTop: -4,
+                      marginBottom: 12,
+                      paddingVertical: 6,
+                      paddingHorizontal: 10,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+                      Pin to L1
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             );
           })}
         </View>
