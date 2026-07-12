@@ -49,6 +49,7 @@ export function wantsContinuumMemoryRecall(message) {
 
 export function buildMemoryRecallContext(layers, message, maxBytes = 28000, options = {}) {
   const liveFetchScheduled = !!options.liveFetchScheduled;
+  const fullFolderFetch = !!options.fullFolderFetch;
   const keywords = extractKeywords(message);
   const pools = [
     ...(layers?.pinnedMemories || layers?.pinned || []).map((item) => ({ layer: 'L1', item })),
@@ -64,7 +65,10 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
       if (!content) return null;
       const layerKey = String(layer).toLowerCase();
       if (layerKey !== 'l1' && isLowValueForEmailRecall(content, layerKey)) return null;
-      const score = rankMemoryFragment(content, layerKey, keywords, message);
+      let score = rankMemoryFragment(content, layerKey, keywords, message);
+      if (fullFolderFetch && /\b18[\s-]?email|\bapril\s+2026\b/i.test(content) && !/\b287\b/i.test(content)) {
+        score -= 40;
+      }
       return score > 0 ? { layer, content, date: itemDate(item), score } : null;
     })
     .filter(Boolean)
@@ -75,8 +79,10 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
       '[CONTINUUM MEMORY — retrieval for this turn]',
       'No email evidence (UID+Date) found in L1–L5 — only question logs or unrelated facts may exist.',
       liveFetchScheduled
-        ? 'Min-folder IMAP runs synchronously this turn before your reply — cite UID and Date from the live inbox block below when present. If inbox is empty, answer from any L1 facts above and state UID+Date proof is missing. Do NOT write meta-denial lists or say you await a fetch.'
-        : 'Answer from any L1 facts above; note missing UID+Date proof. Offer a Min-folder fetch — do NOT claim OOM unless shown in this turn. Do NOT say you await fetch completion.',
+      ? (fullFolderFetch
+        ? 'FULL FOLDER SCAN runs this turn (2022 through today) — stale April-only memory batches are NOT the full corpus; cite UID+Date from live inbox below.'
+        : 'Min-folder IMAP runs synchronously this turn before your reply — cite UID and Date from the live inbox block below when present. If inbox is empty, answer from any L1 facts above and state UID+Date proof is missing. Do NOT write meta-denial lists or say you await a fetch.')
+      : 'Answer from any L1 facts above; note missing UID+Date proof. Offer a Min-folder fetch — do NOT claim OOM unless shown in this turn. Do NOT say you await fetch completion.',
     ].join('\n');
   }
 
@@ -86,7 +92,9 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
     'Do NOT say you lack persistent memory when this block is present.',
     'Do NOT invent UIDs or dates not listed here.',
     liveFetchScheduled
-      ? 'Live Min-folder inbox data may appear below this block — prefer UID+Date from inbox when present; use memory fragments for gaps only.'
+      ? (fullFolderFetch
+        ? 'FULL FOLDER SCAN below overrides stale April-only memory — prefer UID+Date from live inbox.'
+        : 'Live Min-folder inbox data may appear below this block — prefer UID+Date from inbox when present; use memory fragments for gaps only.')
       : 'Do NOT say email content is not present yet or that you await a fetch — answer now from these fragments and chat history.',
     '',
   ];

@@ -215,6 +215,44 @@ function isClientRecallEnvelope(message) {
   return /\[(?:RECALL TURN STATUS|CONTINUUM MEMORY)/i.test(String(message || ''));
 }
 
+/**
+ * Strip client-injected blocks so IMAP routing uses the user's words only.
+ * Memory fragments often mention "April 2026" and must not scope folder scans.
+ */
+function stripClientEmailEnvelope(message) {
+  let text = String(message || '').trim();
+  if (!text) return '';
+
+  let prev;
+  do {
+    prev = text;
+    text = text
+      .replace(/^\[RECALL TURN STATUS\][\s\S]*?\n\n/im, '')
+      .replace(/^\[CONTINUUM MEMORY[^\]]*\][\s\S]*?\n\n/im, '')
+      .replace(/^\[Web search[\s\S]*?\n\n/im, '')
+      .trim();
+  } while (text !== prev);
+
+  const tagged = text.match(/User recall question:\s*([\s\S]+?)$/im);
+  if (tagged) {
+    const block = tagged[1].trim();
+    const firstLine = block.split('\n')[0].trim();
+    if (firstLine.length >= 8 && !/^\[/.test(firstLine)) return firstLine;
+  }
+
+  const skipLine = /^(?:Target month:|Return every email|Quote boundary|Do NOT rebuild|Do NOT write meta|FOLLOW-UP|User follow-up:)/i;
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if (/^\[/.test(line) || skipLine.test(line)) continue;
+    if (line.startsWith('User recall question:')) {
+      return line.replace(/^User recall question:\s*/i, '').trim() || line;
+    }
+    if (line.length >= 8) return line;
+  }
+  return text;
+}
+
 /** Strip client-side recall envelope blocks to recover the bare user question. */
 function extractUserRecallQuestion(message) {
   const text = String(message || '').trim();
@@ -288,6 +326,7 @@ module.exports = {
   needsTargetedRecallEvidenceFetch,
   isExplicitFullEmailFetch,
   isClientRecallEnvelope,
+  stripClientEmailEnvelope,
   extractUserRecallQuestion,
   buildTargetedRecallFetchMessage,
   resolveRecallEvidenceMessage,

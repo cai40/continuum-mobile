@@ -56,7 +56,7 @@ import {
   isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
-import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange } from '../utils/emailFollowUpIntent';
+import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
 import { extractEmailEvidenceForPin, attachPinOfferToMessages, shouldOfferEmailEvidencePin } from '../utils/memoryDisplay';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
@@ -94,6 +94,13 @@ const MEMORY_RECALL_APPEND = [
   'Use them for cross-session recall. Do NOT deny persistent memory or claim OOM/failed fetches unless shown in this turn.',
   'If fragments lack UID+Date for emails, say so and cite what is present — do not invent.',
   'Do NOT say email content is not present yet or that you await a fetch — use memory now and note missing UID+Date gaps.',
+].join(' ');
+
+const FULL_FOLDER_PERSONA_APPEND = [
+  'FULL FOLDER SCAN: The live Min-folder inbox block below is the authoritative corpus for this turn.',
+  'Ignore stale [CONTINUUM MEMORY] fragments that describe only a small April 2026 batch (e.g. 18 emails).',
+  'Quote the MAILBOX SCAN Date filter / Matched / Emails loaded lines verbatim — expect 2022 through today and hundreds of emails.',
+  'Build SENDER PERSONA and ATTITUDE TIMELINE from the full fetched span, not from memory alone.',
 ].join(' ');
 
 const ChatSection = () => {
@@ -587,8 +594,9 @@ const ChatSection = () => {
       const wantsCopyDraft = wantsDraftOutput(finalInput);
 
       const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, messages.slice(0, -1));
-      const isEmailFollowUpOnly = shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
-      const isEmailRecallQuestion = isEmailAnalysisFollowUp(finalInput) && !isRecallEvidenceFetch;
+      const isFullFolderFetch = isExplicitFullEmailFetch(finalInput);
+      const isEmailFollowUpOnly = !isFullFolderFetch && shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
+      const isEmailRecallQuestion = !isFullFolderFetch && isEmailAnalysisFollowUp(finalInput) && !isRecallEvidenceFetch;
 
       const isEmailConfirm = renderEmailEnabled && (
         confirmCleanupKind === 'email'
@@ -737,7 +745,8 @@ const ChatSection = () => {
       }
 
       const priorMessages = messages.slice(0, -1);
-      const isAnyRecallTurn = isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput);
+      const isAnyRecallTurn = !isFullFolderFetch
+        && (isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput));
       const liveEmailFetchScheduled = isEmailBridgeQuery && !isEmailFollowUpOnly;
       const shouldLoadMemory = (wantsContinuumMemoryRecall(finalInput) || isAnyRecallTurn) && !activeAttachments.length;
 
@@ -752,7 +761,10 @@ const ChatSection = () => {
             temporalEvents: layeredData?.temporalEvents,
             knowledgeBase: layeredData?.knowledgeBase,
             pinnedMemories: pinData,
-          }, finalInput, 28000, { liveFetchScheduled: liveEmailFetchScheduled });
+          }, finalInput, 28000, {
+            liveFetchScheduled: liveEmailFetchScheduled,
+            fullFolderFetch: isFullFolderFetch,
+          });
         } catch (e) {
           console.warn('[memoryRecall]', e?.message || e);
         }
@@ -831,6 +843,7 @@ const ChatSection = () => {
         ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
         ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
         ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
+        ...(isFullFolderFetch ? [FULL_FOLDER_PERSONA_APPEND] : []),
         ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
         ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
@@ -1009,11 +1022,12 @@ const ChatSection = () => {
         const bridgeMessage = isEmailConfirm && emailSourceMessage !== finalInput
           ? buildEmailConfirmPayloadMessage(emailSourceMessage, finalInput)
           : (webSearchContext ? `${webSearchContext}\n\n${emailSourceMessage}` : emailSourceMessage);
+        const emailFetchIntentMessage = finalInput;
         const emailFetch = isEmailBridgeQuery
           ? resolveEmailFetchPayload({
               limit: isRecallEvidenceFetch ? 200 : openclawEmailLimit,
               recent: openclawEmailRecent,
-              message: emailSourceMessage,
+              message: emailFetchIntentMessage,
             })
           : {};
         const payload = {
@@ -1023,7 +1037,8 @@ const ChatSection = () => {
             ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
             ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
             ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
-            ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
+            ...(isFullFolderFetch ? [FULL_FOLDER_PERSONA_APPEND] : []),
+        ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
             ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
           ]),
           history: webSearchContext ? [] : historyForUpload,
@@ -1040,7 +1055,7 @@ const ChatSection = () => {
 
         const useBackgroundEmailJob =
           (useRenderEmail || useOpenClawBridge)
-          && shouldRunEmailInBackground(emailSourceMessage)
+          && shouldRunEmailInBackground(emailFetchIntentMessage)
           && !isEmailConfirm
           && !isEmailFollowUpOnly
           && !isRecallEvidenceFetch;
@@ -1051,7 +1066,7 @@ const ChatSection = () => {
             : bridgeUrl.replace(/\/$/, '');
           const jobSecret = useRenderEmail ? renderEmailSecret : bridgeSecret;
           const jobPayload = buildEmailJobPayload({
-            message: emailSourceMessage,
+            message: emailFetchIntentMessage,
             provider,
             persona: payload.persona,
             emailFetch,

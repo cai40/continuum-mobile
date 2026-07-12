@@ -6,12 +6,15 @@ import {
   parseRecallMonthFromMessage,
   resolveRecallMonthRange,
 } from './emailRecallEvidence';
+import { isExplicitFullEmailFetch, stripClientEmailEnvelope } from './emailRecallEvidence';
 
 export {
   needsTargetedRecallEvidenceFetch,
   buildTargetedRecallFetchMessage,
   parseRecallMonthFromMessage,
   resolveRecallMonthRange,
+  isExplicitFullEmailFetch,
+  stripClientEmailEnvelope,
 };
 
 const ASSISTANT_EMAIL_ANALYSIS = /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Persona of Min|Phase\s+[123]|Fetched\s+\d+\s+REAL\s+email|287\s+emails?|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+|boundary emails)/i;
