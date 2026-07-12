@@ -545,13 +545,37 @@ async function handleChatStream(req, res, config) {
   }
 
   const reader = upstream.body.getReader();
+  const decoder = new TextDecoder();
+  let sseBuffer = '';
+  let gotText = false;
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
       res.write(Buffer.from(value));
+      sseBuffer += decoder.decode(value, { stream: true });
+      let lineBreak;
+      while ((lineBreak = sseBuffer.indexOf('\n')) >= 0) {
+        const line = sseBuffer.slice(0, lineBreak).trim();
+        sseBuffer = sseBuffer.slice(lineBreak + 1);
+        if (!line.startsWith('data:')) continue;
+        const rawData = line.slice(5).trim();
+        if (rawData === '[DONE]') continue;
+        try {
+          const json = JSON.parse(rawData);
+          if (json.token && String(json.token).trim()) gotText = true;
+        } catch {
+          // ignore partial/invalid SSE lines
+        }
+      }
     }
   } finally {
+    if (!gotText) {
+      const detail = hasLiveInbox
+        ? 'Continuum returned an empty reply after loading emails. Large folder persona scans now use compact formatting — please retry. If it persists, check your Gemini / 4o MINI API key.'
+        : 'Continuum returned an empty reply. Check your API key for the selected model (Gemini / 4o MINI).';
+      sse.write('error', { detail });
+    }
     sse.end();
   }
 }
