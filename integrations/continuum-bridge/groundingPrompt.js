@@ -104,6 +104,13 @@ const MEMORY_RECALL_APPEND = [
   'Do NOT say email content is not present yet or that you await a fetch — use memory now and note missing UID+Date gaps.',
 ].join(' ');
 
+const FULL_FOLDER_PERSONA_APPEND = [
+  'FULL FOLDER SCAN: The live Min-folder inbox block below is the authoritative corpus for this turn.',
+  'Ignore stale [CONTINUUM MEMORY] fragments that describe only a small April 2026 batch (e.g. 18 emails).',
+  'Quote the MAILBOX SCAN Date filter / Matched / Emails loaded lines verbatim — expect 2022 through today and hundreds of emails.',
+  'Build SENDER PERSONA and ATTITUDE TIMELINE from the full fetched span, not from memory alone.',
+].join(' ');
+
 function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);
@@ -125,6 +132,7 @@ module.exports = {
   RECALL_TURN_APPEND,
   MEMORY_RECALL_APPEND,
   LIVE_INBOX_UNAVAILABLE_APPEND,
+  FULL_FOLDER_PERSONA_APPEND,
   WEB_SEARCH_APPEND,
   appendGroundingPersona,
 };

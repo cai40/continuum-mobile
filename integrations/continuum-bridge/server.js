@@ -23,7 +23,9 @@ const {
   needsTargetedRecallEvidenceFetch,
   resolveRecallEvidenceMessage,
   extractUserRecallQuestion,
+  stripClientEmailEnvelope,
   resolveRecallMonthRange,
+  isExplicitFullEmailFetch,
 } = require('../../shared/emailRecallEvidence');
 const { slimHistoryForEmailRecall } = require('./emailRecallHistory');
 const { fetchWebContext } = require('./webContext');
@@ -42,6 +44,7 @@ const {
   RECALL_TURN_APPEND,
   MEMORY_RECALL_APPEND,
   LIVE_INBOX_UNAVAILABLE_APPEND,
+  FULL_FOLDER_PERSONA_APPEND,
   WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
 const {
@@ -367,10 +370,11 @@ async function handleChatStream(req, res, config) {
     return json(res, 400, { success: false, error: 'message is required' });
   }
   const originalMessage = message;
-  const recallEvidenceFetch = needsTargetedRecallEvidenceFetch(originalMessage, payload.history || []);
-  const skipEmailFetch = shouldSkipEmailFetch(originalMessage, payload.history || []);
+  const fetchIntentMessage = stripClientEmailEnvelope(originalMessage) || extractUserRecallQuestion(originalMessage) || originalMessage;
+  const recallEvidenceFetch = needsTargetedRecallEvidenceFetch(fetchIntentMessage, payload.history || []);
+  const skipEmailFetch = shouldSkipEmailFetch(fetchIntentMessage, payload.history || []);
   const historyBeforeFetch = payload.history || [];
-  const recallUserQuestion = extractUserRecallQuestion(originalMessage);
+  const recallUserQuestion = extractUserRecallQuestion(fetchIntentMessage);
   message = skipEmailFetch
     ? buildFollowUpChatMessage(originalMessage, payload.history || [])
     : recallEvidenceFetch
@@ -540,7 +544,12 @@ async function handleChatStream(req, res, config) {
           ? EMAIL_LIVE_INBOX_MOVE_APPEND
           : EMAIL_LIVE_INBOX_DELETE_APPEND;
     }
-    const liveExtras = recallEvidenceFetch ? [RECALL_TURN_APPEND, EMAIL_RECALL_EVIDENCE_APPEND, inboxAppend] : [inboxAppend];
+    const fullFolderFetch = isExplicitFullEmailFetch(fetchIntentMessage);
+    const liveExtras = recallEvidenceFetch
+      ? [RECALL_TURN_APPEND, EMAIL_RECALL_EVIDENCE_APPEND, inboxAppend]
+      : fullFolderFetch
+        ? [FULL_FOLDER_PERSONA_APPEND, inboxAppend]
+        : [inboxAppend];
     payload.persona = appendGroundingPersona(payload.persona || '', liveExtras);
   } else if (skipEmailFetch) {
     const recallExtras = [

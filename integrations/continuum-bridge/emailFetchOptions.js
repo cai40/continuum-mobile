@@ -11,6 +11,8 @@ const {
   needsTargetedRecallEvidenceFetch,
   resolveRecallMonthRange,
   extractUserRecallQuestion,
+  stripClientEmailEnvelope,
+  isExplicitFullEmailFetch,
 } = require('../../shared/emailRecallEvidence');
 
 const DEFAULT_LIMIT = 25;
@@ -123,15 +125,20 @@ function parseRecentFromMessage(message) {
 }
 
 function resolveEmailFetchOptions(message, payloadOptions = {}) {
-  const limitFromMessage = parseLimitFromMessage(message);
-  const offsetFromMessage = parseOffsetFromMessage(message);
-  const bareQuestion = extractUserRecallQuestion(message);
-  let dateRangeFromMessage = parseDateRangeFromMessage(message);
-  const folderPersona = wantsFolderPersonaIngest(message);
-  if (!dateRangeFromMessage && folderPersona && !parseRecentFromMessage(message)) {
+  const fetchIntent = stripClientEmailEnvelope(message) || extractUserRecallQuestion(message) || message;
+  const limitFromMessage = parseLimitFromMessage(fetchIntent);
+  const offsetFromMessage = parseOffsetFromMessage(fetchIntent);
+  const bareQuestion = extractUserRecallQuestion(fetchIntent);
+  let dateRangeFromMessage = parseDateRangeFromMessage(fetchIntent);
+  const folderPersona = wantsFolderPersonaIngest(fetchIntent);
+  const explicitFullFolder = isExplicitFullEmailFetch(fetchIntent);
+  if (explicitFullFolder && folderPersona) {
+    dateRangeFromMessage = defaultFolderPersonaDateRange();
+  } else if (!dateRangeFromMessage && folderPersona && !parseRecentFromMessage(fetchIntent)) {
     dateRangeFromMessage = defaultFolderPersonaDateRange();
   }
-  const recallEvidence = !folderPersona && needsTargetedRecallEvidenceFetch(message, payloadOptions.history || []);
+  const recallEvidence = !folderPersona && !explicitFullFolder
+    && needsTargetedRecallEvidenceFetch(fetchIntent, payloadOptions.history || []);
   if (!dateRangeFromMessage && recallEvidence) {
     const recallRange = resolveRecallMonthRange(bareQuestion, payloadOptions.history || []);
     if (recallRange?.since && recallRange?.before) {
@@ -186,8 +193,8 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
     ? `${since} .. ${addDays(before, -1)}`
     : (dateRangeFromMessage?.label
       || (since && before ? `${since} through ${addDays(before, -1)}` : null));
-  const unreadOnly = /\b(unread|unseen)\b/i.test(message || '');
-  const mailbox = parseMailboxFromMessage(message) || defaultPersonaMailbox(message);
+  const unreadOnly = /\b(unread|unseen)\b/i.test(fetchIntent || '');
+  const mailbox = parseMailboxFromMessage(fetchIntent) || defaultPersonaMailbox(fetchIntent);
   return {
     limit, offset, recent, unreadOnly, since, before, dateRangeLabel, mailbox,
   };
@@ -241,8 +248,9 @@ function formatPostEmailFetchStatus({ fetchOptions, scanMeta, loadedCount } = {}
 }
 
 function wantsEmailFetch(message, payloadOptions = {}) {
-  const text = message || '';
+  const text = stripClientEmailEnvelope(message) || extractUserRecallQuestion(message) || message || '';
   if (isComposeEmailRequest(text)) return false;
+  if (isExplicitFullEmailFetch(text)) return true;
   if (needsTargetedRecallEvidenceFetch(text, payloadOptions.history || [])) return true;
   if (wantsEmailQuoteSearch(text)) return true;
   const { wantsSenderPersonaAnalysis } = require('./emailSender');

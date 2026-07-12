@@ -92,10 +92,17 @@ function wantsChinesePersonaAnalysis(message) {
     || (/\u654f/u.test(text) && /(?:心理|人格|性格|分析)/u.test(text));
 }
 
+function wantsDirectEmailMemoryIngest(message) {
+  const text = String(message || '');
+  return /\b(feed|ingest|import|add|save|remember|store|read\s+all|read\s+every)\b/i.test(text)
+    && /\b(emails?|mail|inbox|messages?)\b/i.test(text)
+    && /\b(continuum|memory|brain|into\s+memory|persona)\b/i.test(text);
+}
+
 function wantsFolderPersonaIngest(message) {
   const text = String(message || '');
   if (!parseMailboxFromMessage(text) && !/\u654f/u.test(text) && !/\bmin\s+zhang\b/i.test(text)) return false;
-  return wantsSenderPersonaAnalysis(text) || wantsEmailMemoryIngest(text) || wantsChinesePersonaAnalysis(text);
+  return wantsSenderPersonaAnalysis(text) || wantsDirectEmailMemoryIngest(text) || wantsChinesePersonaAnalysis(text);
 }
 
 function wantsSenderPersonaAnalysis(message) {
@@ -119,10 +126,7 @@ function wantsEmailMemoryIngest(message) {
   if (wantsSenderPersonaAnalysis(text) && /\b(memory|continuum|remember|ingest|feed|into\s+memory|build|store|save)\b/i.test(text)) {
     return true;
   }
-  if (wantsFolderPersonaIngest(text)) return true;
-  return /\b(feed|ingest|import|add|save|remember|store|read\s+all|read\s+every)\b/i.test(text)
-    && /\b(emails?|mail|inbox|messages?)\b/i.test(text)
-    && /\b(continuum|memory|brain|into\s+memory|persona)\b/i.test(text);
+  return wantsDirectEmailMemoryIngest(text);
 }
 
 function defaultFolderPersonaDateRange() {

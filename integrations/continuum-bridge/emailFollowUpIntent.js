@@ -9,6 +9,7 @@ const {
   needsTargetedRecallEvidenceFetch,
   buildTargetedRecallFetchMessage,
   parseRecallMonthFromMessage,
+  stripClientEmailEnvelope,
 } = require('../../shared/emailRecallEvidence');
 
 const ASSISTANT_EMAIL_ANALYSIS = /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Persona of Min|Phase\s+[123]|Fetched\s+\d+\s+REAL\s+email|287\s+emails?|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+|boundary emails)/i;
@@ -106,7 +107,7 @@ function hasRecentEmailAnalysisContext(history, maxLookback = 8) {
 }
 
 function shouldSkipEmailFetch(message, history) {
-  const text = String(message || '').trim();
+  const text = stripClientEmailEnvelope(message) || String(message || '').trim();
   if (!text) return false;
   if (needsTargetedRecallEvidenceFetch(text, history)) return false;
   if (isAnalysisRecallQuestion(text)) return true;
