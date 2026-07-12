@@ -76,6 +76,12 @@ const EMAIL_FOLLOW_UP_APPEND = [
   'Do NOT re-scan the mailbox unless the user explicitly asks to fetch emails again.',
 ].join(' ');
 
+const EMAIL_RECALL_EVIDENCE_APPEND = [
+  'EVIDENCE RECALL FETCH: Small IMAP fetch for the requested month only — NOT a full persona rescan.',
+  'List every fetched email with UID and Date. Cite boundary-related previews verbatim.',
+  'Combine with prior persona analysis in chat history; do not claim zero emails if any appear below.',
+].join(' ');
+
 function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);
@@ -93,6 +99,7 @@ module.exports = {
   EMAIL_LIVE_INBOX_MOVE_APPEND,
   EMAIL_LIVE_INBOX_COPY_APPEND,
   EMAIL_FOLLOW_UP_APPEND,
+  EMAIL_RECALL_EVIDENCE_APPEND,
   WEB_SEARCH_APPEND,
   appendGroundingPersona,
 };

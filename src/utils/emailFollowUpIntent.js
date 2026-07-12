@@ -1,5 +1,11 @@
 /** Mirror bridge emailFollowUpIntent.js for client-side routing. */
 
+export {
+  needsTargetedRecallEvidenceFetch,
+  buildTargetedRecallFetchMessage,
+  parseRecallMonthFromMessage,
+} from '../../shared/emailRecallEvidence.js';
+
 const ASSISTANT_EMAIL_ANALYSIS = /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Persona of Min|Phase\s+[123]|Fetched\s+\d+\s+REAL\s+email|287\s+emails?|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+|boundary emails)/i;
 
 export function isAnalysisRecallQuestion(message) {
@@ -73,6 +79,7 @@ export function hasRecentEmailAnalysisContext(messages, maxLookback = 8) {
 }
 
 export function shouldSkipEmailFetchForFollowUp(message, messages) {
+  if (needsTargetedRecallEvidenceFetch(message, messages)) return false;
   if (isAnalysisRecallQuestion(message)) return true;
   if (!isEmailAnalysisFollowUp(message)) return false;
   return hasRecentEmailAnalysisContext(messages);

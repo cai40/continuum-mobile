@@ -19,6 +19,11 @@ const { wantsEmailFetch, wantsEmailSummaryOnly, resolveEmailFetchOptions, format
 const { wantsEmailCleanup } = require('./emailDelete');
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { shouldSkipEmailFetch, buildFollowUpChatMessage } = require('./emailFollowUpIntent');
+const {
+  needsTargetedRecallEvidenceFetch,
+  buildTargetedRecallFetchMessage,
+  parseRecallMonthFromMessage,
+} = require('../../shared/emailRecallEvidence');
 const { slimHistoryForEmailRecall } = require('./emailRecallHistory');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
@@ -32,6 +37,7 @@ const {
   EMAIL_LIVE_INBOX_COPY_APPEND,
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
   EMAIL_FOLLOW_UP_APPEND,
+  EMAIL_RECALL_EVIDENCE_APPEND,
   WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
 const {
@@ -357,10 +363,14 @@ async function handleChatStream(req, res, config) {
     return json(res, 400, { success: false, error: 'message is required' });
   }
   const originalMessage = message;
+  const recallEvidenceFetch = needsTargetedRecallEvidenceFetch(originalMessage, payload.history || []);
   const skipEmailFetch = shouldSkipEmailFetch(originalMessage, payload.history || []);
+  const historyBeforeFetch = payload.history || [];
   message = skipEmailFetch
     ? buildFollowUpChatMessage(originalMessage, payload.history || [])
-    : buildEffectiveEmailMessage(originalMessage, payload.history || []);
+    : recallEvidenceFetch
+      ? buildTargetedRecallFetchMessage(originalMessage, parseRecallMonthFromMessage(originalMessage))
+      : buildEffectiveEmailMessage(originalMessage, payload.history || []);
   payload.message = message;
 
   // Open SSE before slow IMAP / upstream work so Cloudflare tunnels stay alive.
@@ -484,7 +494,9 @@ async function handleChatStream(req, res, config) {
         ? 'SUMMARY MODE: Your ENTIRE reply must be ONLY the text inside [PREFILLED SUMMARY]…[/PREFILLED SUMMARY] — copy verbatim. Do NOT invent "6728 headers", "1000 UID window", or Jan–Jun scan spans. Do NOT rephrase counts.'
         : cleanupRequested
           ? 'CLEANUP MODE: Your ENTIRE reply must be ONLY the text inside [PREFILLED SUMMARY]…[/PREFILLED SUMMARY] — copy verbatim. Include the **Cleanup Results** or **Cleanup:** section if present. Do NOT omit trash counts.'
-          : 'Summarize ONLY the emails explicitly listed below with their UIDs.',
+          : recallEvidenceFetch
+            ? 'EVIDENCE RECALL: Combine fetched emails below with prior persona analysis in chat history. Cite UID and Date for every boundary quote.'
+            : 'Summarize ONLY the emails explicitly listed below with their UIDs.',
       'If a MAILBOX SCAN block appears below, copy its Date filter / Matched / Emails loaded lines — do not mention wide inbox scan spans or internal UID windows.',
       'If [EMAIL TRASH RESULT] appears below, copy its trash line verbatim — do not paraphrase as a rounded number.',
       'NEVER invent, simulate, reconstruct, or guess any email, UID, sender, or subject.',
@@ -502,8 +514,9 @@ async function handleChatStream(req, res, config) {
       message,
     ].join('\n');
     payload.message = message;
-    // Fresh email fetch: drop chat history so prior (possibly hallucinated) summaries cannot contaminate.
-    payload.history = [];
+    payload.history = recallEvidenceFetch
+      ? slimHistoryForEmailRecall(historyBeforeFetch)
+      : [];
   }
 
   if (skipEmailFetch) {
@@ -522,7 +535,8 @@ async function handleChatStream(req, res, config) {
           ? EMAIL_LIVE_INBOX_MOVE_APPEND
           : EMAIL_LIVE_INBOX_DELETE_APPEND;
     }
-    payload.persona = appendGroundingPersona(payload.persona || '', [inboxAppend]);
+    const liveExtras = recallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND, inboxAppend] : [inboxAppend];
+    payload.persona = appendGroundingPersona(payload.persona || '', liveExtras);
   } else if (skipEmailFetch) {
     payload.persona = appendGroundingPersona(payload.persona || '', [EMAIL_FOLLOW_UP_APPEND]);
   } else if (hasWebSearch) {

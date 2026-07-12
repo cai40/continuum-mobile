@@ -157,6 +157,7 @@ function buildPersonaAnalysisNote(message) {
       'ATTITUDE TIMELINE (evidence-only): Phase boundaries must align with actual email Date: headers — no invented months or events.',
       'For each phase: date range, dominant tone (from previews), themes, and 1–3 cited emails (UID + Date + Subject). No uncited Chinese/English quotes.',
       'If tone shifts are unclear from previews, say so — do not fabricate turning points.',
+      'End with section "## UID INDEX" listing every cited email as "UID x | Date: y | Subject: z" (required for later recall).',
     );
   }
   return lines.join(' ');

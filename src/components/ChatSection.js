@@ -55,7 +55,7 @@ import {
   isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
-import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp } from '../utils/emailFollowUpIntent';
+import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, parseRecallMonthFromMessage } from '../utils/emailFollowUpIntent';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -69,6 +69,18 @@ const EMAIL_FOLLOW_UP_APPEND = [
   'Do NOT claim you fetched mail, got zero emails, or hit OOM/heap errors — no IMAP fetch runs on follow-ups.',
   'If the persona analysis is missing from history, say so explicitly and ask whether to re-scan the folder.',
   'Do not re-fetch Yahoo mail unless the user explicitly asks to read/fetch emails again.',
+].join(' ');
+
+const EMAIL_RECALL_EVIDENCE_APPEND = [
+  'EVIDENCE RECALL FETCH: A small IMAP fetch for the requested month only — NOT a full persona rescan.',
+  'List every fetched email with UID and Date. Cite boundary-related previews verbatim.',
+  'Combine with the prior persona analysis in chat history; do not claim zero emails if any appear below.',
+].join(' ');
+
+const EMAIL_RECALL_EVIDENCE_APPEND = [
+  'EVIDENCE RECALL FETCH: A small IMAP fetch for the requested month only — NOT a full persona rescan.',
+  'List every fetched email with UID and Date. Cite boundary-related previews verbatim.',
+  'Combine with the prior persona analysis in chat history; do not claim zero emails if any appear below.',
 ].join(' ');
 
 const ChatSection = () => {
@@ -540,8 +552,9 @@ const ChatSection = () => {
 
       const wantsCopyDraft = wantsDraftOutput(finalInput);
 
+      const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, messages.slice(0, -1));
       const isEmailFollowUpOnly = shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
-      const isEmailRecallQuestion = isEmailAnalysisFollowUp(finalInput);
+      const isEmailRecallQuestion = isEmailAnalysisFollowUp(finalInput) && !isRecallEvidenceFetch;
 
       const isEmailConfirm = renderEmailEnabled && (
         confirmCleanupKind === 'email'
@@ -578,7 +591,7 @@ const ChatSection = () => {
         return;
       }
 
-      const isEmailBridgeQuery = isEmailQuery && !isEmailFollowUpOnly && !isEmailRecallQuestion;
+      const isEmailBridgeQuery = (isEmailQuery && !isEmailFollowUpOnly && !isEmailRecallQuestion) || isRecallEvidenceFetch;
 
       const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
       const renderEmailSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
@@ -690,15 +703,17 @@ const ChatSection = () => {
       }
 
       const formData = new FormData();
-      let chatMessage = finalInput;
+      let chatMessage = isRecallEvidenceFetch
+        ? buildTargetedRecallFetchMessage(finalInput, parseRecallMonthFromMessage(finalInput))
+        : finalInput;
       let documentTextInjected = false;
 
       if (activeAttachments.length && !isFromVoice) {
         await validateAttachmentSizes(activeAttachments);
       }
 
-      const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion)
-        ? trimChatHistoryForEmailRecall(messages.slice(0, -1))
+      const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
+        ? trimChatHistoryForEmailRecall(messages.slice(0, -1), 8, 380 * 1024, finalInput)
         : trimChatHistoryForUpload(messages.slice(0, -1));
 
       if (activeAttachments.length && !isFromVoice) {
@@ -736,6 +751,7 @@ const ChatSection = () => {
       }
 
       const personaExtras = [
+        ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
         ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
         ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
@@ -880,13 +896,13 @@ const ChatSection = () => {
       if (useRenderEmail || useOpenClawBridge) {
         const emailSourceMessage = isEmailConfirm
           ? (findPriorEmailUserMessage(messages) || finalInput)
-          : finalInput;
+          : (isRecallEvidenceFetch ? chatMessage : finalInput);
         const bridgeMessage = isEmailConfirm && emailSourceMessage !== finalInput
           ? buildEmailConfirmPayloadMessage(emailSourceMessage, finalInput)
-          : (webSearchContext ? `${webSearchContext}\n\n${finalInput}` : finalInput);
+          : (webSearchContext ? `${webSearchContext}\n\n${emailSourceMessage}` : emailSourceMessage);
         const emailFetch = isEmailBridgeQuery
           ? resolveEmailFetchPayload({
-              limit: openclawEmailLimit,
+              limit: isRecallEvidenceFetch ? 200 : openclawEmailLimit,
               recent: openclawEmailRecent,
               message: emailSourceMessage,
             })
@@ -894,7 +910,10 @@ const ChatSection = () => {
         const payload = {
           message: bridgeMessage,
           provider,
-          persona: appendGroundingPersona(persona, webSearchContext ? [WEB_SEARCH_APPEND] : []),
+          persona: appendGroundingPersona(persona, [
+            ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
+            ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
+          ]),
           history: webSearchContext ? [] : historyForUpload,
           gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
           groq_key: provider === 'groq' ? (groqKey || '').trim() : '',
@@ -911,7 +930,8 @@ const ChatSection = () => {
           (useRenderEmail || useOpenClawBridge)
           && shouldRunEmailInBackground(emailSourceMessage)
           && !isEmailConfirm
-          && !isEmailFollowUpOnly;
+          && !isEmailFollowUpOnly
+          && !isRecallEvidenceFetch;
 
         if (useBackgroundEmailJob) {
           const jobBaseUrl = useRenderEmail

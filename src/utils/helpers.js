@@ -1,4 +1,9 @@
 import { Platform } from 'react-native';
+import {
+  buildRecallEvidencePrefix,
+  buildUidDateIndex,
+  parseRecallMonthFromMessage,
+} from '../../shared/emailRecallEvidence.js';
 
 export const formatFullDate = (isoString) => {
   if (!isoString) return 'Pending...';
@@ -150,10 +155,17 @@ function truncateTextByBytes(text, maxBytes) {
   return `${s.slice(0, lo)}… [truncated]`;
 }
 
-function extractPersonaExcerpt(content, maxBytes) {
+function extractPersonaExcerpt(content, maxBytes, recallMessage = null) {
   const text = stringifyContent(content);
   if (!text) return '';
-  if (utf8ByteLength(text) <= maxBytes) return text;
+
+  const monthRange = recallMessage ? parseRecallMonthFromMessage(recallMessage) : null;
+  const indexPrefix = buildRecallEvidencePrefix(text, monthRange, Math.min(16000, Math.floor(maxBytes * 0.35)));
+  const budgetAfterIndex = Math.max(8000, maxBytes - utf8ByteLength(indexPrefix) - 64);
+
+  if (utf8ByteLength(text) <= budgetAfterIndex) {
+    return indexPrefix ? `${indexPrefix}\n\n${text}` : text;
+  }
 
   const chunks = [];
   for (const re of PERSONA_SECTION_PATTERNS) {
@@ -163,7 +175,9 @@ function extractPersonaExcerpt(content, maxBytes) {
 
   if (chunks.length) {
     const header = `[Prior persona analysis excerpt — full reply was ${text.length} chars]\n\n`;
-    let combined = `${header}${chunks.join('\n\n---\n\n')}`;
+    let combined = indexPrefix
+      ? `${indexPrefix}\n\n${header}${chunks.join('\n\n---\n\n')}`
+      : `${header}${chunks.join('\n\n---\n\n')}`;
     if (utf8ByteLength(combined) > maxBytes) {
       combined = truncateTextByBytes(combined, maxBytes);
     }
@@ -177,10 +191,19 @@ function extractPersonaExcerpt(content, maxBytes) {
   const selected = (aprilBlocks.length ? aprilBlocks : uidBlocks).slice(0, 40);
   if (selected.length) {
     const header = `[Prior persona analysis (UID excerpts) — full reply was ${text.length} chars]\n\n`;
-    let combined = `${header}${selected.join('\n')}`;
+    let combined = indexPrefix
+      ? `${indexPrefix}\n\n${header}${selected.join('\n')}`
+      : `${header}${selected.join('\n')}`;
     if (utf8ByteLength(combined) > maxBytes) {
       combined = truncateTextByBytes(combined, maxBytes);
     }
+    return combined;
+  }
+
+  const indexOnly = buildUidDateIndex(text);
+  if (indexOnly.length && indexPrefix) {
+    let combined = `${indexPrefix}\n\n${truncateTextByBytes(text, budgetAfterIndex)}`;
+    if (utf8ByteLength(combined) > maxBytes) combined = truncateTextByBytes(combined, maxBytes);
     return combined;
   }
 
@@ -225,7 +248,7 @@ function toUploadMessage(message, contentOverride) {
  * Keep the prior persona analysis in upload history for recall / follow-up turns.
  * Recent-only trimming drops long persona replies many messages above the user question.
  */
-export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes = 380 * 1024) {
+export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes = 380 * 1024, recallMessage = null) {
   const all = Array.isArray(messages) ? messages : [];
   const persona = findLatestPersonaAnalysisMessage(all);
   const recentSlice = all.slice(-maxRecent);
@@ -241,7 +264,7 @@ export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes 
     }
 
     const personaBudget = Math.floor(maxBytes * 0.72);
-    const personaContent = extractPersonaExcerpt(persona.content, personaBudget);
+    const personaContent = extractPersonaExcerpt(persona.content, personaBudget, recallMessage);
     if (!recentSlice.some((m) => m.id === persona.message.id)) {
       entries.push({
         id: persona.message.id,
@@ -264,7 +287,7 @@ export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes 
       const personaBudget = Math.floor(maxBytes * 0.72);
       entries[idx] = {
         ...entries[idx],
-        content: extractPersonaExcerpt(persona.content, personaBudget),
+        content: extractPersonaExcerpt(persona.content, personaBudget, recallMessage),
       };
     }
   }
@@ -290,7 +313,7 @@ export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes 
         budget = Math.floor(budget * 0.75);
         result[personaIdx] = {
           ...result[personaIdx],
-          content: extractPersonaExcerpt(persona.content, budget),
+          content: extractPersonaExcerpt(persona.content, budget, recallMessage),
         };
       }
     }
