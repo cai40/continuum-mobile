@@ -952,6 +952,10 @@ function formatImapError(err, fetchOptions = {}) {
 }
 
 async function fetchEmailContext(message, payloadOptions = {}, onProgress = null) {
+  if (require('./emailFollowUpIntent').shouldSkipEmailFetch(message, payloadOptions.history)) {
+    return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null, moveResult: null };
+  }
+
   const effectiveMessage = buildEffectiveEmailMessage(message, payloadOptions.history);
 
   if (wantsYearCleanup(effectiveMessage)) {

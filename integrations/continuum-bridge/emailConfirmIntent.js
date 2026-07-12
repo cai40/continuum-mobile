@@ -105,6 +105,10 @@ function buildEffectiveEmailMessage(message, history) {
 
   if (isPersonaFollowUpMessage(text)) {
     const prior = resolvePriorEmailIntent(history);
+    const { shouldSkipEmailFetch } = require('./emailFollowUpIntent');
+    if (shouldSkipEmailFetch(text, history)) {
+      return text;
+    }
     if (prior && isPersonaFetchIntent(prior) && !parseMailboxFromMessage(text)) {
       return `${prior}\n\nFollow-up request: ${text}`;
     }
@@ -120,6 +124,7 @@ module.exports = {
   isConfirmOnlyMessage,
   previewCleanupToApplyMessage,
   isPersonaFollowUpMessage,
+  isPersonaFetchIntent,
   resolvePriorEmailIntent,
   buildEffectiveEmailMessage,
 };

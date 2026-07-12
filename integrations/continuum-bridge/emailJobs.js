@@ -264,6 +264,10 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
     };
     message = buildEffectiveEmailMessage(message, emailPayloadOptions.history || []);
 
+    if (require('./emailFollowUpIntent').shouldSkipEmailFetch(job.message || message, emailPayloadOptions.history || [])) {
+      throw new Error('This is a follow-up on prior email analysis — reply in chat; no new IMAP fetch needed.');
+    }
+
     assertJobActive(jobId);
 
     if (!wantsEmailFetch(message)) {

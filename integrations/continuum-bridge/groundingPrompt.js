@@ -68,6 +68,12 @@ const WEB_SEARCH_APPEND = [
   'Do NOT say "no results" or "cannot provide details" when headlines or sources are listed below.',
 ].join(' ');
 
+const EMAIL_FOLLOW_UP_APPEND = [
+  'EMAIL FOLLOW-UP: No new IMAP fetch this turn — answer from the prior email analysis in chat history.',
+  'Every quote must include UID and Date from the earlier analysis or admit the evidence is not available.',
+  'Do NOT invent dialogue or re-scan the mailbox unless the user explicitly asks to fetch emails again.',
+].join(' ');
+
 function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);
@@ -84,6 +90,7 @@ module.exports = {
   EMAIL_LIVE_INBOX_DELETE_APPEND,
   EMAIL_LIVE_INBOX_MOVE_APPEND,
   EMAIL_LIVE_INBOX_COPY_APPEND,
+  EMAIL_FOLLOW_UP_APPEND,
   WEB_SEARCH_APPEND,
   appendGroundingPersona,
 };
