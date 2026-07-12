@@ -71,8 +71,16 @@ function normalizeJobMessage(message) {
 }
 
 function isYearCleanupMessage(message) {
-  return /\b(?:clean\s*up|cleanup|clean)\s+(?:all\s+of|entire|whole|full\s+)?(?:year\s+)?(20\d{2})\b/i.test(String(message || ''))
-    || /\b(?:whole|full|entire)\s+year\s+(20\d{2})\b/i.test(String(message || ''));
+  const text = String(message || '');
+  if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+20\d{2}\b/i.test(text)) return false;
+  if (/\b(?:for|in|during|clean\s*up|cleanup)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i.test(text)) return false;
+  return /\b(?:clean\s*up|cleanup|clean)\s+(?:all\s+of|entire|whole|full\s+)?(?:year\s+)?(20\d{2})\b/i.test(text)
+    || /\b(?:whole|full|entire)\s+year\s+(20\d{2})\b/i.test(text);
+}
+
+export function isEmailJobCancellationError(err) {
+  if (err?.code === 'EMAIL_JOB_CANCELLED') return true;
+  return /background email job cancelled/i.test(String(err?.message || err || ''));
 }
 
 function jobMaxWaitMs(message) {
@@ -427,7 +435,9 @@ export function pollEmailJobUntilDone({
       doneStuckMs = 0;
       await sleep(pollMs);
     }
-    throw new Error('Background email job cancelled.');
+    const err = new Error('Background email job cancelled.');
+    err.code = 'EMAIL_JOB_CANCELLED';
+    throw err;
   };
 
   return {

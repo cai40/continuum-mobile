@@ -50,6 +50,7 @@ import {
   appendJobProgress,
   buildEmailJobPayload,
   isNetworkFailure,
+  isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
@@ -107,6 +108,7 @@ const ChatSection = () => {
   const inputRef = useRef(null);
   const abortControllerRef = useRef(null);
   const backgroundJobRef = useRef(null);
+  const emailJobGenerationRef = useRef(0);
   const soundRef = useRef(null);
   const soundQueueRef = useRef([]);
   const isPlayingQueueRef = useRef(false);
@@ -287,7 +289,7 @@ const ChatSection = () => {
         { id: Date.now().toString(), role: 'assistant', content: result },
       ]);
     } catch (e) {
-      if (e?.code === 'EMAIL_JOB_NOT_FOUND' || e?.code === 'EMAIL_JOB_CANCELLED') {
+      if (isEmailJobCancellationError(e) || e?.code === 'EMAIL_JOB_NOT_FOUND') {
         // User stopped or server lost the job — stay quiet.
       } else {
         const msg = friendlyChatError(e.message || String(e));
@@ -473,7 +475,7 @@ const ChatSection = () => {
   const sendMessage = async (overrideAttachment = null, isFromVoice = false, overrideText = null) => {
     try {
       if (isTyping) {
-        handleStop();
+        await handleStop();
       }
 
       const { daily } = getTierLimits();
@@ -806,6 +808,12 @@ const ChatSection = () => {
       };
 
       const finishError = (err) => {
+        if (isEmailJobCancellationError(err)) {
+          clearTypingSafety();
+          setIsTyping(false);
+          setStreamingContent('');
+          return;
+        }
         if (bridgeAttempted && !renderFallbackUsed && !isEmailQuery) {
           renderFallbackUsed = true;
           bridgeAttempted = false;
@@ -923,6 +931,8 @@ const ChatSection = () => {
           };
 
           let usingStreamFallback = false;
+          emailJobGenerationRef.current += 1;
+          const jobGeneration = emailJobGenerationRef.current;
           setStreamingContent('Starting cloud email job…');
           await clearEmailJobStopped();
           if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
@@ -934,6 +944,7 @@ const ChatSection = () => {
           }
           submitBackgroundEmailJob(jobSecret, jobPayload, activeToken, jobBaseUrl)
             .then(async (created) => {
+              if (jobGeneration !== emailJobGenerationRef.current) return;
               const jobMeta = {
                 message: emailSourceMessage,
                 payload: jobPayload,
@@ -954,8 +965,12 @@ const ChatSection = () => {
               abortControllerRef.current = { abort: () => poller.cancel() };
               try {
                 const result = await poller.promise;
+                if (jobGeneration !== emailJobGenerationRef.current) return;
                 finishSuccess(result);
               } catch (err) {
+                if (jobGeneration !== emailJobGenerationRef.current || isEmailJobCancellationError(err)) {
+                  return;
+                }
                 if (isNetworkFailure(err)) {
                   usingStreamFallback = true;
                   poller.cancel();
@@ -979,6 +994,9 @@ const ChatSection = () => {
               }
             })
             .catch((err) => {
+              if (jobGeneration !== emailJobGenerationRef.current || isEmailJobCancellationError(err)) {
+                return;
+              }
               if (isNetworkFailure(err)) {
                 usingStreamFallback = true;
                 backgroundJobRef.current = null;

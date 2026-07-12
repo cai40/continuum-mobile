@@ -69,8 +69,16 @@ function parseMonthRangeFromMessage(message) {
   return null;
 }
 
+function hasExplicitMonthYear(message) {
+  const text = message || '';
+  const monthPat = Object.keys(MONTHS).sort((a, b) => b.length - a.length).join('|');
+  if (new RegExp(`\\b(${monthPat})\\s+(20\\d{2})\\b`, 'i').test(text)) return true;
+  return /\b(?:for|in|during|clean\s*up|cleanup)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i.test(text);
+}
+
 function parseYearRangeFromMessage(message) {
   const text = message || '';
+  if (hasExplicitMonthYear(text)) return null;
   const patterns = [
     /\b(?:for|in|during)\s+(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
     /\b(?:clean\s*up|cleanup|clean)(?:\s+(?:my|the))?\s+(?:inbox\s+)?(?:for\s+)?(?:the\s+)?(?:whole\s+)?(?:year\s+)?(20\d{2})\b/i,
@@ -94,11 +102,11 @@ function parseYearRangeFromMessage(message) {
 }
 
 export function parseEmailDateRangeFromMessage(message) {
-  const yearRange = parseYearRangeFromMessage(message);
-  if (yearRange) return yearRange;
-
   const monthRange = parseMonthRangeFromMessage(message);
   if (monthRange) return monthRange;
+
+  const yearRange = parseYearRangeFromMessage(message);
+  if (yearRange) return yearRange;
 
   const text = message || '';
   const patterns = [
