@@ -298,6 +298,21 @@ function friendlyBridgeError(raw, status) {
   return sanitizeBridgeErrorMessage(text, status);
 }
 
+/** Avoid Maximum call stack size exceeded when history contains circular refs. */
+function safeJsonStringify(value) {
+  const seen = new WeakSet();
+  return JSON.stringify(value, (_key, val) => {
+    if (typeof val === 'object' && val !== null) {
+      if (seen.has(val)) return undefined;
+      seen.add(val);
+    }
+    if (typeof val === 'string' && val.length > 600_000) {
+      return `${val.slice(0, 600_000)}… [truncated]`;
+    }
+    return val;
+  });
+}
+
 function parseBridgeHttpError(responseText, status) {
   let msg = `Bridge error (${status})`;
   if (!responseText?.trim()) return msg;
@@ -451,7 +466,7 @@ export const openClawChatStream = (
     ? "Email fetch timed out (10 min). Large inbox scans take time — retry with limit 50000 or wait and try again."
     : "OpenClaw bridge timed out.");
 
-  xhr.send(JSON.stringify(payload));
+  xhr.send(safeJsonStringify(payload));
 
   return xhr;
 };
