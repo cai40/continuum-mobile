@@ -126,8 +126,12 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const limitFromMessage = parseLimitFromMessage(message);
   const offsetFromMessage = parseOffsetFromMessage(message);
   const bareQuestion = extractUserRecallQuestion(message);
-  const recallEvidence = needsTargetedRecallEvidenceFetch(message, payloadOptions.history || []);
   let dateRangeFromMessage = parseDateRangeFromMessage(message);
+  const folderPersona = wantsFolderPersonaIngest(message);
+  if (!dateRangeFromMessage && folderPersona && !parseRecentFromMessage(message)) {
+    dateRangeFromMessage = defaultFolderPersonaDateRange();
+  }
+  const recallEvidence = !folderPersona && needsTargetedRecallEvidenceFetch(message, payloadOptions.history || []);
   if (!dateRangeFromMessage && recallEvidence) {
     const recallRange = resolveRecallMonthRange(bareQuestion, payloadOptions.history || []);
     if (recallRange?.since && recallRange?.before) {
@@ -137,10 +141,6 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
         label: recallRange.label || `${recallRange.since} .. ${addDays(recallRange.before, -1)}`,
       };
     }
-  }
-  const folderPersona = wantsFolderPersonaIngest(message);
-  if (!dateRangeFromMessage && folderPersona && !parseRecentFromMessage(message)) {
-    dateRangeFromMessage = defaultFolderPersonaDateRange();
   }
   const yearRange = parseYearRangeFromMessage(message);
   const cleanup = wantsEmailCleanup(message);
