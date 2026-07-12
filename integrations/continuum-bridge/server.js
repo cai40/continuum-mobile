@@ -19,6 +19,7 @@ const { wantsEmailFetch, wantsEmailSummaryOnly, resolveEmailFetchOptions, format
 const { wantsEmailCleanup } = require('./emailDelete');
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { shouldSkipEmailFetch, buildFollowUpChatMessage } = require('./emailFollowUpIntent');
+const { slimHistoryForEmailRecall } = require('./emailRecallHistory');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
@@ -506,7 +507,7 @@ async function handleChatStream(req, res, config) {
   }
 
   if (skipEmailFetch) {
-    payload.history = slimHistory(payload.history || []);
+    payload.history = slimHistoryForEmailRecall(payload.history || []);
   }
 
   if (hasLiveInbox) {

@@ -69,9 +69,11 @@ const WEB_SEARCH_APPEND = [
 ].join(' ');
 
 const EMAIL_FOLLOW_UP_APPEND = [
-  'EMAIL FOLLOW-UP: No new IMAP fetch this turn — answer from the prior email analysis in chat history.',
+  'EMAIL FOLLOW-UP: No new IMAP fetch this turn — answer from the prior email/persona analysis in chat history.',
   'Every quote must include UID and Date from the earlier analysis or admit the evidence is not available.',
-  'Do NOT invent dialogue or re-scan the mailbox unless the user explicitly asks to fetch emails again.',
+  'Do NOT invent dialogue, claim a fetch ran, or mention OOM/heap errors — follow-ups use chat memory only.',
+  'If the persona analysis is not present in history, say so and ask whether to re-scan the mailbox.',
+  'Do NOT re-scan the mailbox unless the user explicitly asks to fetch emails again.',
 ].join(' ');
 
 function appendGroundingPersona(persona, extraBlocks = []) {

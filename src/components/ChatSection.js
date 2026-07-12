@@ -32,6 +32,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   sanitizeUserVisibleContent,
   trimChatHistoryForUpload,
+  trimChatHistoryForEmailRecall,
   safeJsonStringify,
 } from '../utils/helpers';
 import {
@@ -63,8 +64,10 @@ import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
 
 const EMAIL_FOLLOW_UP_APPEND = [
-  'EMAIL FOLLOW-UP: Answer from the prior email analysis in chat history above.',
+  'EMAIL FOLLOW-UP: Answer ONLY from the prior persona/email analysis already in chat history above.',
   'Cite UID and Date for every quote. Do not invent dialogue not already in the thread.',
+  'Do NOT claim you fetched mail, got zero emails, or hit OOM/heap errors — no IMAP fetch runs on follow-ups.',
+  'If the persona analysis is missing from history, say so explicitly and ask whether to re-scan the folder.',
   'Do not re-fetch Yahoo mail unless the user explicitly asks to read/fetch emails again.',
 ].join(' ');
 
@@ -695,7 +698,7 @@ const ChatSection = () => {
       }
 
       const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion)
-        ? trimChatHistoryForUpload(messages.slice(0, -1), 4, 220 * 1024)
+        ? trimChatHistoryForEmailRecall(messages.slice(0, -1))
         : trimChatHistoryForUpload(messages.slice(0, -1));
 
       if (activeAttachments.length && !isFromVoice) {

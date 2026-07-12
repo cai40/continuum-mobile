@@ -126,6 +126,190 @@ export function trimChatHistoryForUpload(messages, maxMessages = 20, maxBytes = 
   return trimmed;
 }
 
+const PERSONA_ANALYSIS_MARKERS =
+  /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Persona of Min|Phase\s+[123]|Fetched\s+\d+\s+REAL\s+email|287\s+emails?|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+|boundary emails)/i;
+
+const PERSONA_SECTION_PATTERNS = [
+  /\bPhase\s*3\b[\s\S]{0,120000}/i,
+  /\b(?:Apr(?:il)?(?:\s+2026)?|2026[\s\-–—/]0?4)\b[\s\S]{0,80000}/i,
+  /\bboundary(?:\s+emails?)?\b[\s\S]{0,80000}/i,
+  /\bSENDER PERSONA\b[\s\S]{0,120000}/i,
+  /\bATTITUDE TIMELINE\b[\s\S]{0,120000}/i,
+];
+
+function truncateTextByBytes(text, maxBytes) {
+  const s = stringifyContent(text);
+  if (utf8ByteLength(s) <= maxBytes) return s;
+  let lo = 0;
+  let hi = s.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (utf8ByteLength(s.slice(0, mid)) <= maxBytes) lo = mid;
+    else hi = mid - 1;
+  }
+  return `${s.slice(0, lo)}… [truncated]`;
+}
+
+function extractPersonaExcerpt(content, maxBytes) {
+  const text = stringifyContent(content);
+  if (!text) return '';
+  if (utf8ByteLength(text) <= maxBytes) return text;
+
+  const chunks = [];
+  for (const re of PERSONA_SECTION_PATTERNS) {
+    const match = text.match(re);
+    if (match?.[0]) chunks.push(match[0]);
+  }
+
+  if (chunks.length) {
+    const header = `[Prior persona analysis excerpt — full reply was ${text.length} chars]\n\n`;
+    let combined = `${header}${chunks.join('\n\n---\n\n')}`;
+    if (utf8ByteLength(combined) > maxBytes) {
+      combined = truncateTextByBytes(combined, maxBytes);
+    }
+    return combined;
+  }
+
+  const uidBlocks = text.split(/(?=\bUID\s+\d+)/i).filter((b) => /\bUID\s+\d+/i.test(b));
+  const aprilBlocks = uidBlocks.filter((b) =>
+    /\b(?:Apr(?:il)?|2026[\s\-–—/]0?4|2026-04)\b/i.test(b) || /\bboundary\b/i.test(b),
+  );
+  const selected = (aprilBlocks.length ? aprilBlocks : uidBlocks).slice(0, 40);
+  if (selected.length) {
+    const header = `[Prior persona analysis (UID excerpts) — full reply was ${text.length} chars]\n\n`;
+    let combined = `${header}${selected.join('\n')}`;
+    if (utf8ByteLength(combined) > maxBytes) {
+      combined = truncateTextByBytes(combined, maxBytes);
+    }
+    return combined;
+  }
+
+  return truncateTextByBytes(text, maxBytes);
+}
+
+function findLatestPersonaAnalysisMessage(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const row = list[i];
+    const content = stringifyContent(row?.content);
+    if (row?.role === 'assistant' && PERSONA_ANALYSIS_MARKERS.test(content)) {
+      return { index: i, message: row, content };
+    }
+  }
+  return null;
+}
+
+function findPersonaFetchRequest(messages, beforeIndex = messages.length) {
+  const list = Array.isArray(messages) ? messages : [];
+  for (let i = Math.min(beforeIndex, list.length) - 1; i >= 0; i -= 1) {
+    const row = list[i];
+    if (row?.role !== 'user') continue;
+    const content = stringifyContent(row?.content);
+    if (/\b(?:read|fetch|persona|attitude|timeline|min\s+folder)\b/i.test(content)
+      && /\b(?:emails?|mail|folder|min)\b/i.test(content)) {
+      return row;
+    }
+  }
+  return null;
+}
+
+function toUploadMessage(message, contentOverride) {
+  return {
+    id: message.id,
+    role: message.role,
+    content: contentOverride ?? truncateText(message.content, 8000),
+  };
+}
+
+/**
+ * Keep the prior persona analysis in upload history for recall / follow-up turns.
+ * Recent-only trimming drops long persona replies many messages above the user question.
+ */
+export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes = 380 * 1024) {
+  const all = Array.isArray(messages) ? messages : [];
+  const persona = findLatestPersonaAnalysisMessage(all);
+  const recentSlice = all.slice(-maxRecent);
+
+  const entries = [];
+  const seenIds = new Set();
+
+  if (persona) {
+    const userReq = findPersonaFetchRequest(all, persona.index);
+    if (userReq && !seenIds.has(userReq.id)) {
+      entries.push(toUploadMessage(userReq, truncateText(userReq.content, 2000)));
+      seenIds.add(userReq.id);
+    }
+
+    const personaBudget = Math.floor(maxBytes * 0.72);
+    const personaContent = extractPersonaExcerpt(persona.content, personaBudget);
+    if (!recentSlice.some((m) => m.id === persona.message.id)) {
+      entries.push({
+        id: persona.message.id,
+        role: persona.message.role,
+        content: personaContent,
+      });
+      seenIds.add(persona.message.id);
+    }
+  }
+
+  for (const m of recentSlice) {
+    if (seenIds.has(m.id)) continue;
+    entries.push(toUploadMessage(m));
+    seenIds.add(m.id);
+  }
+
+  if (persona) {
+    const idx = entries.findIndex((e) => e.id === persona.message.id);
+    if (idx >= 0) {
+      const personaBudget = Math.floor(maxBytes * 0.72);
+      entries[idx] = {
+        ...entries[idx],
+        content: extractPersonaExcerpt(persona.content, personaBudget),
+      };
+    }
+  }
+
+  let result = entries;
+
+  while (result.length > 1 && utf8ByteLength(safeJsonStringify(result)) > maxBytes) {
+    const personaIdx = persona ? result.findIndex((e) => e.id === persona.message.id) : -1;
+    if (personaIdx > 0) {
+      result.splice(personaIdx - 1, 1);
+    } else if (personaIdx === 0 && result.length > 2) {
+      result.splice(1, 1);
+    } else {
+      result = result.slice(1);
+    }
+  }
+
+  if (persona) {
+    const personaIdx = result.findIndex((e) => e.id === persona.message.id);
+    if (personaIdx >= 0) {
+      let budget = Math.floor(maxBytes * 0.72);
+      while (budget > 1500 && utf8ByteLength(safeJsonStringify(result)) > maxBytes) {
+        budget = Math.floor(budget * 0.75);
+        result[personaIdx] = {
+          ...result[personaIdx],
+          content: extractPersonaExcerpt(persona.content, budget),
+        };
+      }
+    }
+  }
+
+  while (result.length > 1 && utf8ByteLength(safeJsonStringify(result)) > maxBytes) {
+    result = result.slice(-Math.max(1, result.length - 1));
+  }
+
+  if (result.length === 1 && utf8ByteLength(safeJsonStringify(result)) > maxBytes) {
+    result = [{
+      ...result[0],
+      content: truncateText(result[0].content, 1500),
+    }];
+  }
+
+  return result;
+}
+
 const INTERNAL_EMAIL_MARKERS =
   /IMPORTANT:\s*Live Yahoo inbox|CLEANUP MODE:|SUMMARY MODE:|\[PREFILLED SUMMARY|MAILBOX SCAN \(include/i;
 
