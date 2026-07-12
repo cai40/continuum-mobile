@@ -478,6 +478,7 @@ export const AppProvider = ({ children }) => {
       const { layeredData, pinData, analytics } = await fetchMemories(
         setCloudWakingUp,
         token,
+        user?.id,
       );
       if (layeredData) {
         setSemanticProfile(layeredData.semanticProfile || []);

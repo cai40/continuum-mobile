@@ -85,6 +85,9 @@ export function memoryItemText(item, layer) {
 }
 
 export function memoryItemMeta(item, layer) {
+  if (item?.local) {
+    return `Local pin • ${formatShortDate(item.created_at)}`;
+  }
   if (layer === 'l4') {
     return `[${String(item.state || 'planned').toUpperCase()}] • ${formatShortDate(item.created_at)}`;
   }

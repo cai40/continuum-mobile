@@ -17,7 +17,7 @@ import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import * as Constants from "expo-constants";
 import { useAppContext } from "../context/AppContext";
-import { pulseFetch, ingestDocuments } from "../services/apiService";
+import { pulseFetch, ingestDocuments, pinCoreMemory } from "../services/apiService";
 import {
   DOCUMENT_MIME_TYPES,
   MAX_DOCUMENT_ATTACHMENTS,
@@ -443,24 +443,23 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
   const handleAddCore = async () => {
     if (!newCoreMemory.trim()) return;
     try {
-      await pulseFetch(
-        `${API_URL}/memories/pin`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            content: newCoreMemory.trim(),
-            label: "Manual",
-          }),
-        },
-        3,
-        setCloudWakingUp,
+      const result = await pinCoreMemory(
+        newCoreMemory.trim(),
         session?.access_token,
+        'Manual',
+        user?.id,
       );
       setNewCoreMemory("");
       setShowAddCore(false);
       onRefreshMemories();
+      if (result?.source === 'local') {
+        Alert.alert(
+          'Pinned locally',
+          'Saved on this device. Cloud pin API is not available on the backend yet.',
+        );
+      }
     } catch (e) {
-      Alert.alert("Error", "Could not save core memory.");
+      Alert.alert("Error", e?.message || "Could not save core memory.");
     }
   };
 
