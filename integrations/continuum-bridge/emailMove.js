@@ -4,6 +4,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 const { parseSenderFromMessage } = require('./emailSender');
+const { parseMailboxFromMessage } = require('./emailFolderParse');
 const { hasBulkActionConfirm } = require('./emailPermission');
 
 const execFileAsync = promisify(execFile);
@@ -33,21 +34,7 @@ function wantsEmailCopyFolderToInbox(message) {
 }
 
 function parseSourceFolderFromMessage(message) {
-  const text = message || '';
-  const patterns = [
-    /\b(?:emails?\s+)?(?:in|from)\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
-    /\bcopy\s+(?:all\s+)?(?:emails?\s+)?from\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
-    /\bcopy\s+(?:all\s+)?(?:the\s+)?(?:emails?\s+)?in\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match?.[1]) continue;
-    const name = match[1].trim();
-    if (TRASH_WORDS.test(name)) continue;
-    if (/^inbox$/i.test(name)) continue;
-    return name;
-  }
-  return null;
+  return parseMailboxFromMessage(message);
 }
 
 function parseCopyDestMailbox(message) {
