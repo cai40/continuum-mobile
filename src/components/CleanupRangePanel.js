@@ -10,6 +10,7 @@ import {
   buildEmailCleanupApplyMessage,
   buildPhotoCleanupMessage,
   listSelectableMonths,
+  CLEANUP_MONTH_SELECTION_START_YEAR,
 } from '../utils/cleanupMenu';
 
 function RangeButton({ label, subtitle, icon, onPress, disabled }) {
@@ -62,7 +63,7 @@ export default function CleanupRangePanel({
   compact = false,
 }) {
   const [monthPickerVisible, setMonthPickerVisible] = useState(false);
-  const months = listSelectableMonths(24);
+  const months = listSelectableMonths();
 
   const runEmailWithRange = (range, apply) => {
     if (!range || !onEmailCleanup) return;
@@ -251,7 +252,7 @@ export default function CleanupRangePanel({
       />
       <RangeButton
         label="Choose months…"
-        subtitle="Pick one or more of the last 24 months"
+        subtitle={`Pick one or more months from ${CLEANUP_MONTH_SELECTION_START_YEAR} through today`}
         icon="list-outline"
         onPress={() => handleRangePress('custom_month')}
         disabled={mode === 'email' && emailDisabled}
@@ -319,7 +320,7 @@ function MonthPickerModal({ visible, months, title, onConfirm, onClose }) {
           </TouchableOpacity>
         </View>
         <Text style={{ fontSize: 12, color: theme.colors.gray, paddingHorizontal: 20, paddingVertical: 10 }}>
-          Tap to select multiple months. Non-adjacent months are supported for photos.
+          Tap to select multiple months ({CLEANUP_MONTH_SELECTION_START_YEAR}–today). Non-adjacent months are supported for photos.
         </Text>
         <FlatList
           data={months}

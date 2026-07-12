@@ -211,18 +211,27 @@ export function buildPhotoCleanupMessage(range, { apply = false } = {}) {
   return `${prefix} for ${range.monthName} ${range.year}`;
 }
 
-export function listSelectableMonths(count = 24) {
+export const CLEANUP_MONTH_SELECTION_START_YEAR = 2020;
+
+/**
+ * Calendar months available in Email/Photo "Choose months" picker (newest first).
+ * @param {{ startYear?: number }} [opts]
+ */
+export function listSelectableMonths(opts = {}) {
+  const startYear = opts.startYear ?? CLEANUP_MONTH_SELECTION_START_YEAR;
   const items = [];
   const now = new Date();
-  for (let i = 0; i < count; i += 1) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 1);
+  const cursor = new Date(startYear, 0, 1);
+  while (cursor <= end) {
     items.push({
-      month: d.getMonth() + 1,
-      year: d.getFullYear(),
-      label: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`,
+      month: cursor.getMonth() + 1,
+      year: cursor.getFullYear(),
+      label: `${MONTH_NAMES[cursor.getMonth()]} ${cursor.getFullYear()}`,
     });
+    cursor.setMonth(cursor.getMonth() + 1);
   }
-  return items;
+  return items.reverse();
 }
 
 const MONTH_NAME_PATTERN = MONTH_NAMES.join('|');
