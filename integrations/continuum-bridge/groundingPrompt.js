@@ -87,12 +87,21 @@ const RECALL_TURN_APPEND = [
   'Do NOT write meta-commentary about missing blocks or list what you need from the user.',
   'Never cite JavaScript heap OOM or zero-email fetch from prior turns — those are superseded.',
   'If live inbox data appears below, cite UID and Date from it. If memory has L1 evidence, cite that.',
+  'Never say you are awaiting fetch completion or that email content will arrive later — reply now from available evidence.',
+].join(' ');
+
+const LIVE_INBOX_UNAVAILABLE_APPEND = [
+  'LIVE INBOX UNAVAILABLE: Min-folder IMAP returned no usable data this turn.',
+  'Answer immediately from [CONTINUUM MEMORY] and chat history — cite layer and date for memory facts.',
+  'State clearly when UID+Date email proof is missing; offer a fresh Min-folder scan.',
+  'Do NOT defer or say you are waiting for a fetch — the fetch attempt already finished.',
 ].join(' ');
 
 const MEMORY_RECALL_APPEND = [
   'CONTINUUM MEMORY: L1–L5 fragments were retrieved from the backend vault and injected below.',
   'Use them for cross-session recall. Do NOT deny persistent memory or claim OOM/failed fetches unless shown in this turn.',
   'If fragments lack UID+Date for emails, say so and cite what is present — do not invent.',
+  'Do NOT say email content is not present yet or that you await a fetch — use memory now and note missing UID+Date gaps.',
 ].join(' ');
 
 function appendGroundingPersona(persona, extraBlocks = []) {
@@ -115,6 +124,7 @@ module.exports = {
   EMAIL_RECALL_EVIDENCE_APPEND,
   RECALL_TURN_APPEND,
   MEMORY_RECALL_APPEND,
+  LIVE_INBOX_UNAVAILABLE_APPEND,
   WEB_SEARCH_APPEND,
   appendGroundingPersona,
 };

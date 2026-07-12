@@ -86,12 +86,14 @@ const RECALL_TURN_APPEND = [
   'Do NOT write meta-commentary about missing blocks or list what you need from the user.',
   'Never cite JavaScript heap OOM or zero-email fetch from prior turns — those are superseded.',
   'If live inbox data appears below, cite UID and Date from it. If memory has L1 evidence, cite that.',
+  'Never say you are awaiting fetch completion or that email content will arrive later — reply now from available evidence.',
 ].join(' ');
 
 const MEMORY_RECALL_APPEND = [
   'CONTINUUM MEMORY: L1–L5 fragments were retrieved from the backend vault and injected below.',
   'Use them for cross-session recall. Do NOT deny persistent memory or claim OOM/failed fetches unless shown in this turn.',
   'If fragments lack UID+Date for emails, say so and cite what is present — do not invent.',
+  'Do NOT say email content is not present yet or that you await a fetch — use memory now and note missing UID+Date gaps.',
 ].join(' ');
 
 const ChatSection = () => {
@@ -736,6 +738,7 @@ const ChatSection = () => {
 
       const priorMessages = messages.slice(0, -1);
       const isAnyRecallTurn = isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput);
+      const liveEmailFetchScheduled = isEmailBridgeQuery && !isEmailFollowUpOnly;
       const shouldLoadMemory = (wantsContinuumMemoryRecall(finalInput) || isAnyRecallTurn) && !activeAttachments.length;
 
       let memoryRecallContext = '';
@@ -749,7 +752,7 @@ const ChatSection = () => {
             temporalEvents: layeredData?.temporalEvents,
             knowledgeBase: layeredData?.knowledgeBase,
             pinnedMemories: pinData,
-          }, finalInput, 28000, { liveFetchScheduled: isRecallEvidenceFetch });
+          }, finalInput, 28000, { liveFetchScheduled: liveEmailFetchScheduled });
         } catch (e) {
           console.warn('[memoryRecall]', e?.message || e);
         }
@@ -814,10 +817,11 @@ const ChatSection = () => {
           memoryRecallContext
             ? 'Continuum memory: injected above.'
             : 'Continuum memory: no UID+Date evidence in L1–L5 (question logs excluded).',
-          isRecallEvidenceFetch
-            ? 'Min-folder IMAP: fetching via email bridge this turn.'
+          liveEmailFetchScheduled
+            ? 'Min-folder IMAP: fetched synchronously via email bridge this turn (inbox block appears below if successful).'
             : 'Min-folder IMAP: not scheduled (use prior persona text or memory only).',
           'Do not claim OOM or zero fetch unless shown in live inbox data this turn.',
+          'Do NOT say you are awaiting fetch completion — answer now from memory and/or live inbox below.',
           '',
         ].join('\n');
         chatMessage = `${recallStatus}${chatMessage}`;
@@ -995,9 +999,13 @@ const ChatSection = () => {
       };
 
       if (useRenderEmail || useOpenClawBridge) {
+        const useEnrichedBridgeMessage = !isEmailConfirm
+          && (memoryRecallContext || isRecallEvidenceFetch || isAnyRecallTurn);
         const emailSourceMessage = isEmailConfirm
           ? (findPriorEmailUserMessage(messages) || finalInput)
-          : (isRecallEvidenceFetch ? chatMessage : finalInput);
+          : useEnrichedBridgeMessage
+            ? chatMessage
+            : finalInput;
         const bridgeMessage = isEmailConfirm && emailSourceMessage !== finalInput
           ? buildEmailConfirmPayloadMessage(emailSourceMessage, finalInput)
           : (webSearchContext ? `${webSearchContext}\n\n${emailSourceMessage}` : emailSourceMessage);

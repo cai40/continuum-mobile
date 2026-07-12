@@ -245,6 +245,7 @@ function buildTargetedRecallFetchMessage(message, monthRange) {
     'Quote boundary-related subjects/previews verbatim.',
     'Do NOT rebuild the full 287-email persona — answer the recall question with UID + Date proof only.',
     'Do NOT write meta-commentary about missing data — use live inbox below and/or [CONTINUUM MEMORY].',
+    'Do NOT say you are awaiting fetch completion — answer now from available evidence.',
     '',
     `User recall question: ${bareQuestion}`,
   ].join('\n');

@@ -37,6 +37,10 @@ export function wantsContinuumMemoryRecall(message) {
   if (/\b(?:what do you remember|from (?:continuum )?memory|in (?:continuum )?memory|check (?:continuum )?memory|memory store|memory vault|brain memory)\b/i.test(text)) {
     return true;
   }
+  if (/\b(?:load|save|store|feed|ingest)\b/i.test(text)
+    && /\b(?:continuum|memory|brain|into\s+memory)\b/i.test(text)) {
+    return true;
+  }
   if (/\bremember\b/i.test(text) && /\b(?:min|zhang|\u654f|boundary|email|persona)\b/i.test(text)) {
     return true;
   }
@@ -71,8 +75,8 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
       '[CONTINUUM MEMORY — retrieval for this turn]',
       'No email evidence (UID+Date) found in L1–L5 — only question logs or unrelated facts may exist.',
       liveFetchScheduled
-        ? 'A Min-folder IMAP fetch is running this turn — cite UID and Date from live inbox data below. Do NOT write meta-denial lists.'
-        : 'Offer a Min-folder fetch for the requested month; do NOT claim OOM unless shown in this turn.',
+        ? 'Min-folder IMAP runs synchronously this turn before your reply — cite UID and Date from the live inbox block below when present. If inbox is empty, answer from any L1 facts above and state UID+Date proof is missing. Do NOT write meta-denial lists or say you await a fetch.'
+        : 'Answer from any L1 facts above; note missing UID+Date proof. Offer a Min-folder fetch — do NOT claim OOM unless shown in this turn. Do NOT say you await fetch completion.',
     ].join('\n');
   }
 
@@ -81,6 +85,9 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
     'Use ONLY the fragments below for cross-session recall. Cite layer and date when quoting.',
     'Do NOT say you lack persistent memory when this block is present.',
     'Do NOT invent UIDs or dates not listed here.',
+    liveFetchScheduled
+      ? 'Live Min-folder inbox data may appear below this block — prefer UID+Date from inbox when present; use memory fragments for gaps only.'
+      : 'Do NOT say email content is not present yet or that you await a fetch — answer now from these fragments and chat history.',
     '',
   ];
 
