@@ -43,7 +43,8 @@ export function wantsContinuumMemoryRecall(message) {
   return false;
 }
 
-export function buildMemoryRecallContext(layers, message, maxBytes = 28000) {
+export function buildMemoryRecallContext(layers, message, maxBytes = 28000, options = {}) {
+  const liveFetchScheduled = !!options.liveFetchScheduled;
   const keywords = extractKeywords(message);
   const pools = [
     ...(layers?.pinnedMemories || layers?.pinned || []).map((item) => ({ layer: 'L1', item })),
@@ -69,7 +70,9 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000) {
     return [
       '[CONTINUUM MEMORY — retrieval for this turn]',
       'No email evidence (UID+Date) found in L1–L5 — only question logs or unrelated facts may exist.',
-      'Offer a Min-folder fetch for the requested month; do NOT claim OOM unless shown in this turn.',
+      liveFetchScheduled
+        ? 'A Min-folder IMAP fetch is running this turn — cite UID and Date from live inbox data below. Do NOT write meta-denial lists.'
+        : 'Offer a Min-folder fetch for the requested month; do NOT claim OOM unless shown in this turn.',
     ].join('\n');
   }
 

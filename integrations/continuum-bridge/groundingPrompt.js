@@ -82,6 +82,19 @@ const EMAIL_RECALL_EVIDENCE_APPEND = [
   'Combine with prior persona analysis in chat history; do not claim zero emails if any appear below.',
 ].join(' ');
 
+const RECALL_TURN_APPEND = [
+  'RECALL TURN: Answer from [CONTINUUM MEMORY], chat history persona text, or live Min-folder inbox below.',
+  'Do NOT write meta-commentary about missing blocks or list what you need from the user.',
+  'Never cite JavaScript heap OOM or zero-email fetch from prior turns — those are superseded.',
+  'If live inbox data appears below, cite UID and Date from it. If memory has L1 evidence, cite that.',
+].join(' ');
+
+const MEMORY_RECALL_APPEND = [
+  'CONTINUUM MEMORY: L1–L5 fragments were retrieved from the backend vault and injected below.',
+  'Use them for cross-session recall. Do NOT deny persistent memory or claim OOM/failed fetches unless shown in this turn.',
+  'If fragments lack UID+Date for emails, say so and cite what is present — do not invent.',
+].join(' ');
+
 function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);
@@ -100,6 +113,8 @@ module.exports = {
   EMAIL_LIVE_INBOX_COPY_APPEND,
   EMAIL_FOLLOW_UP_APPEND,
   EMAIL_RECALL_EVIDENCE_APPEND,
+  RECALL_TURN_APPEND,
+  MEMORY_RECALL_APPEND,
   WEB_SEARCH_APPEND,
   appendGroundingPersona,
 };

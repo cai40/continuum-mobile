@@ -192,15 +192,52 @@ function needsTargetedRecallEvidenceFetch(message, messages) {
   return true;
 }
 
+function isClientRecallEnvelope(message) {
+  return /\[(?:RECALL TURN STATUS|CONTINUUM MEMORY)/i.test(String(message || ''));
+}
+
+/** Strip client-side recall envelope blocks to recover the bare user question. */
+function extractUserRecallQuestion(message) {
+  const text = String(message || '').trim();
+  if (!text) return '';
+
+  const tagged = text.match(/User recall question:\s*([\s\S]+?)$/im);
+  if (tagged) {
+    const block = tagged[1].trim();
+    const firstLine = block.split('\n')[0].trim();
+    if (firstLine.length >= 12 && !/^\[/.test(firstLine)) return firstLine;
+    const para = block.split('\n\n')[0].trim();
+    if (para.length >= 12 && !/^\[/.test(para)) return para;
+  }
+
+  return text
+    .replace(/^\[RECALL TURN STATUS\][\s\S]*?(?=\n\n\[CONTINUUM MEMORY|\n\nReturn every email|$)/im, '')
+    .replace(/^\[CONTINUUM MEMORY[^\]]*\][\s\S]*?\n\n/im, '')
+    .replace(/^Return every email[\s\S]*?User recall question:\s*/im, '')
+    .trim() || text;
+}
+
 function buildTargetedRecallFetchMessage(message, monthRange) {
-  const resolved = monthRange || resolveRecallMonthRange(message, []);
+  const bareQuestion = extractUserRecallQuestion(message);
+  const resolved = monthRange || resolveRecallMonthRange(bareQuestion, []);
   const monthLabel = resolved?.label || 'requested month';
   return [
-    'Return every email in that month with UID and Date cited. Quote boundary-related subjects/previews verbatim.',
+    `Target month: ${monthLabel}. Return every email in that month with UID and Date cited.`,
+    'Quote boundary-related subjects/previews verbatim.',
     'Do NOT rebuild the full 287-email persona — answer the recall question with UID + Date proof only.',
+    'Do NOT write meta-commentary about missing data — use live inbox below and/or [CONTINUUM MEMORY].',
     '',
-    `User recall question: ${String(message || '').trim()}`,
+    `User recall question: ${bareQuestion}`,
   ].join('\n');
+}
+
+function resolveRecallEvidenceMessage(originalMessage, history) {
+  const text = String(originalMessage || '').trim();
+  if (!text) return text;
+  if (isClientRecallEnvelope(text)) return text;
+  const bareQuestion = extractUserRecallQuestion(text);
+  const monthRange = resolveRecallMonthRange(bareQuestion, history || []);
+  return buildTargetedRecallFetchMessage(bareQuestion, monthRange);
 }
 
 function buildRecallEvidencePrefix(content, monthRange, maxBytes = 12000) {
@@ -229,6 +266,9 @@ module.exports = {
   hasMonthEvidenceInPersona,
   resolveRecallMonthRange,
   needsTargetedRecallEvidenceFetch,
+  isClientRecallEnvelope,
+  extractUserRecallQuestion,
   buildTargetedRecallFetchMessage,
+  resolveRecallEvidenceMessage,
   buildRecallEvidencePrefix,
 };
