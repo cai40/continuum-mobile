@@ -21,12 +21,13 @@ const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { fetchWebContext } = require('./webContext');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
-const { wantsEmailMoveToFolder } = require('./emailMove');
+const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
 const {
   appendGroundingPersona,
   EMAIL_LIVE_INBOX_APPEND,
   EMAIL_LIVE_INBOX_DELETE_APPEND,
   EMAIL_LIVE_INBOX_MOVE_APPEND,
+  EMAIL_LIVE_INBOX_COPY_APPEND,
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
   WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
@@ -502,9 +503,11 @@ async function handleChatStream(req, res, config) {
     let inboxAppend = EMAIL_LIVE_INBOX_APPEND;
     if (memoryIngest && !payload.email_delete_enabled) inboxAppend = EMAIL_LIVE_INBOX_MEMORY_APPEND;
     if (payload.email_delete_enabled) {
-      inboxAppend = wantsEmailMoveToFolder(message)
-        ? EMAIL_LIVE_INBOX_MOVE_APPEND
-        : EMAIL_LIVE_INBOX_DELETE_APPEND;
+      inboxAppend = wantsEmailCopyFolderToInbox(message)
+        ? EMAIL_LIVE_INBOX_COPY_APPEND
+        : wantsEmailMoveToFolder(message)
+          ? EMAIL_LIVE_INBOX_MOVE_APPEND
+          : EMAIL_LIVE_INBOX_DELETE_APPEND;
     }
     payload.persona = appendGroundingPersona(payload.persona || '', [inboxAppend]);
   } else if (hasWebSearch) {

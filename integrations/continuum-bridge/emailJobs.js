@@ -19,11 +19,13 @@ const { wantsEmailCleanup, wantsEmailCleanupPreview, extractEmailCleanupPreviewB
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
 const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
+const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
 const {
   appendGroundingPersona,
   EMAIL_LIVE_INBOX_APPEND,
   EMAIL_LIVE_INBOX_DELETE_APPEND,
   EMAIL_LIVE_INBOX_MOVE_APPEND,
+  EMAIL_LIVE_INBOX_COPY_APPEND,
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
 } = require('./groundingPrompt');
 
@@ -370,9 +372,11 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
       let inboxAppend = EMAIL_LIVE_INBOX_APPEND;
       if (memoryIngest && !payload.email_delete_enabled) inboxAppend = EMAIL_LIVE_INBOX_MEMORY_APPEND;
       if (payload.email_delete_enabled) {
-        inboxAppend = wantsEmailMoveToFolder(message)
-          ? EMAIL_LIVE_INBOX_MOVE_APPEND
-          : EMAIL_LIVE_INBOX_DELETE_APPEND;
+        inboxAppend = wantsEmailCopyFolderToInbox(message)
+          ? EMAIL_LIVE_INBOX_COPY_APPEND
+          : wantsEmailMoveToFolder(message)
+            ? EMAIL_LIVE_INBOX_MOVE_APPEND
+            : EMAIL_LIVE_INBOX_DELETE_APPEND;
       }
       payload.persona = appendGroundingPersona(payload.persona || '', [inboxAppend]);
     } else {

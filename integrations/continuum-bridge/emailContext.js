@@ -7,7 +7,7 @@ const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
 const { parseSenderFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsSequentialEmailIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, formatEmailCleanupPreviewNextSteps, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
-const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
+const { maybeMoveEmailsToFolder, maybeCopyFolderToInbox, wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { maybeAutoFileCleanupFolders } = require('./emailCleanupFolder');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
@@ -909,6 +909,87 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
         onProgress,
       });
     }
+  }
+
+  const copyFolderRequested = wantsEmailCopyFolderToInbox(effectiveMessage);
+  if (copyFolderRequested) {
+    const imapScript = findImapScript();
+    if (!imapScript) {
+      return {
+        matched: true,
+        context: null,
+        error: 'Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+        fetchOptions: null,
+        deleteResult: null,
+        moveResult: null,
+        copyFolderResult: null,
+      };
+    }
+
+    const configPaths = [
+      path.join(process.env.HOME || '/root', '.config/mail-skills/.env'),
+      path.join(process.env.HOME || '/root', '.config/imap-smtp-email/.env'),
+    ];
+    const hasConfig = configPaths.some((p) => {
+      try {
+        fs.accessSync(p);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!hasConfig) {
+      return {
+        matched: true,
+        context: null,
+        error: 'Yahoo credentials missing. Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+        fetchOptions: null,
+        deleteResult: null,
+        moveResult: null,
+        copyFolderResult: null,
+      };
+    }
+
+    if (!payloadOptions.email_delete_enabled) {
+      return {
+        matched: true,
+        context: null,
+        error: 'Move-to-Trash is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow move to Trash", Save, then try again.',
+        fetchOptions: null,
+        deleteResult: null,
+        moveResult: null,
+        copyFolderResult: null,
+      };
+    }
+
+    const copyFolderResult = await maybeCopyFolderToInbox(effectiveMessage, imapScript, {
+      enabled: true,
+      onProgress,
+    });
+
+    let context;
+    if (copyFolderResult.executed && copyFolderResult.summary) {
+      context = ['[Yahoo folder copy — source folder inventory]', `Folder "${copyFolderResult.sourceFolder}": ${copyFolderResult.total} email(s) total.`, '', '[Email copy executed]', copyFolderResult.summary].join('\n');
+    } else if (copyFolderResult.needsPermission && copyFolderResult.summary) {
+      context = ['[Yahoo folder copy — source folder inventory]', `Folder "${copyFolderResult.sourceFolder}": ${copyFolderResult.total} email(s) total.`, '', copyFolderResult.summary].join('\n');
+    } else if (copyFolderResult.error) {
+      context = `[Email copy] ${copyFolderResult.error}`;
+    } else {
+      context = '[Email copy] No action taken.';
+    }
+
+    return {
+      matched: true,
+      context,
+      error: copyFolderResult.error && !copyFolderResult.executed && !copyFolderResult.needsPermission
+        ? copyFolderResult.error
+        : null,
+      fetchOptions: null,
+      deleteResult: null,
+      moveResult: null,
+      copyFolderResult,
+    };
   }
 
   const deleteRequested = wantsEmailDelete(effectiveMessage);

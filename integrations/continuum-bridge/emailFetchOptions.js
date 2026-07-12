@@ -13,7 +13,7 @@ const MONTH_RANGE_MIN_LIMIT = 50000;
 const YEAR_RANGE_MIN_LIMIT = 50000;
 const DEFAULT_RECENT = '7d';
 
-const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary|clean|clean(?:up|ing)?)\b/i;
+const EMAIL_TRIGGER = /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|delete|remove|trash|junk|spam|move|copy|triage|classify|memory|continuum|feed|ingest|remember|skip|offset|fetch|batch|page|newsletter|promo|summarize|summary|clean|clean(?:up|ing)?)\b/i;
 
 function wantsEmailSummaryOnly(message) {
   const text = message || '';
