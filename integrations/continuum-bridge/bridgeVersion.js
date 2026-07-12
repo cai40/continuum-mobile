@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = {
-  version: '2026.07.12i',
+  version: '2026.07.12j',
   features: {
     date_range: true,
     date_range_mode: 'recent_lookback_filter',
@@ -13,6 +13,8 @@ module.exports = {
     never_trash_senders: true,
     move_to_folder: true,
     copy_folder_to_inbox: true,
+    folder_persona_ingest: true,
+    attitude_timeline: true,
     web_search: true,
     sender_rule_trash: true,
     background_email_jobs: true,

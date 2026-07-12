@@ -20,6 +20,8 @@ const EMAIL_LIVE_INBOX_MEMORY_APPEND = [
   EMAIL_LIVE_INBOX_APPEND,
   'The user asked to feed sender-filtered email into Continuum memory.',
   'Extract durable facts, commitments, dates, names, and project details from the REAL emails below.',
+  'When SENDER PERSONA or ATTITUDE TIMELINE instructions appear below, follow them using only the listed emails.',
+  'For attitude timeline requests: produce dated phases, cite email evidence, and describe how tone toward the user changed over time.',
   'Confirm what you captured; post-chat archiving will store episodic/semantic/temporal memory.',
 ].join(' ');
 

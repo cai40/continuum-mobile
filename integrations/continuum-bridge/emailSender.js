@@ -1,6 +1,11 @@
 'use strict';
 
-const { parseAnyDateToken } = require('./emailDateRange');
+const { parseAnyDateToken, addDays } = require('./emailDateRange');
+
+/** Yahoo folders that map to a default sender when the user names the folder only. */
+const FOLDER_SENDER_DEFAULTS = {
+  min: 'Min Zhang',
+};
 
 function looksLikeDateToken(value) {
   const trimmed = String(value || '').trim();
@@ -9,6 +14,31 @@ function looksLikeDateToken(value) {
   if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(trimmed)) return true;
   if (/^[a-z]+\s+\d{1,2},?\s+\d{4}/i.test(trimmed)) return true;
   return false;
+}
+
+function parseMailboxFromMessage(message) {
+  const text = String(message || '');
+  const patterns = [
+    /\bin\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
+    /\b(?:read|feed|ingest|fetch|get|scan)\s+(?:all\s+)?(?:every\s+)?(?:the\s+)?(?:emails?\s+)?(?:in|from)\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
+    /\b(?:emails?\s+)?from\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
+    /\bfolder\s+["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) continue;
+    const name = match[1].trim();
+    if (/^(inbox|trash|bin|junk|spam)$/i.test(name)) continue;
+    return name;
+  }
+  return null;
+}
+
+function stripFolderSuffix(sender) {
+  return String(sender || '')
+    .replace(/\s+in\s+(?:the\s+)?["']?[A-Za-z0-9][A-Za-z0-9 _-]{0,40}?["']?\s+folder\b.*$/i, '')
+    .replace(/\s+(?:and|to|into)\s+.*$/i, '')
+    .trim();
 }
 
 function parseSenderFromMessage(message) {
@@ -20,11 +50,13 @@ function parseSenderFromMessage(message) {
     && !/\bemails?\s+from\s+[A-Za-z@]/i.test(text)) return null;
 
   const patterns = [
-    /\b(?:read|feed|ingest|fetch|get)\s+(?:all\s+)?emails?\s+from\s+(.+?)\s+from\s+(?:year\s+)?(?:\d{4}|\d{1,2}[\/\-])/i,
-    /\b(?:read|feed|ingest|fetch|get)\s+(?:all\s+)?emails?\s+from\s+(.+?)\s+(?:into|to)\s+(?:continuum\s+)?memory/i,
+    /\b(?:read|feed|ingest|fetch|get)\s+(?:all\s+)?(?:every\s+)?emails?\s+from\s+(.+?)\s+from\s+(?:year\s+)?(?:\d{4}|\d{1,2}[\/\-])/i,
+    /\b(?:read|feed|ingest|fetch|get)\s+(?:all\s+)?(?:every\s+)?emails?\s+from\s+(.+?)\s+(?:into|to)\s+(?:continuum\s+)?memory/i,
+    /\b(?:read|feed|ingest|fetch|get)\s+(?:all\s+)?(?:every\s+)?emails?\s+from\s+(.+?)\s+in\s+(?:the\s+)?["']?[A-Za-z0-9][A-Za-z0-9 _-]{0,40}?["']?\s+folder\b/i,
     /\bfeed\s+(?:all\s+)?(?:emails?\s+from\s+)?["']?([^"'\n]+?)["']?\s+(?:emails?\s+)?to\s+(?:continuum|memory)/i,
     /\b(?:ingest|import|save|remember|store)\s+(?:all\s+)?(?:emails?\s+from\s+)?["']?([^"'\n]+?)["']?(?:\s+emails?)?\s+(?:to|into)\s+(?:continuum|memory)/i,
     /\bemails?\s+from\s+["']?([^"'\n]+?)["']?\s+from\s+(?:year\s+|\d{4}|\d{1,2}[\/\-])/i,
+    /\bemails?\s+from\s+["']?([^"'\n]+?)["']?\s+in\s+(?:the\s+)?["']?[A-Za-z0-9][A-Za-z0-9 _-]{0,40}?["']?\s+folder\b/i,
     /\b(?:from|by)\s+([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})/i,
     /\bemails?\s+from\s+["']?([^"'\n,]+?)["']?(?:\s+(?:to|into)\s+(?:continuum|memory)|$)/i,
     /\b(?:from|by)\s+["']?([A-Za-z0-9@.\s+'-]{2,60}?)["']?(?:\s+'s|\s+emails?|\s+mail)/i,
@@ -33,7 +65,7 @@ function parseSenderFromMessage(message) {
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match?.[1]) {
-      let sender = match[1].trim();
+      let sender = stripFolderSuffix(match[1].trim());
       sender = sender.replace(/\s+(to|into|for)\s+(continuum|memory).*$/i, '').trim();
       sender = sender.replace(/\s+from\s+(?:year\s+)?.*$/i, '').trim();
       if (sender.length >= 2 && !looksLikeDateToken(sender)) return sender;
@@ -42,10 +74,42 @@ function parseSenderFromMessage(message) {
   return null;
 }
 
+function resolveSenderForMailboxIngest(message) {
+  const parsed = parseSenderFromMessage(message);
+  if (parsed) {
+    const cleaned = stripFolderSuffix(parsed);
+    if (/^min$/i.test(cleaned)) return 'Min Zhang';
+    if (cleaned.length >= 2) return cleaned;
+  }
+  const mailbox = parseMailboxFromMessage(message);
+  if (mailbox) {
+    const defaultSender = FOLDER_SENDER_DEFAULTS[mailbox.trim().toLowerCase()];
+    if (defaultSender) return defaultSender;
+  }
+  if (parseMailboxFromMessage(message) && /\b(?:her|she|min\s+zhang)\b/i.test(message)) {
+    return 'Min Zhang';
+  }
+  return null;
+}
+
+function wantsAttitudeTimelineAnalysis(message) {
+  const text = String(message || '');
+  return /\b(attitude|timeline|time[\s-]?line|how\s+(?:her|his|their)\s+(?:feelings?|tone|attitude)|change(?:s|d)?\s+(?:over|in)\s+time|towards?\s+me|toward\s+me|relationship\s+(?:evolv|chang))\b/i.test(text);
+}
+
+function wantsFolderPersonaIngest(message) {
+  const text = String(message || '');
+  if (!parseMailboxFromMessage(text)) return false;
+  return wantsSenderPersonaAnalysis(text) || wantsEmailMemoryIngest(text);
+}
+
 function wantsSenderPersonaAnalysis(message) {
   const text = String(message || '');
-  return /\b(persona|analyze|analysis|thinking|communication\s+style|psycholog)/i.test(text)
-    && (parseSenderFromMessage(text) != null || /\b(?:her|his|their)\s+(?:thinking|persona|style)\b/i.test(text));
+  const hasPersonaKeywords = /\b(persona|analyze|analysis|thinking|communication\s+style|psycholog|attitude|timeline|time[\s-]?line|build(?:\s+up)?)\b/i.test(text);
+  const hasSender = resolveSenderForMailboxIngest(text) != null
+    || parseSenderFromMessage(text) != null
+    || /\b(?:her|his|their)\s+(?:thinking|persona|style|attitude)\b/i.test(text);
+  return hasPersonaKeywords && hasSender;
 }
 
 function wantsSequentialEmailIngest(message) {
@@ -55,21 +119,45 @@ function wantsSequentialEmailIngest(message) {
 
 function wantsEmailMemoryIngest(message) {
   const text = String(message || '');
-  if (wantsSenderPersonaAnalysis(text) && /\b(memory|continuum|remember|ingest|feed|into\s+memory)\b/i.test(text)) {
+  if (wantsSenderPersonaAnalysis(text) && /\b(memory|continuum|remember|ingest|feed|into\s+memory|build|store|save)\b/i.test(text)) {
     return true;
   }
-  return /\b(feed|ingest|import|add|save|remember|store|read\s+all)\b/i.test(text)
+  if (wantsFolderPersonaIngest(text)) return true;
+  return /\b(feed|ingest|import|add|save|remember|store|read\s+all|read\s+every)\b/i.test(text)
     && /\b(emails?|mail|inbox|messages?)\b/i.test(text)
-    && /\b(continuum|memory|brain|into\s+memory)\b/i.test(text);
+    && /\b(continuum|memory|brain|into\s+memory|persona)\b/i.test(text);
 }
 
-function imapSearchArgs(fetchOptions, sender, { chronological = false } = {}) {
-  const args = [
-    'search',
-    '--from', sender,
-    '--limit', String(fetchOptions.limit),
-    '--sort', chronological ? 'date-asc' : 'date',
+function defaultFolderPersonaDateRange() {
+  const tomorrow = addDays(new Date().toISOString().slice(0, 10), 1);
+  return {
+    since: '2022-01-01',
+    before: tomorrow,
+    label: '2022 through today (folder persona scan)',
+  };
+}
+
+function buildPersonaAnalysisNote(message) {
+  if (!wantsSenderPersonaAnalysis(message)) return null;
+  const lines = [
+    'SENDER PERSONA: Synthesize a persona from this sender\'s emails — communication style, priorities, tone, decision patterns, recurring topics, and relationship to the user. Separate observed facts from inferences; cite approximate time periods.',
   ];
+  if (wantsAttitudeTimelineAnalysis(message)) {
+    lines.push(
+      'ATTITUDE TIMELINE: Build a chronological timeline of how this sender\'s attitude, tone, warmth, distance, conflict, or affection toward the user changed over time.',
+      'Divide into dated or period-based phases (e.g. early 2022, mid-2023). For each phase: dominant tone, representative themes, turning points, and evidence from specific emails (subjects/dates).',
+      'End with a summary arc — how the relationship evolved overall toward the user.',
+    );
+  }
+  return lines.join(' ');
+}
+
+function imapSearchArgs(fetchOptions, sender, { chronological = false, mailbox = null } = {}) {
+  const args = ['search'];
+  if (mailbox) args.push('--mailbox', mailbox);
+  if (sender) args.push('--from', sender);
+  args.push('--limit', String(fetchOptions.limit));
+  args.push('--sort', chronological ? 'date-asc' : 'date');
   if (fetchOptions.since) {
     args.push('--since', fetchOptions.since);
     if (fetchOptions.before) args.push('--before', fetchOptions.before);
@@ -84,8 +172,14 @@ function imapSearchArgs(fetchOptions, sender, { chronological = false } = {}) {
 
 module.exports = {
   parseSenderFromMessage,
+  parseMailboxFromMessage,
+  resolveSenderForMailboxIngest,
   wantsEmailMemoryIngest,
   wantsSenderPersonaAnalysis,
+  wantsAttitudeTimelineAnalysis,
+  wantsFolderPersonaIngest,
   wantsSequentialEmailIngest,
+  defaultFolderPersonaDateRange,
+  buildPersonaAnalysisNote,
   imapSearchArgs,
 };

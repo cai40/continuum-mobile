@@ -3,6 +3,12 @@
 const { parseDateRangeFromMessage, parseYearRangeFromMessage, addDays } = require('./emailDateRange');
 const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
+const {
+  parseMailboxFromMessage,
+  wantsFolderPersonaIngest,
+  wantsSenderPersonaAnalysis,
+  defaultFolderPersonaDateRange,
+} = require('./emailSender');
 const { isComposeEmailRequest } = require('./emailComposeIntent');
 
 const DEFAULT_LIMIT = 25;
@@ -117,14 +123,18 @@ function parseRecentFromMessage(message) {
 function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const limitFromMessage = parseLimitFromMessage(message);
   const offsetFromMessage = parseOffsetFromMessage(message);
-  const dateRangeFromMessage = parseDateRangeFromMessage(message);
+  let dateRangeFromMessage = parseDateRangeFromMessage(message);
+  const folderPersona = wantsFolderPersonaIngest(message);
+  if (!dateRangeFromMessage && folderPersona && !parseRecentFromMessage(message)) {
+    dateRangeFromMessage = defaultFolderPersonaDateRange();
+  }
   const yearRange = parseYearRangeFromMessage(message);
   const cleanup = wantsEmailCleanup(message);
   const moveToFolder = wantsEmailMoveToFolder(message);
   const rangeMinLimit = yearRange
     ? YEAR_RANGE_MIN_LIMIT
     : (dateRangeFromMessage ? MONTH_RANGE_MIN_LIMIT : null);
-  const defaultLimit = rangeMinLimit ?? (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT));
+  const defaultLimit = rangeMinLimit ?? (folderPersona ? MONTH_RANGE_MIN_LIMIT : (moveToFolder ? 250 : (cleanup ? 500 : DEFAULT_LIMIT)));
   let limit = limitFromMessage != null
     ? clampLimit(limitFromMessage, defaultLimit)
     : clampLimit(payloadOptions.email_limit, defaultLimit);
@@ -163,14 +173,21 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
     : (dateRangeFromMessage?.label
       || (since && before ? `${since} through ${addDays(before, -1)}` : null));
   const unreadOnly = /\b(unread|unseen)\b/i.test(message || '');
+  const mailbox = parseMailboxFromMessage(message);
   return {
-    limit, offset, recent, unreadOnly, since, before, dateRangeLabel,
+    limit, offset, recent, unreadOnly, since, before, dateRangeLabel, mailbox,
   };
 }
 
 function formatPreEmailFetchStatus(fetchOptions) {
   if (!fetchOptions) return 'Fetching Yahoo inbox (if requested)…';
-  const { limit = 0, dateRangeLabel } = fetchOptions;
+  const { limit = 0, dateRangeLabel, mailbox } = fetchOptions;
+  if (mailbox && dateRangeLabel) {
+    return `Scanning "${mailbox}" folder (${dateRangeLabel}, cap ${limit})…`;
+  }
+  if (mailbox) {
+    return `Scanning "${mailbox}" folder (up to ${limit} emails)…`;
+  }
   if (dateRangeLabel) {
     const isFullYear = /\(full year\)/i.test(String(dateRangeLabel));
     if (limit >= 10000 && isFullYear) {
