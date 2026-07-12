@@ -58,7 +58,7 @@ import {
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
-import { extractEmailEvidenceForPin } from '../utils/memoryDisplay';
+import { extractEmailEvidenceForPin, attachPinOfferToMessages, shouldOfferEmailEvidencePin } from '../utils/memoryDisplay';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -157,6 +157,25 @@ const ChatSection = () => {
     inputRef.current?.blur();
     Keyboard.dismiss();
   }, []);
+
+  const handlePinEmailEvidence = useCallback(async (pinBody) => {
+    const activeToken = session?.access_token?.trim();
+    if (!pinBody?.trim() || !activeToken) return;
+    try {
+      await pinCoreMemory(pinBody, activeToken, 'Min email evidence', user?.id);
+      try {
+        await onRefreshMemories?.(activeToken);
+      } catch {
+        // local pin saved even if cloud refresh fails
+      }
+      Alert.alert(
+        'Pinned to L1',
+        'Saved on this device. Setup search and recall will use it.',
+      );
+    } catch (e) {
+      Alert.alert('Pin failed', e?.message || 'Could not save to Core Memory.');
+    }
+  }, [session?.access_token, user?.id, onRefreshMemories]);
 
   useEffect(() => {
     if (activeTab !== 'chat') {
@@ -873,10 +892,18 @@ const ChatSection = () => {
         if (!finalText.trim()) return;
 
         setMessages(prev => {
-          const aiMsgs = buildDraftAssistantMessages(finalText, {
+          let aiMsgs = buildDraftAssistantMessages(finalText, {
             requestedDraft: wantsCopyDraft,
             baseId: Date.now(),
           });
+          const combinedText = aiMsgs.map((m) => m.content).join('\n\n');
+          const pinBody = extractEmailEvidenceForPin(finalText) || extractEmailEvidenceForPin(combinedText);
+          const offerPin = pinBody
+            && activeToken
+            && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });
+          if (offerPin) {
+            aiMsgs = attachPinOfferToMessages(aiMsgs, pinBody);
+          }
           if (isFromVoice) {
             return prev.map(m => {
               if (m.id === userMsg.id && m.content.includes("Transcribing...")) {
@@ -888,41 +915,22 @@ const ChatSection = () => {
           return [...prev, ...aiMsgs];
         });
 
-        if ((isRecallEvidenceFetch || isEmailBridgeQuery) && activeToken) {
-          const pinBody = extractEmailEvidenceForPin(finalText);
-          if (pinBody) {
+        const pinBodyForAlert = extractEmailEvidenceForPin(finalText)
+          || extractEmailEvidenceForPin(finalText.replace(/\*\*/g, ''));
+        const offerPinAlert = pinBodyForAlert
+          && activeToken
+          && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });
+        if (offerPinAlert) {
+          setTimeout(() => {
             Alert.alert(
               'Pin email evidence to L1?',
-              'Memory L2 only saved your questions — not UID+Date lines. Pin this summary to Core Memory so Setup search finds it.',
+              'L2 memory only saves your questions — not UID+Date lines. Pin this summary so Setup search and recall find it.',
               [
                 { text: 'Not now', style: 'cancel' },
-                {
-                  text: 'Pin to L1',
-                  onPress: async () => {
-                    try {
-                      await pinCoreMemory(
-                        pinBody,
-                        activeToken,
-                        'Min email evidence',
-                        user?.id,
-                      );
-                      try {
-                        await onRefreshMemories?.(activeToken);
-                      } catch {
-                        // Pin saved locally even if cloud memory refresh fails
-                      }
-                      Alert.alert(
-                        'Pinned to L1',
-                        'Saved on this device. Setup search and recall will use it.',
-                      );
-                    } catch (e) {
-                      Alert.alert('Pin failed', e?.message || 'Could not save to Core Memory.');
-                    }
-                  },
-                },
+                { text: 'Pin to L1', onPress: () => handlePinEmailEvidence(pinBodyForAlert) },
               ],
             );
-          }
+          }, 500);
         }
       };
 
@@ -1354,6 +1362,26 @@ const ChatSection = () => {
             ]}>
               {item.role === 'user' ? sanitizeUserVisibleContent(item.content) : item.content}
             </Text>
+            {item.pinOffer ? (
+              <TouchableOpacity
+                onPress={() => handlePinEmailEvidence(item.pinOffer)}
+                style={{
+                  marginTop: 10,
+                  alignSelf: 'flex-start',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: theme.colors.primary + '18',
+                  paddingHorizontal: 10,
+                  paddingVertical: 7,
+                  borderRadius: 8,
+                }}
+              >
+                <Ionicons name="bookmark-outline" size={14} color={theme.colors.primary} />
+                <Text style={{ marginLeft: 6, fontSize: 12, fontWeight: '700', color: theme.colors.primary }}>
+                  Pin to L1
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
           
           {isSelectionMode && (

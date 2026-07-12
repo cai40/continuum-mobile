@@ -17,11 +17,25 @@ export function isInteractionQuestionLog(text) {
 export function hasEmailEvidenceSignals(text) {
   const t = String(text || '');
   return /\bUID\s+\d{5,7}\b/i.test(t)
+    || /\*\*UID\s+\d{5,7}\*\*/i.test(t)
     || /\b641\d{3}\b/.test(t)
     || /\b20\d{2}-\d{2}-\d{2}\b/.test(t)
     || /\bDate:\s*/i.test(t)
     || /\bPreview:/i.test(t)
     || /\bSubject:/i.test(t);
+}
+
+export function shouldOfferEmailEvidencePin(userMessage, {
+  isEmailBridgeQuery = false,
+  isRecallEvidenceFetch = false,
+} = {}) {
+  if (isRecallEvidenceFetch || isEmailBridgeQuery) return true;
+  const text = String(userMessage || '');
+  if (/\b(?:continuum memory|load(?:\s+\w+){0,4}\s+(?:to\s+)?memory|ingest|pin to l1)\b/i.test(text)) {
+    return true;
+  }
+  if (/\bread\s+every\s+email\b/i.test(text) && /\b(?:memory|continuum)\b/i.test(text)) return true;
+  return false;
 }
 
 export function isLowValueForEmailRecall(text, layer) {
@@ -61,8 +75,14 @@ export function extractEmailEvidenceForPin(assistantText, maxChars = 1800) {
   const lines = text.split('\n');
   const kept = [];
   for (const line of lines) {
-    if (/\bUID\s+\d{5,7}\b/i.test(line) || /\b641\d{3}\b/.test(line)) {
-      kept.push(line.trim());
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (
+      /\bUID\s+\d{5,7}\b/i.test(trimmed)
+      || /\*\*UID\s+\d{5,7}\*\*/i.test(trimmed)
+      || /\b641\d{3}\b/.test(trimmed)
+    ) {
+      kept.push(trimmed.replace(/\*\*/g, ''));
     }
   }
   if (!kept.length) return '';
@@ -72,6 +92,19 @@ export function extractEmailEvidenceForPin(assistantText, maxChars = 1800) {
     body = body.slice(0, maxChars - header.length - 16) + '\n… [truncated]';
   }
   return `${header}\n${body}`;
+}
+
+/** Attach pinOffer payload to the last assistant bubble in a split reply. */
+export function attachPinOfferToMessages(messages, pinBody) {
+  if (!pinBody || !Array.isArray(messages) || !messages.length) return messages;
+  const out = messages.map((m) => ({ ...m }));
+  for (let i = out.length - 1; i >= 0; i -= 1) {
+    if (out[i]?.role === 'assistant') {
+      out[i] = { ...out[i], pinOffer: pinBody };
+      return out;
+    }
+  }
+  return out;
 }
 
 export function memoryItemText(item, layer) {
