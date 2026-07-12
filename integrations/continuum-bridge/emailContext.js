@@ -22,6 +22,11 @@ const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = requi
 
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
+const {
+  stripClientEmailEnvelope,
+  isExplicitFullEmailFetch,
+} = require('../../shared/emailRecallEvidence');
+const { wantsFolderPersonaIngest } = require('./emailSender');
 
 const execFileAsync = promisify(execFile);
 
@@ -570,8 +575,9 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   return { text: (header + body).slice(0, maxChars), messages: parsed, fetchedCount };
 }
 
-function imapCheckArgs(fetchOptions) {
+function imapCheckArgs(fetchOptions, mailbox = null) {
   const args = ['check', '--limit', String(fetchOptions.limit)];
+  if (mailbox) args.push('--mailbox', mailbox);
   if (fetchOptions.since) {
     args.push('--since', fetchOptions.since);
     if (fetchOptions.before) args.push('--before', fetchOptions.before);
@@ -586,6 +592,17 @@ function imapCheckArgs(fetchOptions) {
   }
   args.push('--lite');
   return args;
+}
+
+function shouldUseFolderDateRangeCheck(message, fetchOptions) {
+  if (!fetchOptions?.mailbox || !fetchOptions.since || !fetchOptions.before) return false;
+  const intent = stripClientEmailEnvelope(message) || message || '';
+  return wantsFolderPersonaIngest(intent) || isExplicitFullEmailFetch(intent);
+}
+
+function shouldOmitSenderForFolderScan(message, fetchOptions) {
+  if (!fetchOptions?.mailbox) return false;
+  return shouldUseFolderDateRangeCheck(message, fetchOptions);
 }
 
 /**
@@ -805,26 +822,33 @@ function runImapSpawned(args, { timeoutMs, cwd, env, onProgress, cancelJobId = n
 }
 
 async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProgress = null) {
-  const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
-  let mailbox = fetchOptions.mailbox || parseMailboxFromMessage(message) || defaultPersonaMailbox(message);
-  let sender = parseMoveSenderFromMessage(message) || resolveSenderForMailboxIngest(message) || parseSenderFromMessage(message);
-  const quoteSearch = wantsEmailQuoteSearch(message);
-  const personaAnalysis = wantsSenderPersonaAnalysis(message);
+  const fetchIntent = stripClientEmailEnvelope(message) || message;
+  const fetchOptions = resolveEmailFetchOptions(fetchIntent, payloadOptions);
+  let mailbox = fetchOptions.mailbox || parseMailboxFromMessage(fetchIntent) || defaultPersonaMailbox(fetchIntent);
+  let sender = parseMoveSenderFromMessage(fetchIntent) || resolveSenderForMailboxIngest(fetchIntent) || parseSenderFromMessage(fetchIntent);
+  if (shouldOmitSenderForFolderScan(fetchIntent, { ...fetchOptions, mailbox })) {
+    sender = null;
+  }
+  const quoteSearch = wantsEmailQuoteSearch(fetchIntent);
+  const personaAnalysis = wantsSenderPersonaAnalysis(fetchIntent);
   if (quoteSearch && !mailbox) {
-    mailbox = parseMailboxFromMessage(message);
-    if (!mailbox && /\b(?:she|min\s*zhang|min\s*z|her)\b/i.test(message)) {
+    mailbox = parseMailboxFromMessage(fetchIntent);
+    if (!mailbox && /\b(?:she|min\s*zhang|min\s*z|her)\b/i.test(fetchIntent)) {
       mailbox = 'Min';
     }
-    sender = sender || resolveSenderForMailboxIngest(message) || 'Min Zhang';
+    sender = sender || resolveSenderForMailboxIngest(fetchIntent) || 'Min Zhang';
   }
   const skillRoot = path.dirname(path.dirname(imapScript));
-  const chronological = wantsSequentialEmailIngest(message)
-    || wantsAttitudeTimelineAnalysis(message)
-    || (wantsSenderPersonaAnalysis(message) && !!mailbox)
-    || (wantsEmailMemoryIngest(message) && !!(fetchOptions.since && fetchOptions.before));
-  const args = (sender || mailbox)
-    ? [imapScript, ...imapSearchArgs(fetchOptions, sender, { chronological, mailbox })]
-    : [imapScript, ...imapCheckArgs(fetchOptions)];
+  const chronological = wantsSequentialEmailIngest(fetchIntent)
+    || wantsAttitudeTimelineAnalysis(fetchIntent)
+    || (wantsSenderPersonaAnalysis(fetchIntent) && !!mailbox)
+    || (wantsEmailMemoryIngest(fetchIntent) && !!(fetchOptions.since && fetchOptions.before));
+  const folderDateCheck = shouldUseFolderDateRangeCheck(fetchIntent, { ...fetchOptions, mailbox });
+  const args = folderDateCheck
+    ? [imapScript, ...imapCheckArgs({ ...fetchOptions, mailbox }, mailbox)]
+    : (sender || mailbox)
+      ? [imapScript, ...imapSearchArgs(fetchOptions, sender, { chronological, mailbox })]
+      : [imapScript, ...imapCheckArgs(fetchOptions)];
   console.error('[continuum-bridge] imap args:', args.slice(1).join(' '));
   const timeoutMs = fetchOptions.since && fetchOptions.before
     ? Math.min(3600000, 180000 + fetchOptions.limit * 1500)
@@ -1002,11 +1026,12 @@ function formatImapError(err, fetchOptions = {}) {
 }
 
 async function fetchEmailContext(message, payloadOptions = {}, onProgress = null) {
-  if (require('./emailFollowUpIntent').shouldSkipEmailFetch(message, payloadOptions.history)) {
+  const fetchIntent = stripClientEmailEnvelope(message) || message;
+  if (require('./emailFollowUpIntent').shouldSkipEmailFetch(fetchIntent, payloadOptions.history)) {
     return { matched: false, context: null, error: null, fetchOptions: null, deleteResult: null, moveResult: null };
   }
 
-  const effectiveMessage = buildEffectiveEmailMessage(message, payloadOptions.history);
+  const effectiveMessage = buildEffectiveEmailMessage(fetchIntent, payloadOptions.history);
 
   if (wantsYearCleanup(effectiveMessage)) {
     const { parseYearRangeFromMessage } = require('./emailDateRange');

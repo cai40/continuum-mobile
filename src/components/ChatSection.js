@@ -56,7 +56,7 @@ import {
   isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
-import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch } from '../utils/emailFollowUpIntent';
+import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch, needsFullMinFolderRefetch } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
 import { extractEmailEvidenceForPin, attachPinOfferToMessages, shouldOfferEmailEvidencePin } from '../utils/memoryDisplay';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
@@ -593,15 +593,51 @@ const ChatSection = () => {
 
       const wantsCopyDraft = wantsDraftOutput(finalInput);
 
-      const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, messages.slice(0, -1));
-      const isFullFolderFetch = isExplicitFullEmailFetch(finalInput);
-      const isEmailFollowUpOnly = !isFullFolderFetch && shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
-      const isEmailRecallQuestion = !isFullFolderFetch && isEmailAnalysisFollowUp(finalInput) && !isRecallEvidenceFetch;
-
       const isEmailConfirm = renderEmailEnabled && (
         confirmCleanupKind === 'email'
         || (isGenericCleanupConfirm(finalInput) && confirmCleanupKind !== 'photo')
       );
+
+      const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, messages.slice(0, -1));
+      let isFullFolderFetch = isExplicitFullEmailFetch(finalInput);
+      let isEmailFollowUpOnly = !isFullFolderFetch && shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
+      let isEmailRecallQuestion = !isFullFolderFetch && isEmailAnalysisFollowUp(finalInput) && !isRecallEvidenceFetch;
+
+      const activeToken = session?.access_token?.trim();
+      if (!activeToken) {
+        Alert.alert("Security Error", "Session expired. Please log in again.");
+        return;
+      }
+
+      let memoryRecallContext = '';
+      const shouldPrefetchMemory = (
+        wantsContinuumMemoryRecall(finalInput)
+        || isRecallEvidenceFetch
+        || isEmailRecallQuestion
+        || isEmailAnalysisFollowUp(finalInput)
+        || isFullFolderFetch
+      ) && !activeAttachments.length;
+      if (shouldPrefetchMemory) {
+        setStreamingContent('Searching Continuum memory…');
+        try {
+          const { layeredData, pinData } = await fetchMemories(null, activeToken, user?.id);
+          memoryRecallContext = buildMemoryRecallContext({
+            episodicSegments: layeredData?.episodicSegments,
+            semanticProfile: layeredData?.semanticProfile,
+            temporalEvents: layeredData?.temporalEvents,
+            knowledgeBase: layeredData?.knowledgeBase,
+            pinnedMemories: pinData,
+          }, finalInput, 28000, { fullFolderFetch: isFullFolderFetch });
+          if (needsFullMinFolderRefetch(finalInput, memoryRecallContext)) {
+            isFullFolderFetch = true;
+            isEmailFollowUpOnly = false;
+            isEmailRecallQuestion = false;
+          }
+        } catch (e) {
+          console.warn('[memoryRecall]', e?.message || e);
+        }
+      }
+
       const isEmailQuery = !isPhotoCleanupQuery && !isComposeEmailRequest(finalInput) && (
         isEmailFollowUpOnly
         || /\b(emails?|inbox|yahoo|mail|unread|smtp|imap|junk|spam|trash|skip|fetch|batch|page)\b/i.test(finalInput)
@@ -612,6 +648,8 @@ const ChatSection = () => {
         || /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:\d{4}\s+)?emails?\b/i.test(finalInput)
         || isEmailConfirm
       );
+
+      let isEmailBridgeQuery = (isEmailQuery && !isEmailFollowUpOnly && !isEmailRecallQuestion) || isRecallEvidenceFetch || isFullFolderFetch;
 
       const openrouterProviders = [
         'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',
@@ -626,14 +664,6 @@ const ChatSection = () => {
         Alert.alert("Gemini key required", "Add your Gemini API key under Setup → Intelligence & API Keys.");
         return;
       }
-
-      const activeToken = session?.access_token?.trim();
-      if (!activeToken) {
-        Alert.alert("Security Error", "Session expired. Please log in again.");
-        return;
-      }
-
-      const isEmailBridgeQuery = (isEmailQuery && !isEmailFollowUpOnly && !isEmailRecallQuestion) || isRecallEvidenceFetch;
 
       const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
       const renderEmailSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
@@ -748,27 +778,6 @@ const ChatSection = () => {
       const isAnyRecallTurn = !isFullFolderFetch
         && (isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput));
       const liveEmailFetchScheduled = isEmailBridgeQuery && !isEmailFollowUpOnly;
-      const shouldLoadMemory = (wantsContinuumMemoryRecall(finalInput) || isAnyRecallTurn) && !activeAttachments.length;
-
-      let memoryRecallContext = '';
-      if (shouldLoadMemory) {
-        setStreamingContent('Searching Continuum memory…');
-        try {
-          const { layeredData, pinData } = await fetchMemories(null, activeToken, user?.id);
-          memoryRecallContext = buildMemoryRecallContext({
-            episodicSegments: layeredData?.episodicSegments,
-            semanticProfile: layeredData?.semanticProfile,
-            temporalEvents: layeredData?.temporalEvents,
-            knowledgeBase: layeredData?.knowledgeBase,
-            pinnedMemories: pinData,
-          }, finalInput, 28000, {
-            liveFetchScheduled: liveEmailFetchScheduled,
-            fullFolderFetch: isFullFolderFetch,
-          });
-        } catch (e) {
-          console.warn('[memoryRecall]', e?.message || e);
-        }
-      }
 
       const formData = new FormData();
       let chatMessage = isRecallEvidenceFetch
