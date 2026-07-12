@@ -6,7 +6,7 @@ const { parseMailboxFromMessage } = require('./emailFolderParse');
 const { wantsEmailQuoteSearch } = require('./emailQuoteSearch');
 const { wantsSenderPersonaAnalysis, wantsChinesePersonaAnalysis } = require('./emailSender');
 
-const ASSISTANT_EMAIL_ANALYSIS = /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Fetched\s+\d+\s+REAL\s+email|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+)/i;
+const ASSISTANT_EMAIL_ANALYSIS = /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Persona of Min|Phase\s+[123]|Fetched\s+\d+\s+REAL\s+email|287\s+emails?|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+|boundary emails)/i;
 
 function isPersonaFetchIntent(content) {
   const text = String(content || '');
@@ -103,6 +103,7 @@ function hasRecentEmailAnalysisContext(history, maxLookback = 8) {
 function shouldSkipEmailFetch(message, history) {
   const text = String(message || '').trim();
   if (!text) return false;
+  if (isAnalysisRecallQuestion(text)) return true;
   if (isExplicitNewEmailFetch(text)) return false;
   if (!hasRecentEmailAnalysisContext(history)) return false;
   return isEmailAnalysisFollowUp(text);

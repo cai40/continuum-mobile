@@ -54,7 +54,7 @@ import {
   isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
-import { shouldSkipEmailFetchForFollowUp } from '../utils/emailFollowUpIntent';
+import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp } from '../utils/emailFollowUpIntent';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -538,6 +538,7 @@ const ChatSection = () => {
       const wantsCopyDraft = wantsDraftOutput(finalInput);
 
       const isEmailFollowUpOnly = shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
+      const isEmailRecallQuestion = isEmailAnalysisFollowUp(finalInput);
 
       const isEmailConfirm = renderEmailEnabled && (
         confirmCleanupKind === 'email'
@@ -574,7 +575,7 @@ const ChatSection = () => {
         return;
       }
 
-      const isEmailBridgeQuery = isEmailQuery && !isEmailFollowUpOnly;
+      const isEmailBridgeQuery = isEmailQuery && !isEmailFollowUpOnly && !isEmailRecallQuestion;
 
       const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
       const renderEmailSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
@@ -693,7 +694,7 @@ const ChatSection = () => {
         await validateAttachmentSizes(activeAttachments);
       }
 
-      const historyForUpload = isEmailFollowUpOnly
+      const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion)
         ? trimChatHistoryForUpload(messages.slice(0, -1), 4, 220 * 1024)
         : trimChatHistoryForUpload(messages.slice(0, -1));
 
@@ -732,7 +733,7 @@ const ChatSection = () => {
       }
 
       const personaExtras = [
-        ...(isEmailFollowUpOnly ? [EMAIL_FOLLOW_UP_APPEND] : []),
+        ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
         ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
         ...(wantsCopyDraft ? [DRAFT_OUTPUT_APPEND] : []),
@@ -776,7 +777,9 @@ const ChatSection = () => {
       const finishSuccess = (finalText, voiceTranscript) => {
         if (!finalText.trim() && bridgeAttempted && !renderFallbackUsed) {
           const hint = useRenderEmail
-            ? "Email bridge returned no reply. Large folder persona scans (e.g. Min folder) may take 1–2 minutes — they now run in the background when possible. Check your Gemini / 4o MINI API key and Render email secret. Retry: “Read every email from Min in Min folder — build persona, cite UID and Date.”"
+            ? (isEmailRecallQuestion
+              ? "Could not answer from chat history. Force-quit and reopen Continuum, then retry in the same thread. If the persona analysis is far above in chat, scroll up and confirm it is still there."
+              : "Email bridge returned no reply. Check your Gemini / 4o MINI API key and Render email secret. For persona scans, try: “Read every email from Min in Min folder — build persona, cite UID and Date.”")
             : "Bridge returned empty reply. Check VPS bridge secret, HTTPS URL, and API key for your selected model.";
           finishError(hint);
           return;
