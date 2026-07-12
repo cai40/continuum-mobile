@@ -5,7 +5,7 @@ const fs = require('fs');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
-const { parseSenderFromMessage, wantsEmailMemoryIngest, imapSearchArgs } = require('./emailSender');
+const { parseSenderFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsSequentialEmailIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, formatEmailCleanupPreviewNextSteps, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
@@ -722,13 +722,12 @@ function runImapSpawned(args, { timeoutMs, cwd, env, onProgress, cancelJobId = n
 
 async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProgress = null) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
-  const isDateRange = !!(fetchOptions.since && fetchOptions.before);
-  const sender = isDateRange
-    ? null
-    : (parseMoveSenderFromMessage(message) || parseSenderFromMessage(message));
+  const sender = parseMoveSenderFromMessage(message) || parseSenderFromMessage(message);
   const skillRoot = path.dirname(path.dirname(imapScript));
+  const chronological = wantsSequentialEmailIngest(message)
+    || (wantsEmailMemoryIngest(message) && !!(fetchOptions.since && fetchOptions.before));
   const args = sender
-    ? [imapScript, ...imapSearchArgs(fetchOptions, sender)]
+    ? [imapScript, ...imapSearchArgs(fetchOptions, sender, { chronological })]
     : [imapScript, ...imapCheckArgs(fetchOptions)];
   console.error('[continuum-bridge] imap args:', args.slice(1).join(' '));
   const timeoutMs = fetchOptions.since && fetchOptions.before
@@ -773,11 +772,16 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
   );
   let context = formatted.text;
   if (sender) {
+    const memoryNote = wantsEmailMemoryIngest(message)
+      ? 'MEMORY INGEST: User wants these emails fed into Continuum memory in chronological order when possible. Extract durable facts, commitments, dates, and relationship context. Confirm what you captured.'
+      : null;
+    const personaNote = wantsSenderPersonaAnalysis(message)
+      ? 'SENDER PERSONA: After ingesting, synthesize a persona from this sender\'s emails — communication style, priorities, tone, decision patterns, recurring topics, and relationship to the user. Separate observed facts from inferences; cite approximate time periods.'
+      : null;
     context = [
-      `Sender filter: FROM "${sender}" (${fetchOptions.recent}, limit ${fetchOptions.limit}${fetchOptions.offset ? `, offset ${fetchOptions.offset}` : ''}).`,
-      wantsEmailMemoryIngest(message)
-        ? 'MEMORY INGEST: User wants these emails fed into Continuum memory. Extract durable facts, commitments, dates, and relationship context. Confirm what you captured.'
-        : null,
+      `Sender filter: FROM "${sender}" (${fetchOptions.dateRangeLabel || fetchOptions.recent || 'date range'}, limit ${fetchOptions.limit}${fetchOptions.offset ? `, offset ${fetchOptions.offset}` : ''}${chronological ? ', oldest-first' : ''}).`,
+      memoryNote,
+      personaNote,
       '',
       context,
     ].filter(Boolean).join('\n');

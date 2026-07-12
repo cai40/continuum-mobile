@@ -1500,7 +1500,7 @@ async function searchEmails(options) {
     // order (true for SMTP-received mail). Use --sort date for strict
     // INTERNALDATE ordering when the mailbox may contain COPY'd or
     // backdated messages; that path fetches all matching bodies.
-    if (options.sort !== 'date') {
+    if (options.sort !== 'date' && options.sort !== 'date-asc') {
       const allUids = await searchUids(imap, criteria);
       if (allUids.length === 0) return [];
       const fetchUids = selectUidsByOffsetLimit(allUids, limit, offset);
@@ -1525,11 +1525,13 @@ async function searchEmails(options) {
     }
 
     // --sort date: fetch all matching, sort by INTERNALDATE desc, slice.
+    // --sort date-asc: oldest first (memory ingest / chronological reads).
+    const sortAsc = options.sort === 'date-asc';
     const messages = await searchMessages(imap, criteria, fetchOptions);
     const sortedMessages = messages.sort((a, b) => {
       const dateA = a.attributes.date ? new Date(a.attributes.date) : new Date(0);
       const dateB = b.attributes.date ? new Date(b.attributes.date) : new Date(0);
-      return dateB - dateA;
+      return sortAsc ? dateA - dateB : dateB - dateA;
     }).slice(offset, offset + limit);
 
     const results = [];

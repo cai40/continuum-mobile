@@ -59,7 +59,9 @@ export function shouldRunEmailInBackground(message) {
   if (/\b(?:for|in|during)\s+(?:the\s+)?(?:month\s+of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(text)) return true;
   if (/\b(?:for|in|during)\s+(0?[1-9]|1[0-2])[\/\-](20\d{2})\b/i.test(text)) return true;
   if (/\b(?:clean\s*up|cleanup|clean)\s+(?:all\s+of|entire|whole|full)\s+(20\d{2})\b/i.test(text)) return true;
-  if (/\b(?:clean\s*up|cleanup|clean)\s+(20\d{2})\b/i.test(text)) return true;
+  if (/\b(?:feed|ingest|import|remember|store|read\s+all)\b/i.test(text)
+    && /\b(emails?|mail|messages?)\b/i.test(text)
+    && /\b(continuum|memory|brain|into\s+memory)\b/i.test(text)) return true;
   if (/\b(?:whole|full|entire)\s+year\s+(20\d{2})\b/i.test(text)) return true;
   const limitMatch = text.match(/\blimit\s+(\d{3,})\b/i);
   if (limitMatch && parseInt(limitMatch[1], 10) >= 250) return true;

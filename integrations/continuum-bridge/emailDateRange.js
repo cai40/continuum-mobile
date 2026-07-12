@@ -129,9 +129,34 @@ function parseYearRangeFromMessage(message) {
   return null;
 }
 
+function parseYearToTodayRangeFromMessage(message) {
+  const text = message || '';
+  const tomorrow = addDays(new Date().toISOString().slice(0, 10), 1);
+  const patterns = [
+    /\bfrom\s+(?:year\s+)?(20\d{2})\s+(?:to|through|thru|until|-)\s+today\b/i,
+    /\b(?:since|starting(?:\s+from)?)\s+(?:year\s+)?(20\d{2})\s+(?:to|through|thru|until|-)\s+today\b/i,
+    /\b(?:emails?\s+)?from\s+(20\d{2})\s+(?:to|through|thru|until|-)\s+today\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) continue;
+    const year = parseInt(match[1], 10);
+    if (year < 1970 || year > 2100) continue;
+    return {
+      since: `${year}-01-01`,
+      before: tomorrow,
+      label: `${year} through today`,
+    };
+  }
+  return null;
+}
+
 function parseDateRangeFromMessage(message) {
   const monthRange = parseMonthRangeFromMessage(message);
   if (monthRange) return monthRange;
+
+  const yearToToday = parseYearToTodayRangeFromMessage(message);
+  if (yearToToday) return yearToToday;
 
   const yearRange = parseYearRangeFromMessage(message);
   if (yearRange) return yearRange;
@@ -175,6 +200,7 @@ module.exports = {
   parseYearRangeFromMessage,
   parseMonthRangeFromMessage,
   parseDateRangeFromMessage,
+  parseYearToTodayRangeFromMessage,
   hasExplicitMonthYear,
   addDays,
 };
