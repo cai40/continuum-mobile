@@ -4,6 +4,7 @@
  */
 const ev = require('../../shared/emailRecallEvidence.js');
 
+export const resolveRecallMonthRange = ev.resolveRecallMonthRange;
 export const needsTargetedRecallEvidenceFetch = ev.needsTargetedRecallEvidenceFetch;
 export const buildTargetedRecallFetchMessage = ev.buildTargetedRecallFetchMessage;
 export const parseRecallMonthFromMessage = ev.parseRecallMonthFromMessage;

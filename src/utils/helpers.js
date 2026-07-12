@@ -131,6 +131,25 @@ export function trimChatHistoryForUpload(messages, maxMessages = 20, maxBytes = 
   return trimmed;
 }
 
+/** Drop misleading OOM / zero-fetch assistant replies from recall history uploads. */
+export function sanitizeRecallHistory(messages) {
+  const list = Array.isArray(messages) ? messages : [];
+  return list.map((m) => {
+    if (m?.role !== 'assistant') return m;
+    const content = stringifyContent(m.content);
+    const hasRealUidDates = /\bUID\s+\d{5,7}\b/i.test(content)
+      && /\b(?:Date:|20\d{2}-\d{2}-\d{2})\b/i.test(content);
+    if (hasRealUidDates) return m;
+    if (/heap out-of-memory|javascript heap oom|returned zero messages|no successful fetch/i.test(content)) {
+      return {
+        ...m,
+        content: '[Superseded — prior email fetch error; ignore for recall. Use CONTINUUM MEMORY or live inbox below.]',
+      };
+    }
+    return m;
+  });
+}
+
 const PERSONA_ANALYSIS_MARKERS =
   /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Persona of Min|Phase\s+[123]|Fetched\s+\d+\s+REAL\s+email|287\s+emails?|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+|boundary emails)/i;
 

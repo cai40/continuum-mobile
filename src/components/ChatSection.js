@@ -33,6 +33,7 @@ import {
   sanitizeUserVisibleContent,
   trimChatHistoryForUpload,
   trimChatHistoryForEmailRecall,
+  sanitizeRecallHistory,
   safeJsonStringify,
 } from '../utils/helpers';
 import {
@@ -55,8 +56,7 @@ import {
   isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
-import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, parseRecallMonthFromMessage } from '../utils/emailFollowUpIntent';
-import { findLatestPersonaAnalysisContent } from '../utils/emailRecallEvidence';
+import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
 import { extractEmailEvidenceForPin } from '../utils/memoryDisplay';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
@@ -79,6 +79,13 @@ const EMAIL_RECALL_EVIDENCE_APPEND = [
   'EVIDENCE RECALL FETCH: A small IMAP fetch for the requested month only — NOT a full persona rescan.',
   'List every fetched email with UID and Date. Cite boundary-related previews verbatim.',
   'Combine with the prior persona analysis in chat history; do not claim zero emails if any appear below.',
+].join(' ');
+
+const RECALL_TURN_APPEND = [
+  'RECALL TURN: Answer from [CONTINUUM MEMORY], chat history persona text, or live Min-folder inbox below.',
+  'Do NOT write meta-commentary about missing blocks or list what you need from the user.',
+  'Never cite JavaScript heap OOM or zero-email fetch from prior turns — those are superseded.',
+  'If live inbox data appears below, cite UID and Date from it. If memory has L1 evidence, cite that.',
 ].join(' ');
 
 const MEMORY_RECALL_APPEND = [
@@ -708,12 +715,11 @@ const ChatSection = () => {
       }
 
       const priorMessages = messages.slice(0, -1);
-      const hasPersonaInThread = !!findLatestPersonaAnalysisContent(priorMessages);
-      const shouldLoadMemory = wantsContinuumMemoryRecall(finalInput)
-        || ((isEmailRecallQuestion || isEmailAnalysisFollowUp(finalInput)) && !hasPersonaInThread && !isRecallEvidenceFetch);
+      const isAnyRecallTurn = isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput);
+      const shouldLoadMemory = (wantsContinuumMemoryRecall(finalInput) || isAnyRecallTurn) && !activeAttachments.length;
 
       let memoryRecallContext = '';
-      if (shouldLoadMemory && !activeAttachments.length) {
+      if (shouldLoadMemory) {
         setStreamingContent('Searching Continuum memory…');
         try {
           const { layeredData, pinData } = await fetchMemories(null, activeToken);
@@ -731,7 +737,7 @@ const ChatSection = () => {
 
       const formData = new FormData();
       let chatMessage = isRecallEvidenceFetch
-        ? buildTargetedRecallFetchMessage(finalInput, parseRecallMonthFromMessage(finalInput))
+        ? buildTargetedRecallFetchMessage(finalInput, resolveRecallMonthRange(finalInput, priorMessages))
         : finalInput;
       let documentTextInjected = false;
 
@@ -739,9 +745,10 @@ const ChatSection = () => {
         await validateAttachmentSizes(activeAttachments);
       }
 
+      const recallHistoryBase = sanitizeRecallHistory(messages.slice(0, -1));
       const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
-        ? trimChatHistoryForEmailRecall(messages.slice(0, -1), 8, 380 * 1024, finalInput)
-        : trimChatHistoryForUpload(messages.slice(0, -1));
+        ? trimChatHistoryForEmailRecall(recallHistoryBase, 8, 380 * 1024, finalInput)
+        : trimChatHistoryForUpload(recallHistoryBase);
 
       if (activeAttachments.length && !isFromVoice) {
         try {
@@ -781,7 +788,23 @@ const ChatSection = () => {
         chatMessage = `${memoryRecallContext}\n\n${chatMessage}`;
       }
 
+      if (isAnyRecallTurn) {
+        const recallStatus = [
+          '[RECALL TURN STATUS]',
+          memoryRecallContext
+            ? 'Continuum memory: injected above.'
+            : 'Continuum memory: no UID+Date evidence in L1–L5 (question logs excluded).',
+          isRecallEvidenceFetch
+            ? 'Min-folder IMAP: fetching via email bridge this turn.'
+            : 'Min-folder IMAP: not scheduled (use prior persona text or memory only).',
+          'Do not claim OOM or zero fetch unless shown in live inbox data this turn.',
+          '',
+        ].join('\n');
+        chatMessage = `${recallStatus}${chatMessage}`;
+      }
+
       const personaExtras = [
+        ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
         ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
         ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
         ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),

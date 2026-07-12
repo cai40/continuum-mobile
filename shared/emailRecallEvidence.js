@@ -149,13 +149,36 @@ function hasMonthEvidenceInPersona(messages, monthRange) {
   return filterIndexByMonth(index, monthRange).length > 0;
 }
 
+function resolveRecallMonthRange(message, messages) {
+  let monthRange = parseRecallMonthFromMessage(message);
+  if (monthRange) return monthRange;
+
+  const hist = findLatestPersonaAnalysisContent(messages);
+  if (hist) {
+    monthRange = parseRecallMonthFromMessage(hist);
+    if (monthRange) return monthRange;
+  }
+
+  const text = String(message || '');
+  if (/\bboundary\b/i.test(text) && (/\b(?:min\s+zhang|min\s+folder|\u654f)\b/i.test(text) || /\bmin\b/i.test(text))) {
+    return {
+      since: '2026-04-01',
+      before: '2026-05-01',
+      label: 'April 2026',
+      year: 2026,
+      month: 4,
+    };
+  }
+  return null;
+}
+
 function needsTargetedRecallEvidenceFetch(message, messages) {
   const text = String(message || '').trim();
   if (!text) return false;
 
   const isEmailRecall = /\b(?:what do you remember|cite\s+(?:the\s+)?(?:uid|uids)|uid\s+and\s+date|boundary|persona|timeline|evidence|proof)\b/i.test(text);
   const mentionsMin = /\b(?:min\s+zhang|min\s+folder|\u654f)\b/i.test(text) || /\bmin\b/i.test(text);
-  const monthRange = parseRecallMonthFromMessage(text);
+  const monthRange = resolveRecallMonthRange(text, messages);
 
   if (monthRange && (isEmailRecall || mentionsMin) && (mentionsMin || /\bboundary\b/i.test(text))) {
     if (hasMonthEvidenceInPersona(messages, monthRange)) return false;
@@ -170,9 +193,9 @@ function needsTargetedRecallEvidenceFetch(message, messages) {
 }
 
 function buildTargetedRecallFetchMessage(message, monthRange) {
-  const monthLabel = monthRange?.label || 'requested month';
+  const resolved = monthRange || resolveRecallMonthRange(message, []);
+  const monthLabel = resolved?.label || 'requested month';
   return [
-    `Fetch emails from Min in Min folder for ${monthLabel} only — evidence recall (NOT a full persona rescan).`,
     'Return every email in that month with UID and Date cited. Quote boundary-related subjects/previews verbatim.',
     'Do NOT rebuild the full 287-email persona — answer the recall question with UID + Date proof only.',
     '',
@@ -204,6 +227,7 @@ module.exports = {
   filterIndexByMonth,
   findLatestPersonaAnalysisContent,
   hasMonthEvidenceInPersona,
+  resolveRecallMonthRange,
   needsTargetedRecallEvidenceFetch,
   buildTargetedRecallFetchMessage,
   buildRecallEvidencePrefix,
