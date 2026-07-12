@@ -3,7 +3,7 @@ import {
   buildRecallEvidencePrefix,
   buildUidDateIndex,
   parseRecallMonthFromMessage,
-} from '../../shared/emailRecallEvidence.js';
+} from './emailRecallEvidence';
 
 export const formatFullDate = (isoString) => {
   if (!isoString) return 'Pending...';
