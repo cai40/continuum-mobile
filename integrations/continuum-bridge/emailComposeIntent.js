@@ -1,7 +1,7 @@
 'use strict';
 
 /** Signals the user wants Yahoo/IMAP inbox access, not to draft an outbound message. */
-const INBOX_SIGNAL = /\b(?:inbox|yahoo|unread|imap|smtp|fetch|cleanup|clean\s*up|cleaning\s+up|trash|junk|spam|delete|remove|move|triage|newsletter|promo|summarize|summary|unseen|batch|page|offset|skip|uid|declutter|my\s+emails?|the\s+emails?|today\s+emails?|this\s+week(?:'?s)?\s+emails?|this\s+month(?:'?s)?\s+emails?)\b/i;
+const INBOX_SIGNAL = /\b(?:inbox|yahoo|unread|imap|smtp|fetch|cleanup|clean\s*up|cleaning\s+up|trash|junk|spam|delete|remove|move|triage|newsletter|promo|summarize|summary|unseen|batch|page|offset|skip|uid|declutter|my\s+emails?|the\s+emails?|today\s+emails?|this\s+week(?:'?s)?\s+emails?|this\s+month(?:'?s)?\s+emails?|persona|memory|ingest|feed|folder|quote|psycholog|attitude|timeline)\b/i;
 
 const MONTH_EMAIL = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:\d{4}\s+)?emails?\b/i;
 
@@ -21,6 +21,10 @@ function isComposeEmailRequest(message) {
   if (/\b(?:delete|remove|trash|move)\b.*\b(?:emails?|mail|inbox)\b/i.test(text)) return false;
   if (/\b(?:clean\s*up|cleanup|clean)\b.*\b(?:emails?|inbox|mail|yahoo)\b/i.test(text)) return false;
   if (/\bemails?\s+to\s+(?:trash|junk|spam|folder|archive|inbox|the\s+trash)\b/i.test(text)) return false;
+  if (/\b(?:read|feed|ingest|fetch|get|scan|list|copy|open)\b[\s\S]{0,48}\bemails?\b/i.test(text)) return false;
+  if (/\bemails?\s+from\b/i.test(text)) return false;
+  if (/\bfolder\b/i.test(text)) return false;
+  if (/(?:心理|人格|敏)/u.test(text)) return false;
 
   if (/\b(?:send|draft|write|compose|reply)\b[\s\S]{0,100}\b(?:an?\s+)?emails?\b/i.test(text)) return true;
   if (/\b(?:send|draft|write|compose)\b[\s\S]{0,60}\b(?:an?\s+)?mail\b/i.test(text)

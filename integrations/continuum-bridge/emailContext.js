@@ -5,7 +5,7 @@ const fs = require('fs');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
-const { parseSenderFromMessage, resolveSenderForMailboxIngest, parseMailboxFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsAttitudeTimelineAnalysis, wantsSequentialEmailIngest, buildPersonaAnalysisNote, imapSearchArgs } = require('./emailSender');
+const { parseSenderFromMessage, resolveSenderForMailboxIngest, parseMailboxFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsAttitudeTimelineAnalysis, wantsSequentialEmailIngest, buildPersonaAnalysisNote, defaultPersonaMailbox, imapSearchArgs } = require('./emailSender');
 const {
   wantsEmailQuoteSearch,
   parseQuoteSearchPhrase,
@@ -756,7 +756,7 @@ function runImapSpawned(args, { timeoutMs, cwd, env, onProgress, cancelJobId = n
 
 async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProgress = null) {
   const fetchOptions = resolveEmailFetchOptions(message, payloadOptions);
-  let mailbox = fetchOptions.mailbox || parseMailboxFromMessage(message);
+  let mailbox = fetchOptions.mailbox || parseMailboxFromMessage(message) || defaultPersonaMailbox(message);
   let sender = parseMoveSenderFromMessage(message) || resolveSenderForMailboxIngest(message) || parseSenderFromMessage(message);
   const quoteSearch = wantsEmailQuoteSearch(message);
   const personaAnalysis = wantsSenderPersonaAnalysis(message);

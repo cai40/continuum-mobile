@@ -59,6 +59,10 @@ function parseSenderFromMessage(message) {
 }
 
 function resolveSenderForMailboxIngest(message) {
+  const text = String(message || '');
+  // Chinese nickname 敏 → Min Zhang
+  if (/\u654f/u.test(text)) return 'Min Zhang';
+
   const parsed = parseSenderFromMessage(message);
   if (parsed) {
     const cleaned = stripFolderSuffix(parsed);
@@ -78,21 +82,30 @@ function resolveSenderForMailboxIngest(message) {
 
 function wantsAttitudeTimelineAnalysis(message) {
   const text = String(message || '');
-  return /\b(attitude|timeline|time[\s-]?line|how\s+(?:her|his|their)\s+(?:feelings?|tone|attitude)|change(?:s|d)?\s+(?:over|in)\s+time|towards?\s+me|toward\s+me|relationship\s+(?:evolv|chang))\b/i.test(text);
+  return /\b(attitude|timeline|time[\s-]?line|how\s+(?:her|his|their)\s+(?:feelings?|tone|attitude)|change(?:s|d)?\s+(?:over|in)\s+time|towards?\s+me|toward\s+me|relationship\s+(?:evolv|chang))\b/i.test(text)
+    || /(?:态度|态度变化|timeline|时间线)/u.test(text);
+}
+
+function wantsChinesePersonaAnalysis(message) {
+  const text = String(message || '');
+  return /(?:心理分析|心理学|人格分析|性格分析|人设|心理画像)/u.test(text)
+    || (/\u654f/u.test(text) && /(?:心理|人格|性格|分析)/u.test(text));
 }
 
 function wantsFolderPersonaIngest(message) {
   const text = String(message || '');
-  if (!parseMailboxFromMessage(text)) return false;
-  return wantsSenderPersonaAnalysis(text) || wantsEmailMemoryIngest(text);
+  if (!parseMailboxFromMessage(text) && !/\u654f/u.test(text) && !/\bmin\s+zhang\b/i.test(text)) return false;
+  return wantsSenderPersonaAnalysis(text) || wantsEmailMemoryIngest(text) || wantsChinesePersonaAnalysis(text);
 }
 
 function wantsSenderPersonaAnalysis(message) {
   const text = String(message || '');
-  const hasPersonaKeywords = /\b(persona|analyze|analysis|thinking|communication\s+style|psycholog|attitude|timeline|time[\s-]?line|build(?:\s+up)?)\b/i.test(text);
+  const hasPersonaKeywords = /\b(persona|analyze|analysis|thinking|communication\s+style|psycholog|attitude|timeline|time[\s-]?line|build(?:\s+up)?)\b/i.test(text)
+    || wantsChinesePersonaAnalysis(text);
   const hasSender = resolveSenderForMailboxIngest(text) != null
     || parseSenderFromMessage(text) != null
-    || /\b(?:her|his|their)\s+(?:thinking|persona|style|attitude)\b/i.test(text);
+    || /\b(?:her|his|their)\s+(?:thinking|persona|style|attitude)\b/i.test(text)
+    || /\u654f/u.test(text);
   return hasPersonaKeywords && hasSender;
 }
 
@@ -119,6 +132,14 @@ function defaultFolderPersonaDateRange() {
     before: tomorrow,
     label: '2022 through today (folder persona scan)',
   };
+}
+
+/** When user names 敏 / Min Zhang but not a folder, default to Min folder for persona reads. */
+function defaultPersonaMailbox(message) {
+  const text = String(message || '');
+  if (parseMailboxFromMessage(text)) return parseMailboxFromMessage(text);
+  if (/\u654f/u.test(text) || /\bmin\s+(?:zhang|z)\b/i.test(text)) return 'Min';
+  return null;
 }
 
 function buildPersonaAnalysisNote(message) {
@@ -169,6 +190,8 @@ module.exports = {
   wantsFolderPersonaIngest,
   wantsSequentialEmailIngest,
   defaultFolderPersonaDateRange,
+  defaultPersonaMailbox,
+  wantsChinesePersonaAnalysis,
   buildPersonaAnalysisNote,
   imapSearchArgs,
 };
