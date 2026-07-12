@@ -46,6 +46,16 @@ const EMAIL_LIVE_INBOX_MOVE_APPEND = [
   'If no [Email move executed] block is present, do NOT claim mail was filed — tell the user the move did not run yet.',
 ].join(' ');
 
+const EMAIL_LIVE_INBOX_COPY_APPEND = [
+  EMAIL_LIVE_INBOX_APPEND,
+  'The OpenClaw VPS bridge COPIES Yahoo mail between folders via IMAP when the user asks — you do NOT run commands.',
+  'COPY leaves originals in the source folder; only duplicates appear in the destination (usually INBOX).',
+  'NEVER tell the user to run terminal, bash, shell, VPS, or CLI commands for email.',
+  'If [Permission required] appears below, do NOT say emails were copied — ask the user to reply "yes proceed" or raise the limit.',
+  'If [Email copy executed] appears below, confirm the source folder, destination, and count from that block only.',
+  'If no [Email copy executed] block is present, do NOT claim mail was copied — tell the user the copy did not run yet.',
+].join(' ');
+
 const WEB_SEARCH_APPEND = [
   'WEB SEARCH: Live web results were fetched on the OpenClaw VPS bridge for this turn.',
   'Use ONLY the [Web search] block for current events, scores, news, and weather.',
@@ -69,6 +79,7 @@ module.exports = {
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
   EMAIL_LIVE_INBOX_DELETE_APPEND,
   EMAIL_LIVE_INBOX_MOVE_APPEND,
+  EMAIL_LIVE_INBOX_COPY_APPEND,
   WEB_SEARCH_APPEND,
   appendGroundingPersona,
 };

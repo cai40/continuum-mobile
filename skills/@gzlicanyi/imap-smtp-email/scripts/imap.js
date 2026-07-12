@@ -1735,6 +1735,95 @@ async function moveMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) 
   }
 }
 
+// List UIDs in a mailbox (no body fetch — fast folder inventory)
+async function listUidsInMailbox(mailboxName, options = {}) {
+  const imap = await connect();
+
+  try {
+    const sourceBox = await resolveDestinationMailbox(imap, mailboxName);
+    await openBox(imap, sourceBox, true);
+    const allUids = await searchUids(imap, ['ALL']);
+    const limit = options.limit != null ? parseInt(options.limit, 10) : null;
+    const offset = parseInt(options.offset, 10) || 0;
+    const uids = limit != null
+      ? selectUidsByOffsetLimit(allUids, limit, offset)
+      : allUids;
+    return {
+      success: true,
+      uids,
+      total: allUids.length,
+      mailbox: sourceBox,
+    };
+  } finally {
+    imap.end();
+  }
+}
+
+// Copy all messages from one folder to another (Yahoo IMAP COPY — originals stay in source)
+async function copyAllFromFolderToMailbox(sourceName, destName, options = {}) {
+  if (!sourceName) {
+    throw new Error('Source folder required: node imap.js copy-all --mailbox <folder> --to <dest>');
+  }
+  if (!destName) {
+    throw new Error('Destination folder required: node imap.js copy-all --mailbox <folder> --to <dest>');
+  }
+
+  const limit = options.limit != null ? parseInt(options.limit, 10) : null;
+  const offset = parseInt(options.offset, 10) || 0;
+  const batchSize = parseInt(options.batchSize, 10) || 25;
+
+  const imap = await connect();
+
+  try {
+    const sourceBox = await resolveDestinationMailbox(imap, sourceName);
+    await openBox(imap, sourceBox, false);
+    const allUids = await searchUids(imap, ['ALL']);
+    const uids = limit != null
+      ? selectUidsByOffsetLimit(allUids, limit, offset)
+      : allUids;
+
+    if (uids.length === 0) {
+      const destBox = await resolveDestinationMailbox(imap, destName);
+      return {
+        success: true,
+        uids: [],
+        count: 0,
+        total: allUids.length,
+        action: 'copied_to_folder',
+        source_mailbox: sourceBox,
+        destination_mailbox: destBox,
+        batches: 0,
+      };
+    }
+
+    const destBox = await resolveDestinationMailbox(imap, destName);
+    let batchCount = 0;
+    for (let i = 0; i < uids.length; i += batchSize) {
+      const chunk = uids.slice(i, i + batchSize);
+      await new Promise((resolve, reject) => {
+        imap.copy(chunk, destBox, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      batchCount += 1;
+    }
+
+    return {
+      success: true,
+      uids,
+      count: uids.length,
+      total: allUids.length,
+      action: 'copied_to_folder',
+      source_mailbox: sourceBox,
+      destination_mailbox: destBox,
+      batches: batchCount,
+    };
+  } finally {
+    imap.end();
+  }
+}
+
 // Copy message(s) to a named mailbox/folder (Yahoo IMAP COPY — original stays in source folder)
 async function copyMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) {
   if (!uids || uids.length === 0) {
@@ -2001,6 +2090,30 @@ async function main() {
         result = await copyMessagesToMailbox(positional, options.to, options.mailbox);
         break;
 
+      case 'list-uids':
+        if (!options.mailbox) {
+          throw new Error('Mailbox required: node imap.js list-uids --mailbox <folder>');
+        }
+        result = await listUidsInMailbox(options.mailbox, {
+          limit: options.limit,
+          offset: options.offset,
+        });
+        break;
+
+      case 'copy-all':
+        if (!options.mailbox) {
+          throw new Error('Source mailbox required: node imap.js copy-all --mailbox <folder> --to <dest>');
+        }
+        if (!options.to) {
+          throw new Error('Destination folder required: --to <dest>');
+        }
+        result = await copyAllFromFolderToMailbox(options.mailbox, options.to, {
+          limit: options.limit,
+          offset: options.offset,
+          batchSize: options.batch,
+        });
+        break;
+
       case 'list-mailboxes':
         result = await listMailboxes();
         break;
@@ -2015,7 +2128,7 @@ async function main() {
 
       default:
         console.error('Unknown command:', command);
-        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, move, copy, list-mailboxes, list-accounts');
+        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, move, copy, copy-all, list-uids, list-mailboxes, list-accounts');
         process.exit(1);
     }
 
