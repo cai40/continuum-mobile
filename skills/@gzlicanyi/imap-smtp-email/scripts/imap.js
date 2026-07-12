@@ -510,13 +510,14 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
   const imap = await connect();
 
   try {
+    const resolvedMailbox = await resolveMailboxName(imap, mailbox);
     if (sinceStr && beforeStr) {
-      activeScanMailbox = mailbox;
+      activeScanMailbox = resolvedMailbox;
       lastDailyDaysChecked = null;
-      let rows = await fetchDateRangeForMailbox(imap, mailbox, {
+      let rows = await fetchDateRangeForMailbox(imap, resolvedMailbox, {
         sinceStr, beforeStr, limit, offset, lite, unreadOnly,
       });
-      if (rows.length === 0 && String(mailbox).toUpperCase() === 'INBOX') {
+      if (rows.length === 0 && String(resolvedMailbox).toUpperCase() === 'INBOX') {
         const archiveBox = await resolveArchiveMailbox(imap);
         if (archiveBox && archiveBox.toUpperCase() !== 'INBOX') {
           console.error(
@@ -555,7 +556,7 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
       return rows;
     }
 
-    await openBox(imap, mailbox);
+    await openBox(imap, resolvedMailbox);
 
     const searchCriteria = buildSearchCriteria({ unreadOnly, sinceStr, beforeStr, recentTime });
     const allUids = await searchUids(imap, searchCriteria);
@@ -649,7 +650,8 @@ async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox);
+    const resolvedMailbox = await resolveMailboxName(imap, mailbox);
+    await openBox(imap, resolvedMailbox);
 
     const searchCriteria = [['UID', uid]];
     const fetchOptions = {
@@ -682,7 +684,8 @@ async function downloadAttachments(uid, mailbox = DEFAULT_MAILBOX, outputDir = '
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox);
+    const resolvedMailbox = await resolveMailboxName(imap, mailbox);
+    await openBox(imap, resolvedMailbox);
 
     const searchCriteria = [['UID', uid]];
     const fetchOptions = {
@@ -1491,7 +1494,8 @@ async function searchEmails(options) {
   const imap = await connect();
 
   try {
-    const mailbox = options.mailbox || DEFAULT_MAILBOX;
+    const mailbox = await resolveMailboxName(imap, options.mailbox || DEFAULT_MAILBOX);
+    console.error(`[imap] search mailbox: ${mailbox}`);
     await openBox(imap, mailbox);
 
     const criteria = [];
@@ -1585,7 +1589,8 @@ async function markAsRead(uids, mailbox = DEFAULT_MAILBOX) {
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox);
+    const resolvedMailbox = await resolveMailboxName(imap, mailbox);
+    await openBox(imap, resolvedMailbox);
 
     return new Promise((resolve, reject) => {
       imap.addFlags(uids, '\\Seen', (err) => {
@@ -1603,7 +1608,8 @@ async function markAsUnread(uids, mailbox = DEFAULT_MAILBOX) {
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox);
+    const resolvedMailbox = await resolveMailboxName(imap, mailbox);
+    await openBox(imap, resolvedMailbox);
 
     return new Promise((resolve, reject) => {
       imap.delFlags(uids, '\\Seen', (err) => {
@@ -1674,7 +1680,8 @@ function findMailboxByName(boxes, targetName, prefix = '') {
     const fullName = prefix ? `${prefix}${info.delimiter}${name}` : name;
     const leaf = name.toLowerCase();
     if (leaf === want || fullName.toLowerCase() === want) return fullName;
-    if (leaf.includes(want) || want.includes(leaf)) partial = partial || fullName;
+    // Prefer exact leaf match over fuzzy partial (e.g. "Min" must not match "Mindset")
+    if (leaf === want || (leaf.startsWith(want) && want.length >= 3)) partial = partial || fullName;
     if (info.children) {
       const nested = findMailboxByName(info.children, targetName, fullName);
       if (nested) return nested;
@@ -1695,6 +1702,13 @@ async function resolveDestinationMailbox(imap, destName) {
   return resolved;
 }
 
+/** Resolve user-facing folder nicknames (e.g. "Min") to Yahoo IMAP mailbox paths before SELECT. */
+async function resolveMailboxName(imap, mailboxName) {
+  const raw = String(mailboxName || DEFAULT_MAILBOX).trim();
+  if (!raw || raw.toUpperCase() === 'INBOX') return DEFAULT_MAILBOX;
+  return resolveDestinationMailbox(imap, raw);
+}
+
 // Move message(s) to a named mailbox/folder (Yahoo IMAP MOVE)
 async function moveMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) {
   if (!uids || uids.length === 0) {
@@ -1712,7 +1726,8 @@ async function moveMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) 
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox, false);
+    const sourceBox = await resolveMailboxName(imap, mailbox);
+    await openBox(imap, sourceBox, false);
     const destBox = await resolveDestinationMailbox(imap, destName);
 
     return new Promise((resolve, reject) => {
@@ -1841,7 +1856,8 @@ async function copyMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) 
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox, false);
+    const sourceBox = await resolveMailboxName(imap, mailbox);
+    await openBox(imap, sourceBox, false);
     const destBox = await resolveDestinationMailbox(imap, destName);
 
     return new Promise((resolve, reject) => {
@@ -1878,7 +1894,8 @@ async function deleteMessages(uids, mailbox = DEFAULT_MAILBOX, options = {}) {
   const imap = await connect();
 
   try {
-    await openBox(imap, mailbox, false);
+    const sourceBox = await resolveMailboxName(imap, mailbox);
+    await openBox(imap, sourceBox, false);
 
     if (options.permanent) {
       return new Promise((resolve, reject) => {
