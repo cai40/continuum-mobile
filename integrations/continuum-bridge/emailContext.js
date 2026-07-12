@@ -938,6 +938,9 @@ function formatImapError(err, fetchOptions = {}) {
     const limit = fetchOptions.limit || '?';
     return `Yahoo IMAP failed: inbox response too large (${limit} emails). The bridge now uses lite mode; run git pull and restart continuum-bridge. If it persists, try limit 100.`;
   }
+  if (/SELECT error|Folder does not exist|Folder not found/i.test(detail)) {
+    return `Yahoo IMAP failed: ${detail}. For custom folders (e.g. Min), the bridge resolves Yahoo folder paths before SELECT. If it persists, verify the folder name in Yahoo Mail or ask Continuum to list mailboxes.`;
+  }
   if (/auth|login|invalid credentials|authentication failed|password/i.test(detail)) {
     return `Yahoo IMAP failed: ${detail}. Check app password at ~/.config/mail-skills/.env`;
   }
