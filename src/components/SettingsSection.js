@@ -27,6 +27,16 @@ import {
 import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
+import {
+  collectMemoryMatches,
+  filterMemoryList,
+  memoryItemKey,
+  memoryItemMeta,
+  memoryItemText,
+  MEMORY_DEFAULT_VISIBLE,
+} from "../utils/memoryDisplay";
+import MemoryFragmentCard from "./shared/MemoryFragmentCard";
+import { MemorySearchPanel } from "./shared/MemorySearchPanel";
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumCleanup";
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from "../utils/photoCleanupCancel";
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
@@ -96,11 +106,16 @@ const SettingsSection = (props) => {
   const [newCoreMemory, setNewCoreMemory] = useState("");
   const [showAddCore, setShowAddCore] = useState(false);
   const [expandedLayers, setExpandedLayers] = useState({
-    l1: true,
+    l1: false,
     l2: false,
     l3: false,
     l4: false,
     l5: false
+  });
+  const [memorySearchQuery, setMemorySearchQuery] = useState('');
+  const [expandedMemoryIds, setExpandedMemoryIds] = useState({});
+  const [memoryShowAll, setMemoryShowAll] = useState({
+    l1: false, l2: false, l3: false, l4: false, l5: false,
   });
   const [cloudPulse, setCloudPulse] = useState(null);
 
@@ -176,6 +191,73 @@ const SettingsSection = (props) => {
       ...prev,
       [layer]: !prev[layer]
     }));
+  };
+
+  const toggleMemoryExpanded = (key) => {
+    setExpandedMemoryIds((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const memoryLayers = {
+    pinnedMemories,
+    episodicSegments,
+    semanticProfile,
+    temporalEvents,
+    knowledgeBase,
+  };
+
+  const memorySearchMatches = collectMemoryMatches(memoryLayers, memorySearchQuery);
+  const hasMemorySearch = String(memorySearchQuery || '').trim().length > 0;
+
+  const renderMemoryLayerItems = (items, layer, borderColor, emptyText) => {
+    const filtered = filterMemoryList(items, layer, memorySearchQuery);
+    if (hasMemorySearch && filtered.length === 0) {
+      return (
+        <Text style={{ fontSize: 12, color: theme.colors.gray, fontStyle: 'italic', marginBottom: 10 }}>
+          No matches in this layer.
+        </Text>
+      );
+    }
+    if (!filtered.length) {
+      return (
+        <Text style={{ fontSize: 12, color: theme.colors.gray, fontStyle: 'italic', marginBottom: 10 }}>
+          {emptyText}
+        </Text>
+      );
+    }
+
+    const visibleCap = hasMemorySearch || memoryShowAll[layer]
+      ? filtered.length
+      : MEMORY_DEFAULT_VISIBLE;
+    const visible = filtered.slice(0, visibleCap);
+    const hiddenCount = filtered.length - visible.length;
+
+    return (
+      <>
+        {visible.map((item, index) => {
+          const key = memoryItemKey(layer, item, index);
+          return (
+            <MemoryFragmentCard
+              key={key}
+              text={memoryItemText(item, layer)}
+              meta={memoryItemMeta(item, layer)}
+              expanded={!!expandedMemoryIds[key]}
+              onToggle={() => toggleMemoryExpanded(key)}
+              borderColor={borderColor}
+            />
+          );
+        })}
+        {hiddenCount > 0 ? (
+          <TouchableOpacity
+            onPress={() => setMemoryShowAll((prev) => ({ ...prev, [layer]: true }))}
+            style={{ paddingVertical: 8, marginBottom: 8 }}
+          >
+            <Text style={{ fontSize: 12, color: theme.colors.primary, fontWeight: '700' }}>
+              Show {hiddenCount} more in this layer
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+      </>
+    );
   };
 
   const handleSyncKnowledge = async () => {
@@ -1149,6 +1231,15 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       </View>
 
       <View style={{ marginBottom: 30 }}>
+        <MemorySearchPanel
+          query={memorySearchQuery}
+          onChangeQuery={setMemorySearchQuery}
+          matchCount={memorySearchMatches.length}
+          matches={memorySearchMatches}
+          expandedIds={expandedMemoryIds}
+          onToggleExpanded={toggleMemoryExpanded}
+        />
+
         {/* --- LAYER 1: PINNED --- */}
         <TouchableOpacity 
           onPress={() => toggleLayer('l1')}
@@ -1218,23 +1309,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               </View>
             )}
 
-            {pinnedMemories.map((m) => (
-              <View
-                key={m.id}
-                style={{
-                  backgroundColor: theme.colors.white,
-                  padding: 14,
-                  borderRadius: 12,
-                  marginBottom: 8,
-                  borderLeftWidth: 3,
-                  borderLeftColor: theme.colors.primary,
-                }}
-              >
-                <Text style={{ fontSize: 14, color: theme.colors.black }}>
-                  {m.content}
-                </Text>
-              </View>
-            ))}
+            {renderMemoryLayerItems(pinnedMemories, 'l1', theme.colors.primary, 'No pinned truths yet.')}
           </View>
         )}
 
@@ -1262,39 +1337,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l2 && (
           <View>
-            {episodicSegments && episodicSegments.length > 0 ? (
-              episodicSegments.map((item) => (
-                <View
-                  key={`eps_${item.id}`}
-                  style={[
-                    styles.cardItem,
-                    {
-                      marginHorizontal: 0,
-                      marginBottom: 10,
-                    },
-                  ]}
-                >
-                  <Text style={{ fontSize: 13, color: theme.colors.gray }}>
-                    "{item.content}"
-                  </Text>
-                  <Text
-                    style={{ fontSize: 9, color: theme.colors.gray, marginTop: 4 }}
-                  >
-                    {formatFullDate(item.created_at)}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: theme.colors.gray,
-                  fontStyle: "italic",
-                }}
-              >
-                No recent conversations cached.
-              </Text>
-            )}
+            {renderMemoryLayerItems(episodicSegments, 'l2', theme.colors.gray, 'No recent conversations cached.')}
           </View>
         )}
 
@@ -1322,43 +1365,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l3 && (
           <View>
-            {semanticProfile && semanticProfile.length > 0 ? (
-              semanticProfile.map((item) => (
-                <View
-                  key={`sem_${item.id}`}
-                  style={[
-                    styles.cardItem,
-                    {
-                      marginHorizontal: 0,
-                      marginBottom: 10,
-                      borderLeftWidth: 3,
-                      borderLeftColor: theme.colors.primary,
-                    },
-                  ]}
-                >
-                  <Text style={{ fontSize: 14, color: theme.colors.black }}>
-                    {item.content}
-                  </Text>
-                  <Text
-                    style={{ fontSize: 9, color: theme.colors.gray, marginTop: 4 }}
-                  >
-                    [{item.type?.toUpperCase() || "FACT"}] •{" "}
-                    {new Date(item.created_at).toLocaleDateString()}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: theme.colors.gray,
-                  fontStyle: "italic",
-                  marginBottom: 10,
-                }}
-              >
-                No permanent facts extracted yet.
-              </Text>
-            )}
+            {renderMemoryLayerItems(semanticProfile, 'l3', theme.colors.primary, 'No permanent facts extracted yet.')}
           </View>
         )}
 
@@ -1386,43 +1393,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l4 && (
           <View>
-            {temporalEvents && temporalEvents.length > 0 ? (
-              temporalEvents.map((item) => (
-                <View
-                  key={`tmp_${item.id}`}
-                  style={[
-                    styles.cardItem,
-                    {
-                      marginHorizontal: 0,
-                      marginBottom: 10,
-                      borderLeftWidth: 3,
-                      borderLeftColor: theme.colors.secondary,
-                    },
-                  ]}
-                >
-                  <Text style={{ fontSize: 14, color: theme.colors.black }}>
-                    {item.event_description}
-                  </Text>
-                  <Text
-                    style={{ fontSize: 9, color: theme.colors.gray, marginTop: 4 }}
-                  >
-                    [{item.state?.toUpperCase() || "PLANNED"}] •{" "}
-                    {new Date(item.created_at).toLocaleDateString()}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: theme.colors.gray,
-                  fontStyle: "italic",
-                  marginBottom: 10,
-                }}
-              >
-                No temporal events recorded.
-              </Text>
-            )}
+            {renderMemoryLayerItems(temporalEvents, 'l4', theme.colors.secondary, 'No temporal events recorded.')}
           </View>
         )}
 
@@ -1476,36 +1447,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               <Text style={{ fontSize: 11, color: '#0ea5e9', marginBottom: 12 }}>{syncProgress}</Text>
             ) : null}
 
-            {knowledgeBase && knowledgeBase.length > 0 ? (
-              knowledgeBase.map((item) => (
-                <View
-                  key={`knw_${item.id}`}
-                  style={[
-                    styles.cardItem,
-                    {
-                      marginHorizontal: 0,
-                      marginBottom: 10,
-                      borderLeftWidth: 3,
-                      borderLeftColor: '#0ea5e9',
-                    },
-                  ]}
-                >
-                  <Text style={{ fontSize: 13, color: theme.colors.black, fontWeight: '600' }} numberOfLines={1}>
-                    {item.source || "External Resource"}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
-                    {item.content?.substring(0, 100)}...
-                  </Text>
-                  <Text style={{ fontSize: 9, color: theme.colors.gray, marginTop: 4, fontStyle: 'italic' }}>
-                    Vectorized on {new Date(item.timestamp).toLocaleDateString()}
-                  </Text>
-                </View>
-              ))
-            ) : (
-              <Text style={{ fontSize: 12, color: theme.colors.gray, fontStyle: "italic", marginBottom: 10 }}>
-                Knowledge Base is empty. Vectorize documents to populate Layer 5.
-              </Text>
-            )}
+            {renderMemoryLayerItems(knowledgeBase, 'l5', '#0ea5e9', 'Knowledge Base is empty. Vectorize documents to populate Layer 5.')}
           </View>
         )}
 
