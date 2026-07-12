@@ -5,7 +5,7 @@ const fs = require('fs');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
-const { parseSenderFromMessage, resolveSenderForMailboxIngest, parseMailboxFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsAttitudeTimelineAnalysis, wantsSequentialEmailIngest, buildPersonaAnalysisNote, defaultPersonaMailbox, imapSearchArgs } = require('./emailSender');
+const { parseSenderFromMessage, resolveSenderForMailboxIngest, parseMailboxFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsAttitudeTimelineAnalysis, wantsSequentialEmailIngest, buildPersonaAnalysisNote, defaultPersonaMailbox, imapSearchArgs, shouldBypassEmailSummaryMode } = require('./emailSender');
 const {
   wantsEmailQuoteSearch,
   parseQuoteSearchPhrase,
@@ -505,13 +505,14 @@ function formatEmailMessages(rawStdout, limit, offset = 0, dateRangeLabel = null
   const cleanupRequested = wantsEmailCleanup(options.message || '');
   const personaAnalysis = wantsSenderPersonaAnalysis(options.message || '');
   const quoteSearch = wantsEmailQuoteSearch(options.message || '');
-  const summaryOnly = !personaAnalysis && !quoteSearch && (
+  const ingestContext = shouldBypassEmailSummaryMode(options.message || '');
+  const summaryOnly = !personaAnalysis && !quoteSearch && !ingestContext && (
     options.summaryOnly
     || wantsEmailSummaryOnly(options.message || '')
     || fetchedCount > 250
     || cleanupRequested
   );
-  const personaMode = personaAnalysis || quoteSearch;
+  const personaMode = personaAnalysis || quoteSearch || ingestContext;
   const compactPersona = personaMode && fetchedCount > PERSONA_COMPACT_THRESHOLD;
   const previewLen = personaMode
     ? resolvePersonaPreviewLen(fetchedCount, quoteSearch)
@@ -884,7 +885,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
     fetchOptions.dateRangeLabel || null,
     scanMeta,
     {
-      summaryOnly: wantsEmailSummaryOnly(message) && !wantsEmailCleanup(message),
+      summaryOnly: wantsEmailSummaryOnly(message) && !wantsEmailCleanup(message) && !shouldBypassEmailSummaryMode(message),
       message,
     },
   );
@@ -897,7 +898,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
   const messages = formatted.messages;
   if (sender || mailbox) {
     const memoryNote = wantsEmailMemoryIngest(message)
-      ? 'MEMORY INGEST: User wants these emails fed into Continuum memory in chronological order when possible. Extract durable facts, commitments, dates, and relationship context. Confirm what you captured.'
+      ? 'MEMORY INGEST: User wants these emails fed into Continuum memory in chronological order when possible. Extract durable facts, commitments, dates, and relationship context. Every claim MUST cite UID and Date from the list below. End with "## UID INDEX" listing cited emails as "UID x | Date: y | Subject: z". Confirm what you captured.'
       : null;
     const personaNote = buildPersonaAnalysisNote(message);
     const dateSpanBlock = (personaAnalysis || quoteSearch)
@@ -1312,7 +1313,8 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     }
 
     const cleanupRequested = wantsEmailCleanup(effectiveMessage);
-    if (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '') || cleanupRequested || cleanupPreviewRequested) {
+    const ingestContext = shouldBypassEmailSummaryMode(effectiveMessage);
+    if (!ingestContext && (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '') || cleanupRequested || cleanupPreviewRequested)) {
       const prefilled = buildPrefilledSummaryReply({
         dateRangeLabel: fetchOptions.dateRangeLabel,
         scanMeta,

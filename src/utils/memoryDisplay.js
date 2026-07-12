@@ -73,7 +73,7 @@ export function isEmailEvidenceQuery(query) {
 export function extractEmailEvidenceForPin(assistantText, maxChars = 1800) {
   const text = String(assistantText || '');
   const lines = text.split('\n');
-  const kept = [];
+  const uidLines = [];
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -82,12 +82,50 @@ export function extractEmailEvidenceForPin(assistantText, maxChars = 1800) {
       || /\*\*UID\s+\d{5,7}\*\*/i.test(trimmed)
       || /\b641\d{3}\b/.test(trimmed)
     ) {
-      kept.push(trimmed.replace(/\*\*/g, ''));
+      uidLines.push(trimmed.replace(/\*\*/g, ''));
     }
   }
-  if (!kept.length) return '';
-  const header = 'Min Zhang email evidence (UID + Date):';
-  let body = kept.join('\n');
+  if (uidLines.length) {
+    const header = 'Min Zhang email evidence (UID + Date):';
+    let body = uidLines.join('\n');
+    if (`${header}\n${body}`.length > maxChars) {
+      body = body.slice(0, maxChars - header.length - 16) + '\n… [truncated]';
+    }
+    return `${header}\n${body}`;
+  }
+
+  if (!/\*\*Matched:\*\*|\bMatched:\s*\d+/i.test(text)) return '';
+  const scanLines = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (/^##\s+.+\s+Summary/i.test(trimmed)) {
+      scanLines.push(trimmed.replace(/^##\s+/, ''));
+      continue;
+    }
+    if (/^\*\*Matched:\*\*|^\*\*Loaded for analysis:\*\*|^\*\*Not loaded/i.test(trimmed)) {
+      scanLines.push(trimmed.replace(/\*\*/g, ''));
+      continue;
+    }
+    if (/^\*\*Unread:\*\*/i.test(trimmed)) {
+      scanLines.push(trimmed.replace(/\*\*/g, ''));
+      continue;
+    }
+    if (/^\*\*By Category:\*\*|^\*\*Top Senders:\*\*|^\*\*Cleanup targets:\*\*/i.test(trimmed)) {
+      scanLines.push(trimmed.replace(/\*\*/g, ''));
+      continue;
+    }
+    if (/^-\s+\*\*Matched:\*\*/i.test(trimmed) || /^-\s+\*\*Loaded/i.test(trimmed) || /^-\s+\*\*Unread/i.test(trimmed)) {
+      scanLines.push(trimmed.replace(/^-\s+/, '').replace(/\*\*/g, ''));
+      continue;
+    }
+    if (/^-\s+[a-z][\w\s-]*:\s*\d+$/i.test(trimmed) || /^-\s+.+:\s*\d+$/.test(trimmed)) {
+      scanLines.push(trimmed);
+    }
+  }
+  if (scanLines.length < 2) return '';
+  const header = 'Min folder email scan summary:';
+  let body = scanLines.join('\n');
   if (`${header}\n${body}`.length > maxChars) {
     body = body.slice(0, maxChars - header.length - 16) + '\n… [truncated]';
   }

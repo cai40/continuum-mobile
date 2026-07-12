@@ -21,6 +21,7 @@ const {
   wantsEmailMemoryIngest,
   parseSenderFromMessage,
   wantsFolderPersonaIngest,
+  shouldBypassEmailSummaryMode,
   wantsAttitudeTimelineAnalysis,
 } = require('./emailSender');
 const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
@@ -330,7 +331,8 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
 
     const cleanupRequested = wantsEmailCleanup(message);
     const cleanupPreviewRequested = wantsEmailCleanupPreview(message);
-    const summaryOnly = (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext))
+    const summaryOnly = !shouldBypassEmailSummaryMode(message)
+      && (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext))
       && !cleanupRequested;
 
     // If trash/cleanup was executed, surface that stage to the user.

@@ -129,6 +129,16 @@ function wantsEmailMemoryIngest(message) {
   return wantsDirectEmailMemoryIngest(text);
 }
 
+const { isExplicitFullEmailFetch } = require('../../shared/emailRecallEvidence');
+
+/** Full-folder / memory ingest must keep UID+Date context — not aggregate summary-only mode. */
+function shouldBypassEmailSummaryMode(message) {
+  const text = String(message || '');
+  return wantsFolderPersonaIngest(text)
+    || wantsEmailMemoryIngest(text)
+    || isExplicitFullEmailFetch(text);
+}
+
 function defaultFolderPersonaDateRange() {
   const tomorrow = addDays(new Date().toISOString().slice(0, 10), 1);
   return {
@@ -193,6 +203,7 @@ module.exports = {
   wantsSenderPersonaAnalysis,
   wantsAttitudeTimelineAnalysis,
   wantsFolderPersonaIngest,
+  shouldBypassEmailSummaryMode,
   wantsSequentialEmailIngest,
   defaultFolderPersonaDateRange,
   defaultPersonaMailbox,
