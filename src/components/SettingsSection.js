@@ -29,7 +29,9 @@ import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 import {
   collectMemoryMatches,
+  countInteractionOnlyMatches,
   filterMemoryList,
+  memoryFragmentKind,
   memoryItemKey,
   memoryItemMeta,
   memoryItemText,
@@ -206,6 +208,7 @@ const SettingsSection = (props) => {
   };
 
   const memorySearchMatches = collectMemoryMatches(memoryLayers, memorySearchQuery);
+  const questionLogCount = countInteractionOnlyMatches(memoryLayers, memorySearchQuery);
   const hasMemorySearch = String(memorySearchQuery || '').trim().length > 0;
 
   const renderMemoryLayerItems = (items, layer, borderColor, emptyText) => {
@@ -235,14 +238,17 @@ const SettingsSection = (props) => {
       <>
         {visible.map((item, index) => {
           const key = memoryItemKey(layer, item, index);
+          const text = memoryItemText(item, layer);
+          const kind = memoryFragmentKind(text, layer);
           return (
             <MemoryFragmentCard
               key={key}
-              text={memoryItemText(item, layer)}
+              text={text}
               meta={memoryItemMeta(item, layer)}
+              kind={kind}
               expanded={!!expandedMemoryIds[key]}
               onToggle={() => toggleMemoryExpanded(key)}
-              borderColor={borderColor}
+              borderColor={kind === 'evidence' ? theme.colors.success : borderColor}
             />
           );
         })}
@@ -1238,6 +1244,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           matches={memorySearchMatches}
           expandedIds={expandedMemoryIds}
           onToggleExpanded={toggleMemoryExpanded}
+          questionLogCount={questionLogCount}
         />
 
         {/* --- LAYER 1: PINNED --- */}

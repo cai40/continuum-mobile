@@ -14,7 +14,7 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories } from '../services/apiService';
+import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
@@ -58,6 +58,7 @@ import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, parseRecallMonthFromMessage } from '../utils/emailFollowUpIntent';
 import { findLatestPersonaAnalysisContent } from '../utils/emailRecallEvidence';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
+import { extractEmailEvidenceForPin } from '../utils/memoryDisplay';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -115,6 +116,7 @@ const ChatSection = () => {
     pendingChatMessage,
     setPendingChatMessage,
     markServerHealthy,
+    onRefreshMemories,
   } = useAppContext();
 
   const [input, setInput] = useState('');
@@ -861,6 +863,30 @@ const ChatSection = () => {
           }
           return [...prev, ...aiMsgs];
         });
+
+        if ((isRecallEvidenceFetch || isEmailBridgeQuery) && activeToken) {
+          const pinBody = extractEmailEvidenceForPin(finalText);
+          if (pinBody) {
+            Alert.alert(
+              'Pin email evidence to L1?',
+              'Memory L2 only saved your questions — not UID+Date lines. Pin this summary to Core Memory so Setup search finds it.',
+              [
+                { text: 'Not now', style: 'cancel' },
+                {
+                  text: 'Pin to L1',
+                  onPress: async () => {
+                    try {
+                      await pinCoreMemory(pinBody, activeToken, 'Min email evidence');
+                      onRefreshMemories?.(activeToken);
+                    } catch {
+                      Alert.alert('Pin failed', 'Could not save to Core Memory.');
+                    }
+                  },
+                },
+              ],
+            );
+          }
+        }
       };
 
       const startRenderStream = () => {

@@ -161,6 +161,20 @@ export const fetchMemories = async (
   }
 };
 
+export async function pinCoreMemory(content, authToken, label = 'Email evidence') {
+  if (!content?.trim() || !authToken) return null;
+  return pulseFetch(
+    `${API_URL}/memories/pin`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ content: content.trim(), label }),
+    },
+    3,
+    null,
+    authToken,
+  );
+}
+
 export const chatStream = (
   formData,
   onUpdate,

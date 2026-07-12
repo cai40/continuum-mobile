@@ -9,6 +9,71 @@ export const MEMORY_QUICK_FILTERS = [
 export const MEMORY_PREVIEW_CHARS = 220;
 export const MEMORY_DEFAULT_VISIBLE = 12;
 
+/** L2 often stores "Interaction: <user question>" without email body or UIDs. */
+export function isInteractionQuestionLog(text) {
+  return /^Interaction:\s*/i.test(String(text || '').trim());
+}
+
+export function hasEmailEvidenceSignals(text) {
+  const t = String(text || '');
+  return /\bUID\s+\d{5,7}\b/i.test(t)
+    || /\b641\d{3}\b/.test(t)
+    || /\b20\d{2}-\d{2}-\d{2}\b/.test(t)
+    || /\bDate:\s*/i.test(t)
+    || /\bPreview:/i.test(t)
+    || /\bSubject:/i.test(t);
+}
+
+export function isLowValueForEmailRecall(text, layer) {
+  if (layer === 'l2' && isInteractionQuestionLog(text) && !hasEmailEvidenceSignals(text)) {
+    return true;
+  }
+  return false;
+}
+
+export function memoryFragmentKind(text, layer) {
+  if (isInteractionQuestionLog(text) && !hasEmailEvidenceSignals(text)) return 'question';
+  if (hasEmailEvidenceSignals(text)) return 'evidence';
+  if (layer === 'l3' || layer === 'l4') return 'fact';
+  return 'other';
+}
+
+export function rankMemoryFragment(text, layer, keywords, query = '') {
+  let score = 0;
+  const lower = String(text || '').toLowerCase();
+  for (const kw of keywords) {
+    if (lower.includes(kw.toLowerCase())) score += kw.length > 4 ? 3 : 1;
+  }
+  if (hasEmailEvidenceSignals(text)) score += 20;
+  if (isLowValueForEmailRecall(text, layer)) score -= 25;
+  if (/^Interaction:/i.test(text) && /\b(?:remember|cite|boundary)\b/i.test(query)) score -= 10;
+  return score;
+}
+
+export function isEmailEvidenceQuery(query) {
+  const q = String(query || '').toLowerCase();
+  return /\b(?:min|zhang|boundary|email|uid|april|641\d{3})\b/.test(q);
+}
+
+/** Compact UID+Date block from assistant reply for L1 pin. */
+export function extractEmailEvidenceForPin(assistantText, maxChars = 1800) {
+  const text = String(assistantText || '');
+  const lines = text.split('\n');
+  const kept = [];
+  for (const line of lines) {
+    if (/\bUID\s+\d{5,7}\b/i.test(line) || /\b641\d{3}\b/.test(line)) {
+      kept.push(line.trim());
+    }
+  }
+  if (!kept.length) return '';
+  const header = 'Min Zhang email evidence (UID + Date):';
+  let body = kept.join('\n');
+  if (`${header}\n${body}`.length > maxChars) {
+    body = body.slice(0, maxChars - header.length - 16) + '\n… [truncated]';
+  }
+  return `${header}\n${body}`;
+}
+
 export function memoryItemText(item, layer) {
   if (!item) return '';
   if (layer === 'l4') return String(item.event_description || '');
@@ -58,6 +123,9 @@ export function collectMemoryMatches(layers, query, limit = 48) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return [];
 
+  const keywords = q.split(/\s+/).filter((w) => w.length > 1);
+  const emailQuery = isEmailEvidenceQuery(q);
+
   const pools = [
     ['L1', 'l1', layers.pinnedMemories],
     ['L2', 'l2', layers.episodicSegments],
@@ -69,26 +137,41 @@ export function collectMemoryMatches(layers, query, limit = 48) {
   const results = [];
   for (const [layerLabel, layer, items] of pools) {
     for (const item of items || []) {
-      if (matchesMemoryQuery(item, layer, q)) {
-        results.push({
-          layer,
-          layerLabel,
-          item,
-          text: memoryItemText(item, layer),
-          meta: memoryItemMeta(item, layer),
-          id: item.id || `${layer}_${results.length}`,
-        });
-      }
+      const text = memoryItemText(item, layer);
+      if (!matchesMemoryQuery(item, layer, q)) continue;
+      if (emailQuery && isLowValueForEmailRecall(text, layer)) continue;
+      results.push({
+        layer,
+        layerLabel,
+        item,
+        text,
+        meta: memoryItemMeta(item, layer),
+        id: item.id || `${layer}_${results.length}`,
+        kind: memoryFragmentKind(text, layer),
+        score: rankMemoryFragment(text, layer, keywords, q),
+      });
     }
   }
 
   results.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
     const da = String(a.item?.created_at || a.item?.timestamp || '');
     const db = String(b.item?.created_at || b.item?.timestamp || '');
     return db.localeCompare(da);
   });
 
   return results.slice(0, limit);
+}
+
+export function countInteractionOnlyMatches(layers, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return 0;
+  let count = 0;
+  for (const item of layers.episodicSegments || []) {
+    const text = memoryItemText(item, 'l2');
+    if (matchesMemoryQuery(item, 'l2', q) && isInteractionQuestionLog(text)) count += 1;
+  }
+  return count;
 }
 
 export function memoryItemKey(layer, item, index = 0) {

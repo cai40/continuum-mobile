@@ -7,6 +7,7 @@ export default function MemoryFragmentCard({
   text,
   meta,
   layerLabel,
+  kind,
   expanded,
   onToggle,
   borderColor = theme.colors.border,
@@ -35,7 +36,7 @@ export default function MemoryFragmentCard({
     >
       {layerLabel ? (
         <Text style={{ fontSize: 9, fontWeight: '800', color: theme.colors.primary, marginBottom: 6 }}>
-          {layerLabel}
+          {layerLabel}{kind === 'question' ? ' · QUESTION LOG' : kind === 'evidence' ? ' · EVIDENCE' : ''}
         </Text>
       ) : null}
       <Text style={{ fontSize: 13, color: theme.colors.black, lineHeight: 19 }}>

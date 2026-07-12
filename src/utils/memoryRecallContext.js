@@ -1,5 +1,10 @@
 /** Search L2–L4 (+ L1 pins) and build an injection block for cross-session recall. */
 
+import {
+  isLowValueForEmailRecall,
+  rankMemoryFragment,
+} from './memoryDisplay';
+
 const DEFAULT_KEYWORDS = [
   'min zhang', 'min folder', '敏', 'boundary', '641820', '641814', '641826', '641807',
   'april 2026', '2026-04', 'child-related', 'boys',
@@ -24,15 +29,6 @@ function extractKeywords(message) {
   if (/\bboundary\b/i.test(text)) keys.push('boundary');
   if (/\bemail/i.test(text)) keys.push('email');
   return [...new Set(keys.filter(Boolean))];
-}
-
-function scoreFragment(text, keywords) {
-  const lower = text.toLowerCase();
-  let score = 0;
-  for (const kw of keywords) {
-    if (lower.includes(kw.toLowerCase())) score += kw.length > 4 ? 3 : 1;
-  }
-  return score;
 }
 
 export function wantsContinuumMemoryRecall(message) {
@@ -61,7 +57,9 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000) {
     .map(({ layer, item }) => {
       const content = itemText(item);
       if (!content) return null;
-      const score = scoreFragment(content, keywords);
+      const layerKey = String(layer).toLowerCase();
+      if (layerKey !== 'l1' && isLowValueForEmailRecall(content, layerKey)) return null;
+      const score = rankMemoryFragment(content, layerKey, keywords, message);
       return score > 0 ? { layer, content, date: itemDate(item), score } : null;
     })
     .filter(Boolean)
@@ -70,8 +68,8 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000) {
   if (!ranked.length) {
     return [
       '[CONTINUUM MEMORY — retrieval for this turn]',
-      'No L1–L5 fragments matched Min Zhang, boundary emails, or the requested topic.',
-      'Do NOT claim OOM or failed fetches unless shown in this turn. Say memory has no matching facts and offer a Min-folder fetch or file attachment.',
+      'No email evidence (UID+Date) found in L1–L5 — only question logs or unrelated facts may exist.',
+      'Offer a Min-folder fetch for the requested month; do NOT claim OOM unless shown in this turn.',
     ].join('\n');
   }
 

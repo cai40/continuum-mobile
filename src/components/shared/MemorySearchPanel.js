@@ -12,6 +12,7 @@ export function MemorySearchPanel({
   matches,
   expandedIds,
   onToggleExpanded,
+  questionLogCount = 0,
 }) {
   const hasQuery = String(query || '').trim().length > 0;
 
@@ -80,8 +81,10 @@ export function MemorySearchPanel({
         <View style={{ marginTop: 4 }}>
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 10 }}>
             {matchCount === 0
-              ? 'No fragments matched. Try “min”, “boundary”, or “april 2026”.'
-              : `${matchCount} matching fragment${matchCount === 1 ? '' : 's'} (newest first)`}
+              ? (questionLogCount > 0
+                ? `Found ${questionLogCount} question log(s) in L2 but no UID/Date email evidence. Run an April Min-folder fetch in chat, then Pin to L1.`
+                : 'No fragments matched. Try “min”, “boundary”, or “april 2026”.')
+              : `${matchCount} matching fragment${matchCount === 1 ? '' : 's'} (evidence ranked first)`}
           </Text>
           {matches.map((row) => {
             const key = `${row.layer}_${row.id}`;
@@ -89,11 +92,12 @@ export function MemorySearchPanel({
               <MemoryFragmentCard
                 key={key}
                 layerLabel={row.layerLabel}
+                kind={row.kind}
                 text={row.text}
                 meta={row.meta}
                 expanded={!!expandedIds[key]}
                 onToggle={() => onToggleExpanded(key)}
-                borderColor={theme.colors.primary}
+                borderColor={row.kind === 'evidence' ? theme.colors.success : theme.colors.primary}
               />
             );
           })}
