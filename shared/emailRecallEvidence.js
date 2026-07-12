@@ -172,15 +172,34 @@ function resolveRecallMonthRange(message, messages) {
   return null;
 }
 
+function isExplicitFullEmailFetch(message) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  if (/\b(?:read|fetch|get|load|scan)\s+(?:all|every)\s+emails?\b/i.test(text)) return true;
+  if (/\b(?:read|fetch|get|load|scan)\s+(?:all|every)\s+email\b/i.test(text)) return true;
+  if (/\b(?:feed|ingest|import|load)\b/i.test(text)
+    && /\b(?:continuum|memory|brain|into\s+memory|persona)\b/i.test(text)
+    && /\b(?:emails?|mail|folder|min)\b/i.test(text)) {
+    return true;
+  }
+  if (/\b(?:persona|attitude|timeline)\b/i.test(text)
+    && /\b(?:read|fetch|folder|from|since|202\d)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
 function needsTargetedRecallEvidenceFetch(message, messages) {
   const text = String(message || '').trim();
   if (!text) return false;
+  if (isExplicitFullEmailFetch(text)) return false;
 
   const isEmailRecall = /\b(?:what do you remember|cite\s+(?:the\s+)?(?:uid|uids)|uid\s+and\s+date|boundary|persona|timeline|evidence|proof)\b/i.test(text);
   const mentionsMin = /\b(?:min\s+zhang|min\s+folder|\u654f)\b/i.test(text) || /\bmin\b/i.test(text);
   const monthRange = resolveRecallMonthRange(text, messages);
 
-  if (monthRange && (isEmailRecall || mentionsMin) && (mentionsMin || /\bboundary\b/i.test(text))) {
+  // Recall questions only — NOT "read every email from Min folder" (mentionsMin alone must not trigger).
+  if (monthRange && isEmailRecall && (mentionsMin || /\bboundary\b/i.test(text))) {
     if (hasMonthEvidenceInPersona(messages, monthRange)) return false;
     return true;
   }
@@ -266,6 +285,7 @@ module.exports = {
   hasMonthEvidenceInPersona,
   resolveRecallMonthRange,
   needsTargetedRecallEvidenceFetch,
+  isExplicitFullEmailFetch,
   isClientRecallEnvelope,
   extractUserRecallQuestion,
   buildTargetedRecallFetchMessage,
