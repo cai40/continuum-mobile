@@ -15,4 +15,4 @@ export const SHORT_SILENCE_TIMEOUT = 2000; // 2s
 export const LONG_SILENCE_TIMEOUT = 10000; // 10s
 export const BUILD_ID = "3.4.101-2024EmailFix";
 export const APP_VERSION = "3.4.101";
-export const GIT_COMMIT = '077c7f6';
+export const GIT_COMMIT = 'ecfb6f0';
