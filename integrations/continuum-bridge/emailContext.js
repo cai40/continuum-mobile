@@ -371,7 +371,7 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
     ? cleanupFolderResult.summary
     : null;
   if (folderFileHeader) {
-    lines.push('', '**Filed to folder:**', `- ${folderFileHeader}`);
+    lines.push('', '**Copied to folder:**', `- ${folderFileHeader}`);
   } else if (folderPreview) {
     lines.push('', folderPreview);
   }
@@ -976,7 +976,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     let deleteResult = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
     let moveResult = { executed: false, summary: null, error: null, uids: [], destFolder: null, sender: null };
     let cleanupFolderResult = {
-      executed: false, summary: null, error: null, moves: [], previewGroups: [], movedUids: [],
+      executed: false, summary: null, error: null, copies: [], previewGroups: [], copiedUids: [],
     };
 
     const permission = evaluateOverLimitPermission({
@@ -1087,7 +1087,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
       finalContext = [finalContext, '', `[Email move] ${moveResult.error}`].filter(Boolean).join('\n');
     }
     if (cleanupFolderResult.executed && cleanupFolderResult.summary) {
-      finalContext = [finalContext, '', '[Email cleanup — filed to folder]', cleanupFolderResult.summary].join('\n');
+      finalContext = [finalContext, '', '[Email cleanup — copied to folder]', cleanupFolderResult.summary].join('\n');
     } else if (cleanupFolderResult.error && cleanupFlowActive && !cleanupPreviewRequested) {
       finalContext = [finalContext, '', `[Email cleanup folder] ${cleanupFolderResult.error}`].filter(Boolean).join('\n');
     } else if (cleanupPreviewRequested && cleanupFolderResult.summary) {

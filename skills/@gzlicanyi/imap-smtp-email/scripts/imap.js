@@ -1735,6 +1735,46 @@ async function moveMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) 
   }
 }
 
+// Copy message(s) to a named mailbox/folder (Yahoo IMAP COPY — original stays in source folder)
+async function copyMessagesToMailbox(uids, destName, mailbox = DEFAULT_MAILBOX) {
+  if (!uids || uids.length === 0) {
+    throw new Error('At least one UID is required');
+  }
+  if (!destName) {
+    throw new Error('Destination folder required: node imap.js copy <uid>... --to <folder>');
+  }
+
+  const normalizedUids = uids.map((uid) => parseInt(uid, 10)).filter((uid) => !Number.isNaN(uid));
+  if (normalizedUids.length === 0) {
+    throw new Error('No valid UIDs provided');
+  }
+
+  const imap = await connect();
+
+  try {
+    await openBox(imap, mailbox, false);
+    const destBox = await resolveDestinationMailbox(imap, destName);
+
+    return new Promise((resolve, reject) => {
+      imap.copy(normalizedUids, destBox, (err) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve({
+          success: true,
+          uids: normalizedUids,
+          action: 'copied_to_folder',
+          destination_mailbox: destBox,
+          count: normalizedUids.length,
+        });
+      });
+    });
+  } finally {
+    imap.end();
+  }
+}
+
 // Move message(s) to Trash (Yahoo/Gmail standard) or permanently delete with permanent=true
 async function deleteMessages(uids, mailbox = DEFAULT_MAILBOX, options = {}) {
   if (!uids || uids.length === 0) {
@@ -1951,6 +1991,16 @@ async function main() {
         result = await moveMessagesToMailbox(positional, options.to, options.mailbox);
         break;
 
+      case 'copy':
+        if (positional.length === 0) {
+          throw new Error('UID(s) required: node imap.js copy <uid> [uid2...] --to <folder>');
+        }
+        if (!options.to) {
+          throw new Error('Destination folder required: --to <folder>');
+        }
+        result = await copyMessagesToMailbox(positional, options.to, options.mailbox);
+        break;
+
       case 'list-mailboxes':
         result = await listMailboxes();
         break;
@@ -1965,7 +2015,7 @@ async function main() {
 
       default:
         console.error('Unknown command:', command);
-        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, move, list-mailboxes, list-accounts');
+        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, move, copy, list-mailboxes, list-accounts');
         process.exit(1);
     }
 

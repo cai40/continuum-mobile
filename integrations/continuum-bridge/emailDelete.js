@@ -229,7 +229,7 @@ function formatEmailCleanupPreviewNextSteps({ dateRangeLabel = null, cleanupCoun
     '**Notes:**',
     `- **${cleanupCount}** message(s) above would move to Yahoo **Trash** (recoverable; not permanently deleted).`,
     '- Protected mail (banks, OTP/security, never-trash senders including MassHousing, Boston Sailing Center, Mass.gov notices, and Min Zhang) is not in the list above.',
-    '- **Min Zhang** mail is filed to the **Min** folder during cleanup (not trashed).',
+    '- **Min Zhang** mail is copied to the **Min** folder during cleanup (original stays in INBOX; not trashed).',
     '- **To skip:** do nothing — this preview made no changes.',
   );
   return lines;

@@ -1,12 +1,13 @@
 'use strict';
 
-const { runImapMoveBatched } = require('./emailMove');
+const { runImapCopyBatched } = require('./emailMove');
 
-/** During inbox cleanup, file matching senders to Yahoo folders before trash runs. */
+/** During inbox cleanup, copy matching senders to Yahoo folders (original stays in INBOX). */
 const BUILTIN_CLEANUP_FOLDER = [
   {
     label: 'Min Zhang',
     folder: 'Min',
+    copy: true,
     needles: ['min zhang', 'njsgas@gmail.com', 'min z <'],
   },
 ];
@@ -44,16 +45,16 @@ function resolveCleanupFolderGroups(messages) {
 function formatCleanupFolderPreview(groups) {
   if (!groups.length) return null;
   const lines = [
-    '**Would file to folder (cleanup rule):**',
+    '**Would copy to folder (cleanup rule; originals stay in INBOX):**',
     ...groups.map((g) => `- ${g.rule.label} → **${g.rule.folder}** folder (${g.uids.length} email(s))`),
   ];
   return lines.join('\n');
 }
 
-function formatCleanupFolderSummary(moves) {
-  if (!moves.length) return null;
-  return moves.map((m) =>
-    `Moved ${m.uids.length} email(s) from ${m.rule.label} to folder "${m.rule.folder}" via Yahoo IMAP`,
+function formatCleanupFolderSummary(copies) {
+  if (!copies.length) return null;
+  return copies.map((m) =>
+    `Copied ${m.uids.length} email(s) from ${m.rule.label} to folder "${m.rule.folder}" via Yahoo IMAP (originals kept in INBOX)`,
   ).join('\n');
 }
 
@@ -62,9 +63,9 @@ async function maybeAutoFileCleanupFolders(messages, imapScript, { enabled = fal
     executed: false,
     summary: null,
     error: null,
-    moves: [],
+    copies: [],
     previewGroups: [],
-    movedUids: [],
+    copiedUids: [],
   };
   if (!enabled || !imapScript || !Array.isArray(messages) || messages.length === 0) {
     return empty;
@@ -81,39 +82,39 @@ async function maybeAutoFileCleanupFolders(messages, imapScript, { enabled = fal
     };
   }
 
-  const moves = [];
+  const copies = [];
   const errors = [];
-  const movedUids = [];
+  const copiedUids = [];
 
   for (const group of groups) {
     try {
-      const result = await runImapMoveBatched(imapScript, group.uids, group.rule.folder);
-      moves.push({ ...group, result });
-      movedUids.push(...group.uids);
+      const result = await runImapCopyBatched(imapScript, group.uids, group.rule.folder);
+      copies.push({ ...group, result });
+      copiedUids.push(...group.uids);
     } catch (err) {
       const detail = err.stderr?.toString?.() || err.message || String(err);
       errors.push(`${group.rule.label} → ${group.rule.folder}: ${detail}`);
     }
   }
 
-  if (moves.length === 0 && errors.length) {
+  if (copies.length === 0 && errors.length) {
     return {
       executed: false,
       summary: null,
       error: errors.join('; '),
-      moves: [],
+      copies: [],
       previewGroups: groups,
-      movedUids: [],
+      copiedUids: [],
     };
   }
 
   return {
-    executed: moves.length > 0,
-    summary: formatCleanupFolderSummary(moves),
+    executed: copies.length > 0,
+    summary: formatCleanupFolderSummary(copies),
     error: errors.length ? errors.join('; ') : null,
-    moves,
+    copies,
     previewGroups: groups,
-    movedUids,
+    copiedUids,
   };
 }
 

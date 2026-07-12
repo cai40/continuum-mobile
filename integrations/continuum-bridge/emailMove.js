@@ -91,6 +91,47 @@ async function runImapMove(imapScript, uids, destFolder) {
   }
 }
 
+async function runImapCopy(imapScript, uids, destFolder) {
+  const skillRoot = path.dirname(path.dirname(imapScript));
+  const args = [imapScript, 'copy', ...uids.map(String), '--to', destFolder];
+
+  const { stdout, stderr } = await execFileAsync('node', args, {
+    timeout: 120000,
+    maxBuffer: 1024 * 1024,
+    cwd: skillRoot,
+    env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
+  });
+
+  if (stderr?.trim()) {
+    console.error('[continuum-bridge] imap copy stderr:', stderr.trim());
+  }
+
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return { success: true, uids, action: 'copied_to_folder', destination_mailbox: destFolder, raw: stdout.trim() };
+  }
+}
+
+async function runImapCopyBatched(imapScript, uids, destFolder) {
+  const chunks = [];
+  for (let i = 0; i < uids.length; i += MOVE_BATCH_SIZE) {
+    chunks.push(uids.slice(i, i + MOVE_BATCH_SIZE));
+  }
+  const results = [];
+  for (const chunk of chunks) {
+    results.push(await runImapCopy(imapScript, chunk, destFolder));
+  }
+  return {
+    success: results.every((r) => r.success !== false),
+    uids,
+    action: 'copied_to_folder',
+    destination_mailbox: results[0]?.destination_mailbox || destFolder,
+    count: uids.length,
+    batches: chunks.length,
+  };
+}
+
 async function runImapMoveBatched(imapScript, uids, destFolder) {
   const chunks = [];
   for (let i = 0; i < uids.length; i += MOVE_BATCH_SIZE) {
@@ -206,4 +247,5 @@ module.exports = {
   resolveMoveUids,
   maybeMoveEmailsToFolder,
   runImapMoveBatched,
+  runImapCopyBatched,
 };
