@@ -183,12 +183,14 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
       || (cleanup ? '30d' : null)
       || payloadOptions.email_recent
       || DEFAULT_RECENT);
-  const since = payloadOptions.email_date_override
-    ? (payloadOptions.email_since || dateRangeFromMessage?.since || null)
-    : (dateRangeFromMessage?.since || payloadOptions.email_since || null);
-  const before = payloadOptions.email_date_override
-    ? (payloadOptions.email_before || dateRangeFromMessage?.before || null)
-    : (dateRangeFromMessage?.before || payloadOptions.email_before || null);
+  const since = dateRangeFromMessage?.since
+    || (explicitFullFolder && folderPersona ? null : payloadOptions.email_since)
+    || payloadOptions.email_since
+    || null;
+  const before = dateRangeFromMessage?.before
+    || (explicitFullFolder && folderPersona ? null : payloadOptions.email_before)
+    || payloadOptions.email_before
+    || null;
   const dateRangeLabel = payloadOptions.email_date_override && since && before
     ? `${since} .. ${addDays(before, -1)}`
     : (dateRangeFromMessage?.label

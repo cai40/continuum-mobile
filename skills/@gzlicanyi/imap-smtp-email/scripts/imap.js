@@ -625,6 +625,12 @@ async function fetchDateRangeForMailbox(imap, mailboxName, { sinceStr, beforeStr
     return [];
   }
   if (isHistoricalRange(sinceStr)) {
+    if (String(mailboxName).toUpperCase() !== 'INBOX') {
+      const folderAll = await tryFetchFolderAllDateRange(imap, {
+        sinceStr, beforeStr, limit, offset, lite,
+      });
+      if (folderAll != null) return folderAll;
+    }
     console.error(
       `[imap] date-range: historical ${sinceStr}..${beforeStr} in ${mailboxName}`
       + ' — skipping INBOX UID lookback (try Archive if empty)',
@@ -1464,6 +1470,52 @@ function filterByBeforeDate(rows, beforeStr) {
 
 function sortRowsNewestFirst(rows) {
   return rows.sort((a, b) => filterTimestampMs(b) - filterTimestampMs(a));
+}
+
+/** Named folders (e.g. Min): scan ALL uids and JS-filter by date — avoids INBOX lookback skip. */
+async function tryFetchFolderAllDateRange(imap, { sinceStr, beforeStr, limit, offset, lite }) {
+  console.error(
+    `[imap] date-range folder-all: ${sinceStr}..${beforeStr} mailbox=${activeScanMailbox || '?'}`,
+  );
+  let uids;
+  try {
+    uids = await searchUidsLogged(imap, ['ALL'], `folder-all-${sinceStr}`, 120000);
+  } catch (err) {
+    console.error(`[imap] date-range folder-all failed (${err.message})`);
+    return null;
+  }
+  if (!uids.length) {
+    console.error(`SCAN_META:${JSON.stringify({
+      scanned: 0,
+      scanMode: 'folder_all_empty',
+      matched: 0,
+      wanted: { since: sinceStr, before: beforeStr },
+      used: { since: sinceStr, before: beforeStr },
+      ...scanMetaMailboxFields(),
+    })}`);
+    return [];
+  }
+  console.error(`[imap] date-range folder-all: ${uids.length} uid(s) in folder`);
+  const rows = await fetchRowsByUids(imap, uids, { lite, compactNow: true });
+  const filtered = filterDateRangeWithYearFallback(rows, sinceStr, beforeStr).filtered;
+  const sorted = sortRowsNewestFirst(filtered);
+  console.error(
+    `[imap] date-range folder-all: scanned ${rows.length} header(s), matched ${filtered.length}`,
+  );
+  console.error(`SCAN_META:${JSON.stringify({
+    scanned: rows.length,
+    scanMode: 'folder_all',
+    matched: filtered.length,
+    wanted: { since: sinceStr, before: beforeStr },
+    used: { since: sinceStr, before: beforeStr },
+    span: dateSpanFromRows(filtered),
+    ...scanMetaMailboxFields(),
+  })}`);
+  return compactRows(sorted.slice(offset, offset + limit), lite);
+}
+
+function sortRowsOldestFirst(rows) {
+  return rows.sort((a, b) => filterTimestampMs(a) - filterTimestampMs(b));
 }
 
 // Parse relative time (e.g., "2h", "30m", "7d") to Date

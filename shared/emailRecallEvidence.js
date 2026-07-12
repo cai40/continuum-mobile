@@ -314,6 +314,24 @@ function buildRecallEvidencePrefix(content, monthRange, maxBytes = 12000) {
   return block;
 }
 
+function isStalePartialMinFolderMemory(text) {
+  const t = String(text || '');
+  if (/\b287\s+emails?\b/i.test(t) || /2022 through today/i.test(t)) return false;
+  return /\b18[\s-]?emails?\b/i.test(t)
+    || (/\bapril\s+2026\b/i.test(t) && /\bbatch\b/i.test(t))
+    || (/\bmarch\s+31\b/i.test(t) && /\bapril\s+28\b/i.test(t));
+}
+
+function needsFullMinFolderRefetch(message, memoryContext = '') {
+  const text = stripClientEmailEnvelope(message) || String(message || '').trim();
+  if (!text) return false;
+  if (isExplicitFullEmailFetch(text)) return true;
+  if (!isStalePartialMinFolderMemory(memoryContext)) return false;
+  if (/\b(?:read|fetch|scan|load)\s+(?:all|every)\b/i.test(text)) return true;
+  return /\b(?:persona|timeline|attitude|boundary|remember|recall|cite|uid)\b/i.test(text)
+    && /\b(?:min|zhang|\u654f|folder|email|mail)\b/i.test(text);
+}
+
 module.exports = {
   PERSONA_ANALYSIS_MARKERS,
   parseRecallMonthFromMessage,
@@ -328,6 +346,8 @@ module.exports = {
   isClientRecallEnvelope,
   stripClientEmailEnvelope,
   extractUserRecallQuestion,
+  isStalePartialMinFolderMemory,
+  needsFullMinFolderRefetch,
   buildTargetedRecallFetchMessage,
   resolveRecallEvidenceMessage,
   buildRecallEvidencePrefix,

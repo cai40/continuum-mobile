@@ -15,3 +15,5 @@ export const buildUidDateIndex = ev.buildUidDateIndex;
 export const hasMonthEvidenceInPersona = ev.hasMonthEvidenceInPersona;
 export const isExplicitFullEmailFetch = ev.isExplicitFullEmailFetch;
 export const stripClientEmailEnvelope = ev.stripClientEmailEnvelope;
+export const isStalePartialMinFolderMemory = ev.isStalePartialMinFolderMemory;
+export const needsFullMinFolderRefetch = ev.needsFullMinFolderRefetch;
