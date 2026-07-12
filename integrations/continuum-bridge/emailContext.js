@@ -585,6 +585,8 @@ function parseImapProgressLine(line) {
   }
   if ((m = text.match(/^\[imap\]\s+date-range\s+(.+?):\s+fetched\s+(\d+)\s+row/i))) {
     const totalMatch = text.match(/total\s+matched\s+(\d+)/i);
+    const matchedN = totalMatch ? parseInt(totalMatch[1], 10) : 0;
+    if (matchedN === 0) return null;
     const total = totalMatch ? `, matched so far: ${totalMatch[1]}` : '';
     return `Fetched ${m[2]} from ${m[1]}${total}`;
   }
@@ -602,8 +604,11 @@ function parseImapProgressLine(line) {
   if (/date-range:\s+0 matched after JS filter/i.test(text)) {
     return 'No matches in search slice — trying weekly slices…';
   }
+  if (/date-range weekly:\s+0 matched/i.test(text)) {
+    return 'INBOX week search found nothing — trying day-by-day…';
+  }
   if (/date-range weekly:/i.test(text)) {
-    return 'Searching week-by-week for target month…';
+    return 'Searching week-by-week…';
   }
   if (/date-range daily ON:/i.test(text)) {
     return 'Searching each day in target month…';
@@ -625,7 +630,11 @@ function parseImapProgressLine(line) {
     return 'Sampling newest 100 INBOX dates…';
   }
   if ((m = text.match(/^\[imap\]\s+date-range weekly slice\s+(\S+\.\.\S+):\s+(\d+)\s+uid/i))) {
+    if (parseInt(m[2], 10) === 0) return null;
     return `Searching ${m[1]}… (${m[2]} found)`;
+  }
+  if (/historical.*skipping INBOX UID lookback/i.test(text)) {
+    return 'No mail in INBOX for this period — checking Archive…';
   }
   if (/date-range\s+direct:\s+hit\s+yahoo/i.test(text)) {
     return 'Yahoo search cap hit — switching to lookback scan…';

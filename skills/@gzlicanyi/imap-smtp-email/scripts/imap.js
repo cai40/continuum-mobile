@@ -607,12 +607,12 @@ async function fetchDateRangeForMailbox(imap, mailboxName, { sinceStr, beforeStr
       sinceStr, beforeStr, limit, offset, lite, unreadOnly,
     });
     if (weekly != null) return weekly;
-  }
-  if (rangeDays > 8 && rangeDays <= 31) {
-    const dailyOn = await tryFetchDateRangeDailyOn(imap, {
-      sinceStr, beforeStr, limit, offset, lite,
-    });
-    if (dailyOn != null) return dailyOn;
+    if (rangeDays <= 366) {
+      const dailyOn = await tryFetchDateRangeDailyOn(imap, {
+        sinceStr, beforeStr, limit, offset, lite,
+      });
+      if (dailyOn != null) return dailyOn;
+    }
   }
   if (rangeDays <= 8) {
     const dailyOn = await tryFetchDateRangeDailyOn(imap, {
@@ -621,6 +621,22 @@ async function fetchDateRangeForMailbox(imap, mailboxName, { sinceStr, beforeStr
     if (dailyOn != null) return dailyOn;
     console.error(`[imap] date-range: short window ${sinceStr}..${beforeStr} still empty after daily ON`);
     emptyDirectScanMeta(sinceStr, beforeStr);
+    return [];
+  }
+  if (isHistoricalRange(sinceStr)) {
+    console.error(
+      `[imap] date-range: historical ${sinceStr}..${beforeStr} in ${mailboxName}`
+      + ' — skipping INBOX UID lookback (try Archive if empty)',
+    );
+    console.error(`SCAN_META:${JSON.stringify({
+      scanned: 0,
+      scanMode: 'historical_inbox_skip',
+      mailbox: mailboxName,
+      matched: 0,
+      wanted: { since: sinceStr, before: beforeStr },
+      used: { since: sinceStr, before: beforeStr },
+      ...scanMetaMailboxFields(),
+    })}`);
     return [];
   }
   return await fetchDateRangeViaRecentLookback(imap, {
@@ -894,6 +910,15 @@ function recentDaysForRange(sinceStr) {
   const sinceMs = imapDateFromIso(sinceStr).getTime();
   const days = Math.ceil((Date.now() - sinceMs) / (24 * 60 * 60 * 1000)) + 14;
   return Math.min(730, Math.max(7, days));
+}
+
+/** Ranges older than ~13 months — INBOX search/lookback rarely finds them (mail is usually archived). */
+function isHistoricalRange(sinceStr) {
+  const sinceMs = dayStartUtcMs(sinceStr);
+  const daysBack = Math.ceil((Date.now() - sinceMs) / (24 * 60 * 60 * 1000));
+  if (daysBack > 400) return true;
+  const sinceYear = parseInt(String(sinceStr || '').slice(0, 4), 10);
+  return sinceYear > 1970 && sinceYear < new Date().getFullYear() - 1;
 }
 
 async function fetchRowsByUids(imap, uids, { lite = false, compactNow = true } = {}) {
