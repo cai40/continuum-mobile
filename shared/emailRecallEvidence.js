@@ -152,10 +152,17 @@ function hasMonthEvidenceInPersona(messages, monthRange) {
 function needsTargetedRecallEvidenceFetch(message, messages) {
   const text = String(message || '').trim();
   if (!text) return false;
-  if (!/\b(?:what do you remember|cite\s+(?:the\s+)?(?:uid|uids)|uid\s+and\s+date|boundary|persona|timeline|evidence|proof)\b/i.test(text)) {
-    return false;
-  }
+
+  const isEmailRecall = /\b(?:what do you remember|cite\s+(?:the\s+)?(?:uid|uids)|uid\s+and\s+date|boundary|persona|timeline|evidence|proof)\b/i.test(text);
+  const mentionsMin = /\b(?:min\s+zhang|min\s+folder|\u654f)\b/i.test(text) || /\bmin\b/i.test(text);
   const monthRange = parseRecallMonthFromMessage(text);
+
+  if (monthRange && (isEmailRecall || mentionsMin) && (mentionsMin || /\bboundary\b/i.test(text))) {
+    if (hasMonthEvidenceInPersona(messages, monthRange)) return false;
+    return true;
+  }
+
+  if (!isEmailRecall) return false;
   if (!monthRange) return false;
   if (!findLatestPersonaAnalysisContent(messages)) return false;
   if (hasMonthEvidenceInPersona(messages, monthRange)) return false;

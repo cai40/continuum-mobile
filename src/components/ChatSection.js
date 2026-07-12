@@ -14,7 +14,7 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest } from '../services/apiService';
+import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
@@ -56,6 +56,8 @@ import {
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, parseRecallMonthFromMessage } from '../utils/emailFollowUpIntent';
+import { findLatestPersonaAnalysisContent } from '../utils/emailRecallEvidence';
+import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -67,6 +69,7 @@ const EMAIL_FOLLOW_UP_APPEND = [
   'EMAIL FOLLOW-UP: Answer ONLY from the prior persona/email analysis already in chat history above.',
   'Cite UID and Date for every quote. Do not invent dialogue not already in the thread.',
   'Do NOT claim you fetched mail, got zero emails, or hit OOM/heap errors — no IMAP fetch runs on follow-ups.',
+  'Do NOT deny cross-session memory when a [CONTINUUM MEMORY] block is injected in this turn.',
   'If the persona analysis is missing from history, say so explicitly and ask whether to re-scan the folder.',
   'Do not re-fetch Yahoo mail unless the user explicitly asks to read/fetch emails again.',
 ].join(' ');
@@ -75,6 +78,12 @@ const EMAIL_RECALL_EVIDENCE_APPEND = [
   'EVIDENCE RECALL FETCH: A small IMAP fetch for the requested month only — NOT a full persona rescan.',
   'List every fetched email with UID and Date. Cite boundary-related previews verbatim.',
   'Combine with the prior persona analysis in chat history; do not claim zero emails if any appear below.',
+].join(' ');
+
+const MEMORY_RECALL_APPEND = [
+  'CONTINUUM MEMORY: L1–L5 fragments were retrieved from the backend vault and injected below.',
+  'Use them for cross-session recall. Do NOT deny persistent memory or claim OOM/failed fetches unless shown in this turn.',
+  'If fragments lack UID+Date for emails, say so and cite what is present — do not invent.',
 ].join(' ');
 
 const ChatSection = () => {
@@ -696,6 +705,28 @@ const ChatSection = () => {
         }
       }
 
+      const priorMessages = messages.slice(0, -1);
+      const hasPersonaInThread = !!findLatestPersonaAnalysisContent(priorMessages);
+      const shouldLoadMemory = wantsContinuumMemoryRecall(finalInput)
+        || ((isEmailRecallQuestion || isEmailAnalysisFollowUp(finalInput)) && !hasPersonaInThread && !isRecallEvidenceFetch);
+
+      let memoryRecallContext = '';
+      if (shouldLoadMemory && !activeAttachments.length) {
+        setStreamingContent('Searching Continuum memory…');
+        try {
+          const { layeredData, pinData } = await fetchMemories(null, activeToken);
+          memoryRecallContext = buildMemoryRecallContext({
+            episodicSegments: layeredData?.episodicSegments,
+            semanticProfile: layeredData?.semanticProfile,
+            temporalEvents: layeredData?.temporalEvents,
+            knowledgeBase: layeredData?.knowledgeBase,
+            pinnedMemories: pinData,
+          }, finalInput);
+        } catch (e) {
+          console.warn('[memoryRecall]', e?.message || e);
+        }
+      }
+
       const formData = new FormData();
       let chatMessage = isRecallEvidenceFetch
         ? buildTargetedRecallFetchMessage(finalInput, parseRecallMonthFromMessage(finalInput))
@@ -744,7 +775,12 @@ const ChatSection = () => {
         chatMessage = `${webSearchContext}\n\n${chatMessage}`;
       }
 
+      if (memoryRecallContext) {
+        chatMessage = `${memoryRecallContext}\n\n${chatMessage}`;
+      }
+
       const personaExtras = [
+        ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
         ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
         ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),

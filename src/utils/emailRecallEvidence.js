@@ -10,3 +10,4 @@ export const parseRecallMonthFromMessage = ev.parseRecallMonthFromMessage;
 export const buildRecallEvidencePrefix = ev.buildRecallEvidencePrefix;
 export const buildUidDateIndex = ev.buildUidDateIndex;
 export const hasMonthEvidenceInPersona = ev.hasMonthEvidenceInPersona;
+export const findLatestPersonaAnalysisContent = ev.findLatestPersonaAnalysisContent;
