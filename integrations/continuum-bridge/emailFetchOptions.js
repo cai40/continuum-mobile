@@ -7,6 +7,11 @@ const { wantsEmailQuoteSearch } = require('./emailQuoteSearch');
 const { parseMailboxFromMessage } = require('./emailFolderParse');
 const { wantsFolderPersonaIngest, defaultFolderPersonaDateRange, defaultPersonaMailbox } = require('./emailSender');
 const { isComposeEmailRequest } = require('./emailComposeIntent');
+const {
+  needsTargetedRecallEvidenceFetch,
+  resolveRecallMonthRange,
+  extractUserRecallQuestion,
+} = require('../../shared/emailRecallEvidence');
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50000;
@@ -120,7 +125,19 @@ function parseRecentFromMessage(message) {
 function resolveEmailFetchOptions(message, payloadOptions = {}) {
   const limitFromMessage = parseLimitFromMessage(message);
   const offsetFromMessage = parseOffsetFromMessage(message);
+  const bareQuestion = extractUserRecallQuestion(message);
+  const recallEvidence = needsTargetedRecallEvidenceFetch(message, payloadOptions.history || []);
   let dateRangeFromMessage = parseDateRangeFromMessage(message);
+  if (!dateRangeFromMessage && recallEvidence) {
+    const recallRange = resolveRecallMonthRange(bareQuestion, payloadOptions.history || []);
+    if (recallRange?.since && recallRange?.before) {
+      dateRangeFromMessage = {
+        since: recallRange.since,
+        before: recallRange.before,
+        label: recallRange.label || `${recallRange.since} .. ${addDays(recallRange.before, -1)}`,
+      };
+    }
+  }
   const folderPersona = wantsFolderPersonaIngest(message);
   if (!dateRangeFromMessage && folderPersona && !parseRecentFromMessage(message)) {
     dateRangeFromMessage = defaultFolderPersonaDateRange();
@@ -226,6 +243,7 @@ function formatPostEmailFetchStatus({ fetchOptions, scanMeta, loadedCount } = {}
 function wantsEmailFetch(message, payloadOptions = {}) {
   const text = message || '';
   if (isComposeEmailRequest(text)) return false;
+  if (needsTargetedRecallEvidenceFetch(text, payloadOptions.history || [])) return true;
   if (wantsEmailQuoteSearch(text)) return true;
   const { wantsSenderPersonaAnalysis } = require('./emailSender');
   if (wantsSenderPersonaAnalysis(text)) return true;

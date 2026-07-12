@@ -146,6 +146,12 @@ export function sanitizeRecallHistory(messages) {
         content: '[Superseded — prior email fetch error; ignore for recall. Use CONTINUUM MEMORY or live inbox below.]',
       };
     }
+    if (/(?:no reliable memory|what i need from you|no \[continuum memory\]|must honestly state|until then, i must|i have no data to answer|does not appear in the evidence provided|i will not invent uids)/i.test(content)) {
+      return {
+        ...m,
+        content: '[Superseded — prior meta-denial; ignore. Answer from [CONTINUUM MEMORY], persona history, or live inbox this turn.]',
+      };
+    }
     return m;
   });
 }

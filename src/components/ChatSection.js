@@ -729,7 +729,7 @@ const ChatSection = () => {
             temporalEvents: layeredData?.temporalEvents,
             knowledgeBase: layeredData?.knowledgeBase,
             pinnedMemories: pinData,
-          }, finalInput);
+          }, finalInput, 28000, { liveFetchScheduled: isRecallEvidenceFetch });
         } catch (e) {
           console.warn('[memoryRecall]', e?.message || e);
         }
@@ -990,7 +990,10 @@ const ChatSection = () => {
           message: bridgeMessage,
           provider,
           persona: appendGroundingPersona(persona, [
+            ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
+            ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
             ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
+            ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
             ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
           ]),
           history: webSearchContext ? [] : historyForUpload,

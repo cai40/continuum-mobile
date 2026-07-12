@@ -21,8 +21,9 @@ const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
 const { shouldSkipEmailFetch, buildFollowUpChatMessage } = require('./emailFollowUpIntent');
 const {
   needsTargetedRecallEvidenceFetch,
-  buildTargetedRecallFetchMessage,
-  parseRecallMonthFromMessage,
+  resolveRecallEvidenceMessage,
+  extractUserRecallQuestion,
+  resolveRecallMonthRange,
 } = require('../../shared/emailRecallEvidence');
 const { slimHistoryForEmailRecall } = require('./emailRecallHistory');
 const { fetchWebContext } = require('./webContext');
@@ -38,6 +39,8 @@ const {
   EMAIL_LIVE_INBOX_MEMORY_APPEND,
   EMAIL_FOLLOW_UP_APPEND,
   EMAIL_RECALL_EVIDENCE_APPEND,
+  RECALL_TURN_APPEND,
+  MEMORY_RECALL_APPEND,
   WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
 const {
@@ -366,10 +369,11 @@ async function handleChatStream(req, res, config) {
   const recallEvidenceFetch = needsTargetedRecallEvidenceFetch(originalMessage, payload.history || []);
   const skipEmailFetch = shouldSkipEmailFetch(originalMessage, payload.history || []);
   const historyBeforeFetch = payload.history || [];
+  const recallUserQuestion = extractUserRecallQuestion(originalMessage);
   message = skipEmailFetch
     ? buildFollowUpChatMessage(originalMessage, payload.history || [])
     : recallEvidenceFetch
-      ? buildTargetedRecallFetchMessage(originalMessage, parseRecallMonthFromMessage(originalMessage))
+      ? resolveRecallEvidenceMessage(originalMessage, payload.history || [])
       : buildEffectiveEmailMessage(originalMessage, payload.history || []);
   payload.message = message;
 
@@ -432,7 +436,7 @@ async function handleChatStream(req, res, config) {
   }
 
   const isEmailRequest = !skipEmailFetch && wantsEmailFetch(
-    buildEffectiveEmailMessage(originalMessage, payload.history || []),
+    recallEvidenceFetch ? recallUserQuestion : buildEffectiveEmailMessage(originalMessage, payload.history || []),
   );
   let webContext = null;
   if (!isEmailRequest) {
@@ -495,7 +499,7 @@ async function handleChatStream(req, res, config) {
         : cleanupRequested
           ? 'CLEANUP MODE: Your ENTIRE reply must be ONLY the text inside [PREFILLED SUMMARY]…[/PREFILLED SUMMARY] — copy verbatim. Include the **Cleanup Results** or **Cleanup:** section if present. Do NOT omit trash counts.'
           : recallEvidenceFetch
-            ? 'EVIDENCE RECALL: Combine fetched emails below with prior persona analysis in chat history. Cite UID and Date for every boundary quote.'
+            ? 'EVIDENCE RECALL: Use [CONTINUUM MEMORY] (if in User request below), chat history, AND fetched emails below. Cite UID and Date for every boundary quote. Do NOT write meta-denial lists.'
             : 'Summarize ONLY the emails explicitly listed below with their UIDs.',
       'If a MAILBOX SCAN block appears below, copy its Date filter / Matched / Emails loaded lines — do not mention wide inbox scan spans or internal UID windows.',
       'If [EMAIL TRASH RESULT] appears below, copy its trash line verbatim — do not paraphrase as a rounded number.',
@@ -535,10 +539,15 @@ async function handleChatStream(req, res, config) {
           ? EMAIL_LIVE_INBOX_MOVE_APPEND
           : EMAIL_LIVE_INBOX_DELETE_APPEND;
     }
-    const liveExtras = recallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND, inboxAppend] : [inboxAppend];
+    const liveExtras = recallEvidenceFetch ? [RECALL_TURN_APPEND, EMAIL_RECALL_EVIDENCE_APPEND, inboxAppend] : [inboxAppend];
     payload.persona = appendGroundingPersona(payload.persona || '', liveExtras);
   } else if (skipEmailFetch) {
-    payload.persona = appendGroundingPersona(payload.persona || '', [EMAIL_FOLLOW_UP_APPEND]);
+    const recallExtras = [
+      RECALL_TURN_APPEND,
+      /\[(?:CONTINUUM MEMORY|RECALL TURN STATUS)/i.test(originalMessage) ? MEMORY_RECALL_APPEND : null,
+      EMAIL_FOLLOW_UP_APPEND,
+    ];
+    payload.persona = appendGroundingPersona(payload.persona || '', recallExtras);
   } else if (hasWebSearch) {
     payload.persona = appendGroundingPersona(payload.persona || '', [WEB_SEARCH_APPEND]);
   } else {
