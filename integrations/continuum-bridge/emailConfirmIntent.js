@@ -3,6 +3,11 @@
 const { hasBulkActionConfirm } = require('./emailPermission');
 const { wantsEmailFetch } = require('./emailFetchOptions');
 const { isComposeEmailRequest } = require('./emailComposeIntent');
+const { parseMailboxFromMessage } = require('./emailFolderParse');
+const {
+  wantsSenderPersonaAnalysis,
+  wantsChinesePersonaAnalysis,
+} = require('./emailSender');
 
 function isConfirmOnlyMessage(message) {
   const text = String(message || '').trim();
@@ -43,6 +48,22 @@ function previewCleanupToApplyMessage(prior) {
     .trim();
 }
 
+function isPersonaFollowUpMessage(message) {
+  const text = String(message || '').trim();
+  if (!text || text.length > 240) return false;
+  if (wantsSenderPersonaAnalysis(text) || wantsChinesePersonaAnalysis(text)) return true;
+  if (/[\u4e00-\u9fff]/.test(text) && /(?:心理|人格|性格|态度|分析)/u.test(text)) return true;
+  return false;
+}
+
+function isPersonaFetchIntent(content) {
+  const text = String(content || '');
+  return parseMailboxFromMessage(text) != null
+    || /\bmin\s+folder\b/i.test(text)
+    || /\b(persona|attitude|timeline|psycholog)/i.test(text)
+    || /(?:心理|人格|敏)/u.test(text);
+}
+
 function resolvePriorEmailIntent(history) {
   const hist = Array.isArray(history) ? history : [];
   const userMessages = [];
@@ -60,26 +81,45 @@ function resolvePriorEmailIntent(history) {
 
   for (const content of userMessages) {
     if (wantsEmailFetch(content)) return content;
+    if (isPersonaFetchIntent(content)) return content;
     if (isComposeEmailRequest(content)) continue;
     if (/\b(clean|fetch|apr|april|inbox|emails?|yahoo|mail)\b/i.test(content)) return content;
   }
   return null;
 }
 
+function buildMinPersonaFetchMessage(followUp) {
+  return `Read every email from Min in Min folder from 2022 to today — ${followUp}`;
+}
+
 function buildEffectiveEmailMessage(message, history) {
-  if (!isConfirmOnlyMessage(message)) return message;
-  const prior = resolvePriorEmailIntent(history);
-  if (!prior) return message;
+  const text = String(message || '').trim();
 
-  const applyFromPreview = previewCleanupToApplyMessage(prior);
-  if (applyFromPreview) return applyFromPreview;
+  if (isConfirmOnlyMessage(text)) {
+    const prior = resolvePriorEmailIntent(history);
+    if (!prior) return message;
+    const applyFromPreview = previewCleanupToApplyMessage(prior);
+    if (applyFromPreview) return applyFromPreview;
+    return `${prior}\n\nUser confirmation: ${message}`;
+  }
 
-  return `${prior}\n\nUser confirmation: ${message}`;
+  if (isPersonaFollowUpMessage(text)) {
+    const prior = resolvePriorEmailIntent(history);
+    if (prior && isPersonaFetchIntent(prior) && !parseMailboxFromMessage(text)) {
+      return `${prior}\n\nFollow-up request: ${text}`;
+    }
+    if (!parseMailboxFromMessage(text) && (/\u654f/u.test(text) || /\bmin\b/i.test(text))) {
+      return buildMinPersonaFetchMessage(text);
+    }
+  }
+
+  return message;
 }
 
 module.exports = {
   isConfirmOnlyMessage,
   previewCleanupToApplyMessage,
+  isPersonaFollowUpMessage,
   resolvePriorEmailIntent,
   buildEffectiveEmailMessage,
 };

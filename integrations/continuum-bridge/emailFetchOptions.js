@@ -5,7 +5,7 @@ const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 const { wantsEmailQuoteSearch } = require('./emailQuoteSearch');
 const { parseMailboxFromMessage } = require('./emailFolderParse');
-const { wantsFolderPersonaIngest } = require('./emailSender');
+const { wantsFolderPersonaIngest, defaultFolderPersonaDateRange, defaultPersonaMailbox } = require('./emailSender');
 const { isComposeEmailRequest } = require('./emailComposeIntent');
 
 const DEFAULT_LIMIT = 25;
@@ -170,7 +170,7 @@ function resolveEmailFetchOptions(message, payloadOptions = {}) {
     : (dateRangeFromMessage?.label
       || (since && before ? `${since} through ${addDays(before, -1)}` : null));
   const unreadOnly = /\b(unread|unseen)\b/i.test(message || '');
-  const mailbox = parseMailboxFromMessage(message);
+  const mailbox = parseMailboxFromMessage(message) || defaultPersonaMailbox(message);
   return {
     limit, offset, recent, unreadOnly, since, before, dateRangeLabel, mailbox,
   };
@@ -227,6 +227,8 @@ function wantsEmailFetch(message, payloadOptions = {}) {
   const text = message || '';
   if (isComposeEmailRequest(text)) return false;
   if (wantsEmailQuoteSearch(text)) return true;
+  const { wantsSenderPersonaAnalysis } = require('./emailSender');
+  if (wantsSenderPersonaAnalysis(text)) return true;
   if (EMAIL_TRIGGER.test(text)) return true;
   if (parseDateRangeFromMessage(text)) return true;
   if (parseOffsetFromMessage(text) != null) return true;
