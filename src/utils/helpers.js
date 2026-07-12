@@ -35,12 +35,40 @@ export const maskKey = (key) => {
   return `${key.substring(0, 8)}...${key.substring(key.length - 4)}`;
 };
 
-export const stringifyContent = (content) => {
+export const stringifyContent = (content, depth = 0) => {
+  if (content == null) return '';
   if (typeof content === 'string') return content;
-  if (Array.isArray(content)) return content.map(i => stringifyContent(i)).join('\n');
-  if (typeof content === 'object' && content !== null) return content.text || JSON.stringify(content);
+  if (depth > 8) return '[nested content truncated]';
+  if (Array.isArray(content)) {
+    return content.map((i) => stringifyContent(i, depth + 1)).join('\n');
+  }
+  if (typeof content === 'object') {
+    if (typeof content.text === 'string') return content.text;
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return '[unserializable content]';
+    }
+  }
   return String(content);
 };
+
+function safeJsonStringify(value) {
+  const seen = new WeakSet();
+  try {
+    return JSON.stringify(value, (_key, val) => {
+      if (typeof val === 'object' && val !== null) {
+        if (seen.has(val)) return undefined;
+        seen.add(val);
+      }
+      return val;
+    });
+  } catch {
+    return '[]';
+  }
+}
+
+export { safeJsonStringify };
 
 /** Backend multipart limit is 1024KB per form field. */
 export const MAX_CHAT_UPLOAD_PART_BYTES = 900 * 1024;
@@ -80,18 +108,18 @@ export function trimChatHistoryForUpload(messages, maxMessages = 20, maxBytes = 
     }));
 
   let trimmed = base;
-  while (trimmed.length > 1 && utf8ByteLength(JSON.stringify(trimmed)) > maxBytes) {
+  while (trimmed.length > 1 && utf8ByteLength(safeJsonStringify(trimmed)) > maxBytes) {
     trimmed = trimmed.slice(1);
   }
 
-  if (utf8ByteLength(JSON.stringify(trimmed)) > maxBytes) {
+  if (utf8ByteLength(safeJsonStringify(trimmed)) > maxBytes) {
     trimmed = trimmed.map((m) => ({
       ...m,
       content: truncateText(m.content, 1500),
     }));
   }
 
-  while (trimmed.length > 1 && utf8ByteLength(JSON.stringify(trimmed)) > maxBytes) {
+  while (trimmed.length > 1 && utf8ByteLength(safeJsonStringify(trimmed)) > maxBytes) {
     trimmed = trimmed.slice(1);
   }
 
@@ -117,15 +145,20 @@ export function sanitizeUserVisibleContent(content) {
   return 'Email request';
 }
 
-export function friendlyChatError(raw) {
+export function friendlyChatError(raw, depth = 0) {
   const text = String(raw || '').trim();
   if (!text) return 'Could not send message.';
+  if (depth > 6) return text.length > 500 ? `${text.slice(0, 500)}…` : text;
 
   try {
     const parsed = JSON.parse(text);
-    if (parsed?.detail) return friendlyChatError(parsed.detail);
+    if (parsed?.detail) return friendlyChatError(parsed.detail, depth + 1);
   } catch {
     // not JSON
+  }
+
+  if (/maximum call stack size exceeded/i.test(text)) {
+    return 'Chat history was too large to process. Retry in the same thread — recall follow-ups now use chat memory only (no email re-fetch).';
   }
 
   if (/exceeded maximum size|1024\s*kb/i.test(text)) {

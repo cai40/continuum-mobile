@@ -505,6 +505,10 @@ async function handleChatStream(req, res, config) {
     payload.history = [];
   }
 
+  if (skipEmailFetch) {
+    payload.history = slimHistory(payload.history || []);
+  }
+
   if (hasLiveInbox) {
     const memoryIngest = wantsEmailMemoryIngest(message)
       || (parseSenderFromMessage(message) && /\b(memory|continuum|remember|feed|ingest)\b/i.test(message));

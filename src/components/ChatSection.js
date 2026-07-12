@@ -32,6 +32,7 @@ import {
   MAX_ATTACHMENT_BYTES,
   sanitizeUserVisibleContent,
   trimChatHistoryForUpload,
+  safeJsonStringify,
 } from '../utils/helpers';
 import {
   shouldRunEmailInBackground,
@@ -60,6 +61,12 @@ import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cle
 import { wantsDraftOutput, DRAFT_OUTPUT_APPEND, buildDraftAssistantMessages } from '../utils/draftOutput';
 import { styles, theme } from '../styles/theme';
 import LatencyHeatmap from './shared/LatencyHeatmap';
+
+const EMAIL_FOLLOW_UP_APPEND = [
+  'EMAIL FOLLOW-UP: Answer from the prior email analysis in chat history above.',
+  'Cite UID and Date for every quote. Do not invent dialogue not already in the thread.',
+  'Do not re-fetch Yahoo mail unless the user explicitly asks to read/fetch emails again.',
+].join(' ');
 
 const ChatSection = () => {
   const {
@@ -567,6 +574,8 @@ const ChatSection = () => {
         return;
       }
 
+      const isEmailBridgeQuery = isEmailQuery && !isEmailFollowUpOnly;
+
       const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
       const renderEmailSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
       const bridgeUrl = resolveBridgeBaseUrl({
@@ -574,7 +583,7 @@ const ChatSection = () => {
         vpsIp: openclawVpsIp,
         defaultVpsIp: "135.181.155.197",
       });
-      const useRenderEmail = renderEmailEnabled && isEmailQuery;
+      const useRenderEmail = renderEmailEnabled && isEmailBridgeQuery;
       const useVpsBridge =
         !useRenderEmail &&
         openclawChatEnabled &&
@@ -583,7 +592,7 @@ const ChatSection = () => {
         !activeAttachments.length &&
         !isVoiceMode;
 
-      if (isEmailQuery && !renderEmailEnabled && !useVpsBridge) {
+      if (isEmailBridgeQuery && !renderEmailEnabled && !useVpsBridge) {
         Alert.alert(
           "Yahoo email needs a mail bridge",
           "Setup → OpenClaw Gateway:\n• Turn ON Render cloud email (no VPS), or\n• Turn ON Route chat through OpenClaw + HTTPS bridge URL.",
@@ -684,7 +693,9 @@ const ChatSection = () => {
         await validateAttachmentSizes(activeAttachments);
       }
 
-      const historyForUpload = trimChatHistoryForUpload(messages.slice(0, -1));
+      const historyForUpload = isEmailFollowUpOnly
+        ? trimChatHistoryForUpload(messages.slice(0, -1), 4, 220 * 1024)
+        : trimChatHistoryForUpload(messages.slice(0, -1));
 
       if (activeAttachments.length && !isFromVoice) {
         try {
@@ -721,6 +732,7 @@ const ChatSection = () => {
       }
 
       const personaExtras = [
+        ...(isEmailFollowUpOnly ? [EMAIL_FOLLOW_UP_APPEND] : []),
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
         ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
         ...(wantsCopyDraft ? [DRAFT_OUTPUT_APPEND] : []),
@@ -731,7 +743,7 @@ const ChatSection = () => {
       formData.append('persona', appendGroundingPersona(persona, personaExtras));
       // Fresh file analysis or web search: drop chat history so prior replies
       // cannot override injected attachment text or live search results.
-      formData.append('history', JSON.stringify(documentTextInjected || webSearchContext ? [] : historyForUpload));
+      formData.append('history', safeJsonStringify(documentTextInjected || webSearchContext ? [] : historyForUpload));
       if (activeKey) formData.append('api_key', activeKey.trim());
       if (isVoiceMode) {
         formData.append('synthesize_voice', 'True');
@@ -757,7 +769,7 @@ const ChatSection = () => {
       const typingSafetyTimer = setTimeout(() => {
         setIsTyping(false);
         setStreamingContent('');
-      }, isEmailQuery ? 600000 : (isWebSearchQuery ? 180000 : 130000));
+      }, isEmailBridgeQuery ? 600000 : (isWebSearchQuery ? 180000 : 130000));
 
       const clearTypingSafety = () => clearTimeout(typingSafetyTimer);
 
@@ -818,7 +830,7 @@ const ChatSection = () => {
           setStreamingContent('');
           return;
         }
-        if (bridgeAttempted && !renderFallbackUsed && !isEmailQuery) {
+        if (bridgeAttempted && !renderFallbackUsed && !isEmailBridgeQuery) {
           renderFallbackUsed = true;
           bridgeAttempted = false;
           isHandled = false;
@@ -866,7 +878,7 @@ const ChatSection = () => {
         const bridgeMessage = isEmailConfirm && emailSourceMessage !== finalInput
           ? buildEmailConfirmPayloadMessage(emailSourceMessage, finalInput)
           : (webSearchContext ? `${webSearchContext}\n\n${finalInput}` : finalInput);
-        const emailFetch = isEmailQuery
+        const emailFetch = isEmailBridgeQuery
           ? resolveEmailFetchPayload({
               limit: openclawEmailLimit,
               recent: openclawEmailRecent,
