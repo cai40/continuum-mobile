@@ -1,5 +1,10 @@
 import { Platform } from "react-native";
 import { API_URL, RENDER_EMAIL_BRIDGE_URL } from "../constants/Config";
+import {
+  loadLocalPinnedMemories,
+  saveLocalPinnedMemory,
+  mergePinnedMemories,
+} from "../utils/localPinnedMemory";
 
 /**
  * GLOBAL PULSE ENGINE:
@@ -108,9 +113,10 @@ export const fetchChatHistory = async (
 export const fetchMemories = async (
   onStatusUpdate = null,
   authToken = null,
+  userId = null,
 ) => {
   try {
-    const [rawLayerData, pinData, analytics] = await Promise.all([
+    const [rawLayerData, pinData, analytics, localPins] = await Promise.all([
       pulseFetch(`${API_URL}/memories`, {}, 3, onStatusUpdate, authToken),
       pulseFetch(
         `${API_URL}/memories/pinned`,
@@ -118,9 +124,11 @@ export const fetchMemories = async (
         3,
         onStatusUpdate,
         authToken,
-      ),
-      fetchBrainAnalytics(onStatusUpdate, authToken),
+      ).catch(() => []),
+      fetchBrainAnalytics(onStatusUpdate, authToken).catch(() => ({})),
+      loadLocalPinnedMemories(userId),
     ]);
+    const mergedPins = mergePinnedMemories(pinData, localPins);
 
     // SMART MAPPING: Handle 2.0 Structured Maps OR 1.0 Flat Arrays
     let processedLayeredData = {
@@ -147,12 +155,12 @@ export const fetchMemories = async (
 
     // HYBRID SYNC: Inject local L1 counts into the global metrics
     if (processedLayeredData.trueCounts) {
-       processedLayeredData.trueCounts.l1 = Array.isArray(pinData) ? pinData.length : 0;
+       processedLayeredData.trueCounts.l1 = Array.isArray(mergedPins) ? mergedPins.length : 0;
     }
 
     return {
       layeredData: processedLayeredData,
-      pinData: Array.isArray(pinData) ? pinData : [],
+      pinData: Array.isArray(mergedPins) ? mergedPins : [],
       analytics: analytics || {},
     };
   } catch (e) {
@@ -161,18 +169,61 @@ export const fetchMemories = async (
   }
 };
 
-export async function pinCoreMemory(content, authToken, label = 'Email evidence') {
-  if (!content?.trim() || !authToken) return null;
-  return pulseFetch(
-    `${API_URL}/memories/pin`,
-    {
+export async function pinCoreMemory(content, authToken, label = 'Email evidence', userId = null) {
+  const trimmed = String(content || '').trim();
+  if (!trimmed) throw new Error('Empty pin content');
+  if (!authToken) throw new Error('Not signed in');
+
+  const saveLocal = async (cloudUnavailable = true) => {
+    const pin = await saveLocalPinnedMemory(userId, trimmed, label);
+    return {
+      status: 'success',
+      pin,
+      source: 'local',
+      cloudUnavailable,
+    };
+  };
+
+  try {
+    const res = await fetch(`${API_URL}/memories/pin`, {
       method: 'POST',
-      body: JSON.stringify({ content: content.trim(), label }),
-    },
-    3,
-    null,
-    authToken,
-  );
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        'User-Agent': 'Continuum-Mobile/1.0',
+      },
+      body: JSON.stringify({ content: trimmed, label }),
+    });
+    if (res.ok) {
+      const contentType = res.headers.get('content-type');
+      const data = contentType && contentType.includes('application/json')
+        ? await res.json()
+        : { status: 'success' };
+      return { ...data, source: 'cloud' };
+    }
+    if (res.status === 404 || res.status === 405) {
+      return saveLocal(true);
+    }
+  } catch {
+    // fall through to pulseFetch or local save
+  }
+
+  try {
+    const data = await pulseFetch(
+      `${API_URL}/memories/pin`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ content: trimmed, label }),
+      },
+      3,
+      null,
+      authToken,
+    );
+    return { ...data, source: 'cloud' };
+  } catch {
+    return saveLocal(true);
+  }
 }
 
 export const chatStream = (

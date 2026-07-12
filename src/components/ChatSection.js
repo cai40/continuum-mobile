@@ -101,6 +101,7 @@ const ChatSection = () => {
     selectedVoice, persona,
     sttLang,
     activeTab,
+    user,
     session,
     syncRemoteHistory,
     isSyncingHistory,
@@ -722,7 +723,7 @@ const ChatSection = () => {
       if (shouldLoadMemory) {
         setStreamingContent('Searching Continuum memory…');
         try {
-          const { layeredData, pinData } = await fetchMemories(null, activeToken);
+          const { layeredData, pinData } = await fetchMemories(null, activeToken, user?.id);
           memoryRecallContext = buildMemoryRecallContext({
             episodicSegments: layeredData?.episodicSegments,
             semanticProfile: layeredData?.semanticProfile,
@@ -899,10 +900,21 @@ const ChatSection = () => {
                   text: 'Pin to L1',
                   onPress: async () => {
                     try {
-                      await pinCoreMemory(pinBody, activeToken, 'Min email evidence');
+                      const result = await pinCoreMemory(
+                        pinBody,
+                        activeToken,
+                        'Min email evidence',
+                        user?.id,
+                      );
                       onRefreshMemories?.(activeToken);
-                    } catch {
-                      Alert.alert('Pin failed', 'Could not save to Core Memory.');
+                      Alert.alert(
+                        'Pinned to L1',
+                        result?.source === 'local'
+                          ? 'Saved on this device (cloud pin API unavailable). Recall and Setup search will use it.'
+                          : 'Saved to Core Memory.',
+                      );
+                    } catch (e) {
+                      Alert.alert('Pin failed', e?.message || 'Could not save to Core Memory.');
                     }
                   },
                 },
