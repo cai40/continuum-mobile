@@ -41,6 +41,7 @@ const {
   EMAIL_RECALL_EVIDENCE_APPEND,
   RECALL_TURN_APPEND,
   MEMORY_RECALL_APPEND,
+  LIVE_INBOX_UNAVAILABLE_APPEND,
   WEB_SEARCH_APPEND,
 } = require('./groundingPrompt');
 const {
@@ -548,6 +549,28 @@ async function handleChatStream(req, res, config) {
       EMAIL_FOLLOW_UP_APPEND,
     ];
     payload.persona = appendGroundingPersona(payload.persona || '', recallExtras);
+  } else if (recallEvidenceFetch || /\[(?:CONTINUUM MEMORY|RECALL TURN STATUS)/i.test(originalMessage)) {
+    const recallExtras = [
+      RECALL_TURN_APPEND,
+      MEMORY_RECALL_APPEND,
+      recallEvidenceFetch ? EMAIL_RECALL_EVIDENCE_APPEND : null,
+      LIVE_INBOX_UNAVAILABLE_APPEND,
+    ];
+    payload.persona = appendGroundingPersona(payload.persona || '', recallExtras);
+    if (emailContext && emailContext.startsWith('[Yahoo email not available]')) {
+      message = [
+        emailContext,
+        '',
+        'The Min-folder fetch attempt finished but returned no usable inbox rows.',
+        'Answer the user recall question NOW from [CONTINUUM MEMORY] (in User request below) and chat history.',
+        'Do NOT say you are awaiting fetch completion.',
+        '',
+        '---',
+        'User request:',
+        message,
+      ].join('\n');
+      payload.message = message;
+    }
   } else if (hasWebSearch) {
     payload.persona = appendGroundingPersona(payload.persona || '', [WEB_SEARCH_APPEND]);
   } else {
