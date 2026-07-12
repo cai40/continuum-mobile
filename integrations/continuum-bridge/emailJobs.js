@@ -17,7 +17,12 @@ const {
 } = require('./emailFetchOptions');
 const { wantsEmailCleanup, wantsEmailCleanupPreview, extractEmailCleanupPreviewBlock } = require('./emailDelete');
 const { buildEffectiveEmailMessage } = require('./emailConfirmIntent');
-const { wantsEmailMemoryIngest, parseSenderFromMessage } = require('./emailSender');
+const {
+  wantsEmailMemoryIngest,
+  parseSenderFromMessage,
+  wantsFolderPersonaIngest,
+  wantsAttitudeTimelineAnalysis,
+} = require('./emailSender');
 const { wantsYearCleanup, runYearCleanup } = require('./yearCleanup');
 const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
 const {
@@ -464,6 +469,7 @@ function getLatestJobs(limit = 5) {
 function wantsBackgroundEmailJob(message) {
   const text = String(message || '');
   if (!wantsEmailFetch(text)) return false;
+  if (wantsFolderPersonaIngest(text) || wantsAttitudeTimelineAnalysis(text)) return true;
   if (wantsEmailCleanup(text)) return true;
   if (/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:\d{4}\s+)?emails?\b/i.test(text)) return true;
   if (/\b(?:for|in|during)\s+(?:the\s+)?(?:month\s+of\s+)?(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(text)) return true;
