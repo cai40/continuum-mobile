@@ -8,6 +8,7 @@ const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryO
 const { parseSenderFromMessage, wantsEmailMemoryIngest, wantsSenderPersonaAnalysis, wantsSequentialEmailIngest, imapSearchArgs } = require('./emailSender');
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, formatEmailCleanupPreviewNextSteps, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, wantsEmailMoveToFolder, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
+const { maybeAutoFileCleanupFolders } = require('./emailCleanupFolder');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
 
@@ -320,7 +321,7 @@ function extractPrefilledSummaryFromText(text) {
   return m?.[1]?.trim() || null;
 }
 
-function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult, permission, cleanupRequested, cleanupPreviewRequested, cleanupPreviewBlock }) {
+function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult, permission, cleanupRequested, cleanupPreviewRequested, cleanupPreviewBlock, cleanupFolderResult }) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
   const triaged = triageMessages(messages);
@@ -363,6 +364,17 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
     '',
     `**Cleanup targets:** ${cleanupCount}`,
   ];
+  const folderFileHeader = cleanupFolderResult?.executed && cleanupFolderResult?.summary
+    ? cleanupFolderResult.summary.split('\n')[0]
+    : null;
+  const folderPreview = cleanupPreviewRequested && cleanupFolderResult?.summary
+    ? cleanupFolderResult.summary
+    : null;
+  if (folderFileHeader) {
+    lines.push('', '**Filed to folder:**', `- ${folderFileHeader}`);
+  } else if (folderPreview) {
+    lines.push('', folderPreview);
+  }
   if (trashHeader) {
     lines.push('', '**Cleanup Results:**', `- ${trashHeader}`);
   } else if (permission && cleanupRequested) {
@@ -954,6 +966,9 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
 
     let deleteResult = { executed: false, summary: null, error: null, uids: [], skippedUids: [] };
     let moveResult = { executed: false, summary: null, error: null, uids: [], destFolder: null, sender: null };
+    let cleanupFolderResult = {
+      executed: false, summary: null, error: null, moves: [], previewGroups: [], movedUids: [],
+    };
 
     const permission = evaluateOverLimitPermission({
       message: effectiveMessage,
@@ -972,6 +987,16 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     if (cleanupPreviewRequested) {
       cleanupPreviewBlock = formatCleanupPreviewBlock(messages, {
         dateRangeLabel: fetchOptions.dateRangeLabel,
+      });
+    }
+
+    const cleanupFlowActive = (wantsEmailCleanup(effectiveMessage) || deleteRequested)
+      && !permission
+      && payloadOptions.email_delete_enabled;
+    if (cleanupFlowActive) {
+      cleanupFolderResult = await maybeAutoFileCleanupFolders(messages, imapScript, {
+        enabled: true,
+        preview: cleanupPreviewRequested,
       });
     }
 
@@ -1052,6 +1077,13 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     } else if (moveResult.error) {
       finalContext = [finalContext, '', `[Email move] ${moveResult.error}`].filter(Boolean).join('\n');
     }
+    if (cleanupFolderResult.executed && cleanupFolderResult.summary) {
+      finalContext = [finalContext, '', '[Email cleanup — filed to folder]', cleanupFolderResult.summary].join('\n');
+    } else if (cleanupFolderResult.error && cleanupFlowActive && !cleanupPreviewRequested) {
+      finalContext = [finalContext, '', `[Email cleanup folder] ${cleanupFolderResult.error}`].filter(Boolean).join('\n');
+    } else if (cleanupPreviewRequested && cleanupFolderResult.summary) {
+      finalContext = [finalContext, '', cleanupFolderResult.summary].filter(Boolean).join('\n');
+    }
 
     const cleanupRequested = wantsEmailCleanup(effectiveMessage);
     if (wantsEmailSummaryOnly(effectiveMessage) || /SUMMARY MODE:/i.test(context || '') || cleanupRequested || cleanupPreviewRequested) {
@@ -1064,6 +1096,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
         cleanupRequested,
         cleanupPreviewRequested,
         cleanupPreviewBlock,
+        cleanupFolderResult,
       });
       if (prefilled) {
         if (cleanupRequested || cleanupPreviewRequested) {

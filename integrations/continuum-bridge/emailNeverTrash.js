@@ -58,6 +58,10 @@ const BUILTIN_NEVER_TRASH = [
       'mass.gov notice',
     ],
   },
+  {
+    label: 'Min Zhang',
+    needles: ['min zhang', 'njsgas@gmail.com', 'min z <'],
+  },
 ];
 
 const INVALID_SENDER_LABELS = new Set([

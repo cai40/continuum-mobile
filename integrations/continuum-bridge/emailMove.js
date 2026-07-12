@@ -205,4 +205,5 @@ module.exports = {
   parseMoveSenderFromMessage,
   resolveMoveUids,
   maybeMoveEmailsToFolder,
+  runImapMoveBatched,
 };
