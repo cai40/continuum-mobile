@@ -2,44 +2,67 @@
 
 const { parseDateRangeFromMessage } = require('./emailDateRange');
 const { parseLimitFromMessage } = require('./emailFetchOptions');
-const { wantsEmailCleanup, wantsEmailDelete, wantsEmailCleanupPreview } = require('./emailDelete');
-const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
-const { wantsEmailQuoteSearch } = require('./emailQuoteSearch');
 const { parseMailboxFromMessage } = require('./emailFolderParse');
-const { isPersonaFetchIntent, resolvePriorEmailIntent } = require('./emailConfirmIntent');
+const { wantsEmailQuoteSearch } = require('./emailQuoteSearch');
 const { wantsSenderPersonaAnalysis, wantsChinesePersonaAnalysis } = require('./emailSender');
 
 const ASSISTANT_EMAIL_ANALYSIS = /\b(?:UID\s+\d+|SENDER PERSONA|ATTITUDE TIMELINE|Fetched\s+\d+\s+REAL\s+email|Emails loaded|mailbox\s+"|Date filter:|Matched:\s*\d+)/i;
 
+function isPersonaFetchIntent(content) {
+  const text = String(content || '');
+  return parseMailboxFromMessage(text) != null
+    || /\bmin\s+folder\b/i.test(text)
+    || /\b(persona|attitude|timeline|psycholog)/i.test(text)
+    || /(?:心理|人格|敏)/u.test(text);
+}
+
+/** Memory / citation follow-up — not a command to re-fetch mail for a month/year mention. */
+function isAnalysisRecallQuestion(message) {
+  const text = String(message || '').trim();
+  if (!text) return false;
+  if (/\bwhat do you remember\b/i.test(text)) return true;
+  if (/\bfrom (?:chat|memory|prior|earlier|above|the prior)\b/i.test(text)) return true;
+  if (/(?:cite|show|list|provide|verify|confirm|add)\s+(?:the\s+)?(?:uid|uids)(?:\s+and\s+date|\s*\+\s*date)?/i.test(text)) {
+    return true;
+  }
+  if (/\buid\s+and\s+date\b/i.test(text)) return true;
+  if (/\b(?:ground|evidence|proof|citation)\b/i.test(text)
+    && /\b(?:quote|quotes|claim|timeline|analysis|persona|remember)\b/i.test(text)) {
+    return true;
+  }
+  return false;
+}
+
 function isExplicitNewEmailFetch(message) {
   const text = String(message || '').trim();
   if (!text) return false;
+  if (isAnalysisRecallQuestion(text)) return false;
+
+  const { wantsEmailCleanup, wantsEmailDelete, wantsEmailCleanupPreview } = require('./emailDelete');
+  const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
+
   if (wantsEmailCleanup(text) || wantsEmailDelete(text) || wantsEmailCleanupPreview(text)) return true;
   if (wantsEmailMoveToFolder(text) || wantsEmailCopyFolderToInbox(text)) return true;
-  if (parseDateRangeFromMessage(text)) return true;
-  if (parseLimitFromMessage(text) != null && /\bemails?\b/i.test(text)) return true;
   if (/\b(?:read|fetch|get|load|scan)\s+(?:all|every|\d+)\s+emails?\b/i.test(text)) return true;
   if (/\b(?:clean\s*up|cleanup|clean)\b.*\b(?:emails?|inbox|mail|yahoo)\b/i.test(text)) return true;
   if (/\bfetch\s+and\s+clean\b/i.test(text)) return true;
   if (parseMailboxFromMessage(text) && /\b(?:read|fetch|get|from|folder)\b/i.test(text)) return true;
   if (wantsEmailQuoteSearch(text)) return true;
-  if (wantsSenderPersonaAnalysis(text) && /\b(?:from|folder|since|202\d|read|fetch)\b/i.test(text)) return true;
+  if (wantsSenderPersonaAnalysis(text) && /\b(?:from|folder|since|read|fetch)\b/i.test(text)) return true;
+  if (parseLimitFromMessage(text) != null && /\bemails?\b/i.test(text)) return true;
+  if (parseDateRangeFromMessage(text) && /\b(?:fetch|read|get|scan|clean|cleanup|load)\b/i.test(text)) return true;
+  if (parseDateRangeFromMessage(text) && /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+\d{4}\s+emails?\b/i.test(text)) {
+    return true;
+  }
   return false;
 }
 
 function isEmailAnalysisFollowUp(message) {
   const text = String(message || '').trim();
   if (!text || text.length > 320) return false;
+  if (isAnalysisRecallQuestion(text)) return true;
   if (isExplicitNewEmailFetch(text)) return false;
 
-  if (/(?:cite|show|add|include|need|give|list|provide|verify|confirm)\s+(?:the\s+)?(?:uid|uids)(?:\s+and\s+date|\s*\+\s*date)?/i.test(text)) {
-    return true;
-  }
-  if (/\buid\s+and\s+date\b/i.test(text)) return true;
-  if (/\b(?:ground|evidence|proof|citation|source)\b/i.test(text)
-    && /\b(?:quote|quotes|claim|timeline|analysis|persona)\b/i.test(text)) {
-    return true;
-  }
   if (/\b(?:revise|rewrite|expand|clarify|explain|summarize|elaborate)\b/i.test(text)
     && /\b(?:analysis|timeline|persona|attitude|above|prior|previous)\b/i.test(text)) {
     return true;
@@ -86,6 +109,7 @@ function shouldSkipEmailFetch(message, history) {
 }
 
 function buildFollowUpChatMessage(message, history) {
+  const { resolvePriorEmailIntent } = require('./emailConfirmIntent');
   const prior = resolvePriorEmailIntent(history);
   return [
     'FOLLOW-UP (no new IMAP fetch): The emails were already analyzed in chat history above.',
@@ -99,6 +123,7 @@ function buildFollowUpChatMessage(message, history) {
 }
 
 module.exports = {
+  isAnalysisRecallQuestion,
   isExplicitNewEmailFetch,
   isEmailAnalysisFollowUp,
   hasRecentEmailAnalysisContext,
