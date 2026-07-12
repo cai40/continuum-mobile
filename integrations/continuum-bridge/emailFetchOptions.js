@@ -4,12 +4,8 @@ const { parseDateRangeFromMessage, parseYearRangeFromMessage, addDays } = requir
 const { wantsEmailCleanup } = require('./emailDelete');
 const { wantsEmailMoveToFolder } = require('./emailMove');
 const { wantsEmailQuoteSearch } = require('./emailQuoteSearch');
-const {
-  parseMailboxFromMessage,
-  wantsFolderPersonaIngest,
-  wantsSenderPersonaAnalysis,
-  defaultFolderPersonaDateRange,
-} = require('./emailSender');
+const { parseMailboxFromMessage } = require('./emailFolderParse');
+const { wantsFolderPersonaIngest } = require('./emailSender');
 const { isComposeEmailRequest } = require('./emailComposeIntent');
 
 const DEFAULT_LIMIT = 25;

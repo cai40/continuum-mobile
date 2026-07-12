@@ -1,6 +1,7 @@
 'use strict';
 
 const { parseAnyDateToken, addDays } = require('./emailDateRange');
+const { parseMailboxFromMessage } = require('./emailFolderParse');
 
 /** Yahoo folders that map to a default sender when the user names the folder only. */
 const FOLDER_SENDER_DEFAULTS = {
@@ -14,24 +15,6 @@ function looksLikeDateToken(value) {
   if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(trimmed)) return true;
   if (/^[a-z]+\s+\d{1,2},?\s+\d{4}/i.test(trimmed)) return true;
   return false;
-}
-
-function parseMailboxFromMessage(message) {
-  const text = String(message || '');
-  const patterns = [
-    /\bin\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
-    /\b(?:read|feed|ingest|fetch|get|scan)\s+(?:all\s+)?(?:every\s+)?(?:the\s+)?(?:emails?\s+)?(?:in|from)\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
-    /\b(?:emails?\s+)?from\s+(?:the\s+)?["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\s+folder\b/i,
-    /\bfolder\s+["']?([A-Za-z0-9][A-Za-z0-9 _-]{0,40}?)["']?\b/i,
-  ];
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match?.[1]) continue;
-    const name = match[1].trim();
-    if (/^(inbox|trash|bin|junk|spam)$/i.test(name)) continue;
-    return name;
-  }
-  return null;
 }
 
 function stripFolderSuffix(sender) {
@@ -66,6 +49,7 @@ function parseSenderFromMessage(message) {
     const match = text.match(pattern);
     if (match?.[1]) {
       let sender = stripFolderSuffix(match[1].trim());
+      sender = sender.replace(/\s+folder\s*$/i, '').trim();
       sender = sender.replace(/\s+(to|into|for)\s+(continuum|memory).*$/i, '').trim();
       sender = sender.replace(/\s+from\s+(?:year\s+)?.*$/i, '').trim();
       if (sender.length >= 2 && !looksLikeDateToken(sender)) return sender;

@@ -759,9 +759,12 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
   let mailbox = fetchOptions.mailbox || parseMailboxFromMessage(message);
   let sender = parseMoveSenderFromMessage(message) || resolveSenderForMailboxIngest(message) || parseSenderFromMessage(message);
   const quoteSearch = wantsEmailQuoteSearch(message);
-  if (quoteSearch && !mailbox && /\b(?:she|min\s*zhang|min\s*z|her)\b/i.test(message)) {
-    mailbox = 'Min';
-    sender = sender || 'Min Zhang';
+  if (quoteSearch && !mailbox) {
+    mailbox = parseMailboxFromMessage(message);
+    if (!mailbox && /\b(?:she|min\s*zhang|min\s*z|her)\b/i.test(message)) {
+      mailbox = 'Min';
+    }
+    sender = sender || resolveSenderForMailboxIngest(message) || 'Min Zhang';
   }
   const skillRoot = path.dirname(path.dirname(imapScript));
   const chronological = wantsSequentialEmailIngest(message)
