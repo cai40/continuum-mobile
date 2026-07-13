@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
@@ -810,7 +810,7 @@ const ChatSection = () => {
             setIsTyping(false);
             Alert.alert(
               'Could not read file',
-              'Text could not be extracted. For Excel use .xlsx, or export to CSV and attach again.',
+              'Text could not be extracted. For PDF, ensure the file is not password-protected or scanned-only. For Excel use .xlsx, or export to CSV and attach again.',
             );
             return;
           }

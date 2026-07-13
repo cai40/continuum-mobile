@@ -10,10 +10,41 @@ function truncate(text) {
   return `${raw.slice(0, MAX_EXTRACT_CHARS)}\n\n[Truncated — file exceeds ${MAX_EXTRACT_CHARS} characters]`;
 }
 
+function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
 async function readBase64(uri) {
   return readAsStringAsync(uri, {
     encoding: EncodingType.Base64,
   });
+}
+
+async function extractPdfText(uri) {
+  const base64 = await readBase64(uri);
+  const bytes = base64ToUint8Array(base64);
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdf = await pdfjs.getDocument({
+    data: bytes,
+    disableWorker: true,
+    useSystemFonts: true,
+  }).promise;
+
+  const parts = [];
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
+    const page = await pdf.getPage(pageNum);
+    const content = await page.getTextContent();
+    const pageText = content.items.map((item) => item.str).join(' ').trim();
+    if (pageText) {
+      parts.push(`## Page ${pageNum}\n${pageText}`);
+    }
+  }
+  return truncate(parts.join('\n\n'));
 }
 
 async function extractExcelText(uri) {
@@ -54,6 +85,10 @@ export async function extractAttachmentText(file) {
 
   if (ext === 'txt' || ext === 'csv' || resolved.includes('text/plain') || resolved.includes('csv')) {
     return extractPlainText(uri);
+  }
+
+  if (ext === 'pdf' || resolved.includes('pdf')) {
+    return extractPdfText(uri);
   }
 
   return null;
