@@ -14,6 +14,7 @@ export function MemorySearchPanel({
   onToggleExpanded,
   questionLogCount = 0,
   onPinFragment,
+  onDeleteMatch,
 }) {
   const hasQuery = String(query || '').trim().length > 0;
 
@@ -98,24 +99,21 @@ export function MemorySearchPanel({
                   meta={row.meta}
                   expanded={!!expandedIds[key]}
                   onToggle={() => onToggleExpanded(key)}
+                  onDelete={onDeleteMatch ? () => onDeleteMatch(row) : undefined}
                   borderColor={row.kind === 'evidence' ? theme.colors.success : theme.colors.primary}
                 />
-                {onPinFragment ? (
-                  <TouchableOpacity
-                    onPress={() => onPinFragment(row.text, row.layerLabel || row.layer)}
-                    style={{
-                      alignSelf: 'flex-start',
-                      marginTop: -4,
-                      marginBottom: 12,
-                      paddingVertical: 6,
-                      paddingHorizontal: 10,
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-                      Pin to L1
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
+                <View style={{ flexDirection: 'row', marginTop: -4, marginBottom: 12 }}>
+                  {onPinFragment ? (
+                    <TouchableOpacity
+                      onPress={() => onPinFragment(row.text, row.layerLabel || row.layer)}
+                      style={{ paddingVertical: 6, paddingHorizontal: 10 }}
+                    >
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+                        Pin to L1
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               </View>
             );
           })}
