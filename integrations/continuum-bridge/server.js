@@ -58,7 +58,8 @@ const {
   saveState,
 } = require('./dailyCleanup');
 const {
-  serviceConfigured: memoryCleanupConfigured,
+  serviceConfigured: memoryServiceRoleConfigured,
+  cleanupConfigured: memoryCleanupConfigured,
   verifyBearerUser,
   runConsolidationForUser,
   runConsolidationAllUsers,
@@ -229,18 +230,19 @@ async function handleDailyCleanupRunNow(req, res, config) {
 }
 
 async function handleMemoryConsolidate(req, res) {
-  const userId = await verifyBearerUser(req.headers.authorization || '');
+  const authorization = req.headers.authorization || '';
+  const userId = await verifyBearerUser(authorization);
   if (!userId) {
     return json(res, 401, { success: false, error: 'Missing or invalid bearer token' });
   }
   if (!memoryCleanupConfigured()) {
     return json(res, 503, {
       success: false,
-      error: 'Memory cleanup not configured. Set SUPABASE_SERVICE_ROLE_KEY on Render email bridge.',
+      error: 'Memory cleanup not configured. Set SUPABASE_ANON_KEY on Render email bridge.',
     });
   }
   try {
-    const report = await runConsolidationForUser(userId);
+    const report = await runConsolidationForUser(userId, authorization);
     return json(res, 200, report);
   } catch (err) {
     return json(res, 500, { success: false, error: err.message || String(err) });
@@ -251,10 +253,10 @@ async function handleMemoryConsolidateCron(req, res, config) {
   if (!verifyBridgeSecret(req, config)) {
     return json(res, 401, { success: false, error: 'Invalid bridge secret' });
   }
-  if (!memoryCleanupConfigured()) {
+  if (!memoryServiceRoleConfigured()) {
     return json(res, 503, {
       success: false,
-      error: 'Set SUPABASE_SERVICE_ROLE_KEY on Render email bridge.',
+      error: 'Cron requires SUPABASE_SERVICE_ROLE_KEY on Render email bridge.',
     });
   }
   try {
@@ -266,12 +268,13 @@ async function handleMemoryConsolidateCron(req, res, config) {
 }
 
 async function handleMemoryDelete(req, res) {
-  const userId = await verifyBearerUser(req.headers.authorization || '');
+  const authorization = req.headers.authorization || '';
+  const userId = await verifyBearerUser(authorization);
   if (!userId) {
     return json(res, 401, { success: false, error: 'Missing or invalid bearer token' });
   }
   if (!memoryCleanupConfigured()) {
-    return json(res, 503, { success: false, error: 'SUPABASE_SERVICE_ROLE_KEY not configured' });
+    return json(res, 503, { success: false, error: 'Supabase not configured' });
   }
   const raw = await readBody(req);
   let body;
@@ -286,7 +289,7 @@ async function handleMemoryDelete(req, res) {
     return json(res, 400, { success: false, error: 'layer and id required' });
   }
   try {
-    const result = await deleteMemoryForUser(userId, layer, id);
+    const result = await deleteMemoryForUser(userId, layer, id, authorization);
     return json(res, 200, result);
   } catch (err) {
     return json(res, 500, { success: false, error: err.message || String(err) });
@@ -739,7 +742,8 @@ const server = http.createServer(async (req, res) => {
         email: emailHealth,
         memory_cleanup: {
           configured: memoryCleanupConfigured(),
-          supabase_url: Boolean(process.env.SUPABASE_URL || true),
+          user_scoped: memoryCleanupConfigured(),
+          cron_ready: memoryServiceRoleConfigured(),
         },
       });
     }
