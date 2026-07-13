@@ -255,6 +255,14 @@ async function tryCloudDeleteMemory(layer, id, authToken) {
       },
     },
     {
+      url: `${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, '')}/memories/delete`,
+      options: {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ layer, id: sid }),
+      },
+    },
+    {
       url: `${API_URL}/memories/${layer}/${encodeURIComponent(sid)}`,
       options: { method: 'DELETE', headers },
     },
@@ -364,39 +372,53 @@ export async function tryRunMemoryConsolidation(authToken) {
   if (!authToken) {
     return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_signed_in' };
   }
-  try {
-    const res = await fetch(`${API_URL}/memories/consolidate`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-        'User-Agent': 'Continuum-Mobile/1.0',
-      },
-      body: JSON.stringify({}),
-    });
-    if (res.status === 404 || res.status === 405 || res.status === 501) {
-      return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_deployed' };
-    }
-    if (!res.ok) {
+
+  const bases = [API_URL, RENDER_EMAIL_BRIDGE_URL];
+  for (const base of bases) {
+    try {
+      const res = await fetch(`${String(base).replace(/\/$/, '')}/memories/consolidate`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+          'User-Agent': 'Continuum-Mobile/1.0',
+        },
+        body: JSON.stringify({}),
+      });
+      if (res.status === 404 || res.status === 405 || res.status === 501) {
+        continue;
+      }
+      if (res.status === 503) {
+        const detail = await res.text();
+        if (/SERVICE_ROLE|not configured/i.test(detail)) {
+          return {
+            serverRan: false,
+            serverSkipped: true,
+            serverRemoved: 0,
+            skipReason: 'service_key_missing',
+          };
+        }
+        continue;
+      }
+      if (!res.ok) {
+        continue;
+      }
+      const contentType = res.headers.get('content-type') || '';
+      const data = contentType.includes('application/json') ? await res.json() : {};
       return {
-        serverRan: false,
-        serverSkipped: true,
-        serverRemoved: 0,
-        skipReason: res.status >= 500 ? 'upstream_unavailable' : 'upstream_error',
+        serverRan: true,
+        serverSkipped: false,
+        serverRemoved: Number(data?.total_removed) || 0,
+        skipReason: null,
+        source: base === RENDER_EMAIL_BRIDGE_URL ? 'email_bridge' : 'backend',
       };
+    } catch {
+      // try next base URL
     }
-    const contentType = res.headers.get('content-type') || '';
-    const data = contentType.includes('application/json') ? await res.json() : {};
-    return {
-      serverRan: true,
-      serverSkipped: false,
-      serverRemoved: Number(data?.total_removed) || 0,
-      skipReason: null,
-    };
-  } catch {
-    return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'network' };
   }
+
+  return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_deployed' };
 }
 
 /**

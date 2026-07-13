@@ -57,6 +57,14 @@ const {
   loadState,
   saveState,
 } = require('./dailyCleanup');
+const {
+  serviceConfigured: memoryCleanupConfigured,
+  verifyBearerUser,
+  runConsolidationForUser,
+  runConsolidationAllUsers,
+  deleteMemoryForUser,
+  getLatestRuns: getMemoryCleanupLatest,
+} = require('./memoryCleanup');
 const { handleNeverTrashRequest, wantsNeverTrashRequest } = require('./emailNeverTrash');
 const {
   createEmailJob,
@@ -218,6 +226,78 @@ async function handleDailyCleanupRunNow(req, res, config) {
   } catch (err) {
     return json(res, 500, { success: false, error: err.message || String(err) });
   }
+}
+
+async function handleMemoryConsolidate(req, res) {
+  const userId = await verifyBearerUser(req.headers.authorization || '');
+  if (!userId) {
+    return json(res, 401, { success: false, error: 'Missing or invalid bearer token' });
+  }
+  if (!memoryCleanupConfigured()) {
+    return json(res, 503, {
+      success: false,
+      error: 'Memory cleanup not configured. Set SUPABASE_SERVICE_ROLE_KEY on Render email bridge.',
+    });
+  }
+  try {
+    const report = await runConsolidationForUser(userId);
+    return json(res, 200, report);
+  } catch (err) {
+    return json(res, 500, { success: false, error: err.message || String(err) });
+  }
+}
+
+async function handleMemoryConsolidateCron(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  if (!memoryCleanupConfigured()) {
+    return json(res, 503, {
+      success: false,
+      error: 'Set SUPABASE_SERVICE_ROLE_KEY on Render email bridge.',
+    });
+  }
+  try {
+    const summary = await runConsolidationAllUsers();
+    return json(res, 200, { success: true, ...summary });
+  } catch (err) {
+    return json(res, 500, { success: false, error: err.message || String(err) });
+  }
+}
+
+async function handleMemoryDelete(req, res) {
+  const userId = await verifyBearerUser(req.headers.authorization || '');
+  if (!userId) {
+    return json(res, 401, { success: false, error: 'Missing or invalid bearer token' });
+  }
+  if (!memoryCleanupConfigured()) {
+    return json(res, 503, { success: false, error: 'SUPABASE_SERVICE_ROLE_KEY not configured' });
+  }
+  const raw = await readBody(req);
+  let body;
+  try {
+    body = JSON.parse(raw || '{}');
+  } catch {
+    return json(res, 400, { success: false, error: 'Invalid JSON' });
+  }
+  const layer = String(body.layer || '').toLowerCase();
+  const id = body.id;
+  if (!layer || !id) {
+    return json(res, 400, { success: false, error: 'layer and id required' });
+  }
+  try {
+    const result = await deleteMemoryForUser(userId, layer, id);
+    return json(res, 200, result);
+  } catch (err) {
+    return json(res, 500, { success: false, error: err.message || String(err) });
+  }
+}
+
+async function handleMemoryCleanupLatest(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  return json(res, 200, { success: true, ...getMemoryCleanupLatest(14) });
 }
 
 async function handleEmailJobCreate(req, res, config) {
@@ -657,6 +737,10 @@ const server = http.createServer(async (req, res) => {
         continuum_api: config.apiUrl,
         openclaw: true,
         email: emailHealth,
+        memory_cleanup: {
+          configured: memoryCleanupConfigured(),
+          supabase_url: Boolean(process.env.SUPABASE_URL || true),
+        },
       });
     }
 
@@ -670,6 +754,22 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'POST' && req.url === '/daily-cleanup/run') {
       return await handleDailyCleanupRunNow(req, res, config);
+    }
+
+    if (req.method === 'POST' && req.url === '/memories/consolidate') {
+      return await handleMemoryConsolidate(req, res);
+    }
+
+    if (req.method === 'POST' && req.url === '/memories/delete') {
+      return await handleMemoryDelete(req, res);
+    }
+
+    if (req.method === 'POST' && req.url === '/cron/memory-consolidate') {
+      return await handleMemoryConsolidateCron(req, res, config);
+    }
+
+    if (req.method === 'GET' && req.url === '/memories/consolidation/latest') {
+      return await handleMemoryCleanupLatest(req, res, config);
     }
 
     if (req.method === 'POST' && req.url === '/email-jobs') {
@@ -713,6 +813,10 @@ server.listen(PORT, HOST, () => {
   console.log('  GET  /daily-cleanup/latest');
   console.log('  POST /cron/daily-cleanup');
   console.log('  POST /daily-cleanup/run');
+  console.log('  POST /memories/consolidate');
+  console.log('  POST /memories/delete');
+  console.log('  POST /cron/memory-consolidate');
+  console.log('  GET  /memories/consolidation/latest');
   console.log('  POST /email-jobs       (background email fetch/cleanup)');
   console.log('  GET  /email-jobs/latest');
   console.log('  GET  /email-jobs/:id');

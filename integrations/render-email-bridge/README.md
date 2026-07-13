@@ -92,3 +92,41 @@ Optional on the **web service** env:
 | `GET` | `/daily-cleanup/latest` | `X-Bridge-Secret` (last 14 runs) |
 
 In the app: **Setup → OpenClaw Gateway → Daily email cleanup**, or chat: “daily cleanup summary”.
+
+---
+
+## Memory vault cleanup (L1–L5)
+
+Dedupe, L2 noise purge, and Ebbinghaus decay on Supabase memory tables.
+
+### Required env (Render web service)
+
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `SUPABASE_SERVICE_ROLE_KEY` | **Yes** | Delete rows in `pinned_memories`, `episodic_segments`, etc. |
+| `SUPABASE_URL` | No | Defaults to project URL in mobile Config |
+| `SUPABASE_ANON_KEY` | No | JWT verification for user routes |
+
+Get the service role key from **Supabase → Project Settings → API → service_role** (keep secret).
+
+### Nightly cron (optional)
+
+Schedule `0 3 * * *` (3 AM UTC):
+
+```bash
+curl -sS -X POST "https://continuum-email-bridge.onrender.com/cron/memory-consolidate" \
+  -H "X-Bridge-Secret: $BRIDGE_SECRET"
+```
+
+### API
+
+| Method | Path | Auth |
+|--------|------|------|
+| `POST` | `/memories/consolidate` | `Authorization: Bearer <supabase JWT>` |
+| `POST` | `/memories/delete` | Bearer JWT + `{ "layer": "l2", "id": "..." }` |
+| `POST` | `/cron/memory-consolidate` | `X-Bridge-Secret` (all users) |
+| `GET` | `/memories/consolidation/latest` | `X-Bridge-Secret` |
+
+Verify: `curl -s https://continuum-email-bridge.onrender.com/health | grep memory_cleanup`
+
+In the app: **Setup → Data & Memory Vault → Run memory cleanup**.
