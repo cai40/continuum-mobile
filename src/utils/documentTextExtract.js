@@ -28,7 +28,7 @@ async function readBase64(uri) {
 async function extractPdfText(uri) {
   const base64 = await readBase64(uri);
   const bytes = base64ToUint8Array(base64);
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.js');
   const pdf = await pdfjs.getDocument({
     data: bytes,
     disableWorker: true,
