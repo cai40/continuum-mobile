@@ -357,38 +357,72 @@ export async function runMemoryConsolidation(authToken) {
 }
 
 /**
+ * Best-effort server consolidation — never throws (404 / cold start / network).
+ * Used by manual memory cleanup so device dedupe always runs.
+ */
+export async function tryRunMemoryConsolidation(authToken) {
+  if (!authToken) {
+    return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_signed_in' };
+  }
+  try {
+    const res = await fetch(`${API_URL}/memories/consolidate`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        'User-Agent': 'Continuum-Mobile/1.0',
+      },
+      body: JSON.stringify({}),
+    });
+    if (res.status === 404 || res.status === 405 || res.status === 501) {
+      return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_deployed' };
+    }
+    if (!res.ok) {
+      return {
+        serverRan: false,
+        serverSkipped: true,
+        serverRemoved: 0,
+        skipReason: res.status >= 500 ? 'upstream_unavailable' : 'upstream_error',
+      };
+    }
+    const contentType = res.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await res.json() : {};
+    return {
+      serverRan: true,
+      serverSkipped: false,
+      serverRemoved: Number(data?.total_removed) || 0,
+      skipReason: null,
+    };
+  } catch {
+    return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'network' };
+  }
+}
+
+/**
  * Manual memory cleanup: server consolidation when available, then on-device dedupe.
+ * Never throws — local dedupe always runs even if Render is waking or route is missing.
  */
 export async function runMemoryCleanup(layers, authToken, userId = null) {
-  let serverRan = false;
-  let serverSkipped = false;
-  let serverRemoved = 0;
+  const server = await tryRunMemoryConsolidation(authToken);
 
-  if (authToken) {
-    try {
-      const result = await runMemoryConsolidation(authToken);
-      serverRan = true;
-      serverRemoved = Number(result?.total_removed) || 0;
-    } catch (e) {
-      const msg = String(e?.message || e || '');
-      if (/404|not found|405|501/i.test(msg)) {
-        serverSkipped = true;
-      } else {
-        throw e;
-      }
-    }
+  let localCounts = { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 };
+  let localRemoved = 0;
+  try {
+    localCounts = await dedupeAllMemoryLayers(layers, authToken, userId);
+    localRemoved = Object.values(localCounts).reduce((sum, n) => sum + n, 0);
+  } catch (e) {
+    console.warn('Local memory dedupe failed:', e);
   }
 
-  const localCounts = await dedupeAllMemoryLayers(layers, authToken, userId);
-  const localRemoved = Object.values(localCounts).reduce((sum, n) => sum + n, 0);
-
   return {
-    serverRan,
-    serverSkipped,
-    serverRemoved,
+    serverRan: server.serverRan,
+    serverSkipped: server.serverSkipped,
+    serverRemoved: server.serverRemoved,
+    skipReason: server.skipReason,
     localRemoved,
     localCounts,
-    totalRemoved: serverRemoved + localRemoved,
+    totalRemoved: server.serverRemoved + localRemoved,
   };
 }
 
