@@ -343,6 +343,19 @@ export async function dedupeAllMemoryLayers(layers, authToken, userId = null) {
   return counts;
 }
 
+/** Server-side consolidation (dedupe + noise + decay). Requires backend deploy. */
+export async function runMemoryConsolidation(authToken) {
+  if (!authToken) throw new Error('Not signed in');
+  const data = await pulseFetch(
+    `${API_URL}/memories/consolidate`,
+    { method: 'POST', body: JSON.stringify({}) },
+    2,
+    null,
+    authToken,
+  );
+  return data;
+}
+
 export const chatStream = (
   formData,
   onUpdate,

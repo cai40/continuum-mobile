@@ -17,7 +17,7 @@ import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import * as Constants from "expo-constants";
 import { useAppContext } from "../context/AppContext";
-import { pulseFetch, ingestDocuments, pinCoreMemory, deleteMemoryItem, dedupeMemoryLayer, dedupeAllMemoryLayers } from "../services/apiService";
+import { pulseFetch, ingestDocuments, pinCoreMemory, deleteMemoryItem, dedupeMemoryLayer, dedupeAllMemoryLayers, runMemoryConsolidation } from "../services/apiService";
 import {
   DOCUMENT_MIME_TYPES,
   MAX_DOCUMENT_ATTACHMENTS,
@@ -604,6 +604,45 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               );
             } catch (e) {
               Alert.alert('Dedupe failed', e?.message || 'Could not remove duplicates.');
+            } finally {
+              setIsSyncing(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleRunConsolidation = () => {
+    Alert.alert(
+      'Run memory consolidation?',
+      'Server-side dedupe, L2 noise purge, and low-retention cleanup (requires backend deploy). Falls back to on-device dedupe if the route is not live yet.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Consolidate',
+          onPress: async () => {
+            try {
+              setIsSyncing(true);
+              const result = await runMemoryConsolidation(session?.access_token);
+              await onRefreshMemories();
+              const removed = result?.total_removed ?? 0;
+              Alert.alert(
+                'Consolidation complete',
+                removed > 0
+                  ? `Removed ${removed} fragment(s) across your vault.`
+                  : 'No fragments removed — vault already compact.',
+              );
+            } catch (e) {
+              const msg = String(e?.message || e || '');
+              if (/404|not found|405/i.test(msg)) {
+                Alert.alert(
+                  'Backend not ready',
+                  'POST /memories/consolidate is not deployed yet. Use Remove duplicates (all) for on-device cleanup, or deploy integrations/continuum-backend/MEMORY_CONSOLIDATION.md on Render.',
+                );
+              } else {
+                Alert.alert('Consolidation failed', msg || 'Could not run consolidation.');
+              }
             } finally {
               setIsSyncing(false);
             }
@@ -1386,10 +1425,16 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       </View>
 
       <View style={{ marginBottom: 30 }}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-          <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray }}>
-            MEMORY VAULT
-          </Text>
+        <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray, marginBottom: 8 }}>
+          MEMORY VAULT
+        </Text>
+
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8, gap: 16 }}>
+          <TouchableOpacity onPress={handleRunConsolidation} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
+              Consolidate (server)
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleDedupeAllLayers} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.danger }}>
               Remove duplicates (all)
