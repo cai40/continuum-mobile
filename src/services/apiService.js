@@ -356,6 +356,42 @@ export async function runMemoryConsolidation(authToken) {
   return data;
 }
 
+/**
+ * Manual memory cleanup: server consolidation when available, then on-device dedupe.
+ */
+export async function runMemoryCleanup(layers, authToken, userId = null) {
+  let serverRan = false;
+  let serverSkipped = false;
+  let serverRemoved = 0;
+
+  if (authToken) {
+    try {
+      const result = await runMemoryConsolidation(authToken);
+      serverRan = true;
+      serverRemoved = Number(result?.total_removed) || 0;
+    } catch (e) {
+      const msg = String(e?.message || e || '');
+      if (/404|not found|405|501/i.test(msg)) {
+        serverSkipped = true;
+      } else {
+        throw e;
+      }
+    }
+  }
+
+  const localCounts = await dedupeAllMemoryLayers(layers, authToken, userId);
+  const localRemoved = Object.values(localCounts).reduce((sum, n) => sum + n, 0);
+
+  return {
+    serverRan,
+    serverSkipped,
+    serverRemoved,
+    localRemoved,
+    localCounts,
+    totalRemoved: serverRemoved + localRemoved,
+  };
+}
+
 export const chatStream = (
   formData,
   onUpdate,
