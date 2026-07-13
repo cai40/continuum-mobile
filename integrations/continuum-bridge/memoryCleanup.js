@@ -18,11 +18,41 @@ const BATCH_SIZE = Math.min(1000, Math.max(100, parseInt(process.env.MEMORY_CONS
 const RETENTION_THRESHOLD = parseFloat(process.env.MEMORY_RETENTION_THRESHOLD || '0.4');
 
 const LAYERS = [
-  { layer: 'l1', table: 'pinned_memories', textField: 'content' },
-  { layer: 'l2', table: 'episodic_segments', textField: 'content' },
-  { layer: 'l3', table: 'semantic_memories', textField: 'content' },
-  { layer: 'l4', table: 'temporal_events', textField: 'event_description' },
-  { layer: 'l5', table: 'document_chunks', textField: 'content' },
+  {
+    layer: 'l1',
+    table: 'pinned_memories',
+    textField: 'content',
+    orderColumn: 'timestamp',
+    select: 'id,user_id,content,timestamp',
+  },
+  {
+    layer: 'l2',
+    table: 'episodic_segments',
+    textField: 'content',
+    orderColumn: 'created_at',
+    select: 'id,user_id,content,created_at',
+  },
+  {
+    layer: 'l3',
+    table: 'semantic_memories',
+    textField: 'content',
+    orderColumn: 'timestamp',
+    select: 'id,user_id,content,timestamp,mentions,importance_score,type',
+  },
+  {
+    layer: 'l4',
+    table: 'temporal_events',
+    textField: 'event_description',
+    orderColumn: 'created_at',
+    select: 'id,user_id,event_description,created_at,state',
+  },
+  {
+    layer: 'l5',
+    table: 'document_chunks',
+    textField: 'content',
+    orderColumn: 'timestamp',
+    select: 'id,user_id,content,source,timestamp',
+  },
 ];
 
 const DEFAULT_STATE_PATH = path.join(
@@ -110,11 +140,11 @@ async function verifyBearerUser(authorization) {
   }
 }
 
-async function fetchRows(table, userId, offset, limit, authorization, useAdmin) {
+async function fetchRows(table, userId, offset, limit, authorization, useAdmin, orderColumn = 'created_at', select = '*') {
   const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
-  url.searchParams.set('select', '*');
+  url.searchParams.set('select', select);
   url.searchParams.set('user_id', `eq.${userId}`);
-  url.searchParams.set('order', 'created_at.desc.nullslast');
+  url.searchParams.set('order', `${orderColumn}.desc.nullslast`);
 
   const res = await fetch(url.toString(), {
     headers: {
@@ -171,7 +201,16 @@ async function consolidateLayer(userId, spec, authorization, useAdmin) {
   let offset = 0;
 
   while (true) {
-    const rows = await fetchRows(spec.table, userId, offset, BATCH_SIZE, authorization, useAdmin);
+    const rows = await fetchRows(
+      spec.table,
+      userId,
+      offset,
+      BATCH_SIZE,
+      authorization,
+      useAdmin,
+      spec.orderColumn,
+      spec.select,
+    );
     if (!rows.length) break;
     report.scanned += rows.length;
 

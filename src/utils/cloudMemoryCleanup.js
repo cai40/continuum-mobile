@@ -11,11 +11,41 @@ const BATCH_SIZE = 1000;
 const RETENTION_THRESHOLD = 0.4;
 
 const LAYERS = [
-  { layer: 'l1', table: 'pinned_memories', textField: 'content' },
-  { layer: 'l2', table: 'episodic_segments', textField: 'content' },
-  { layer: 'l3', table: 'semantic_memories', textField: 'content' },
-  { layer: 'l4', table: 'temporal_events', textField: 'event_description' },
-  { layer: 'l5', table: 'document_chunks', textField: 'content' },
+  {
+    layer: 'l1',
+    table: 'pinned_memories',
+    textField: 'content',
+    orderColumn: 'timestamp',
+    select: 'id,user_id,content,timestamp',
+  },
+  {
+    layer: 'l2',
+    table: 'episodic_segments',
+    textField: 'content',
+    orderColumn: 'created_at',
+    select: 'id,user_id,content,created_at',
+  },
+  {
+    layer: 'l3',
+    table: 'semantic_memories',
+    textField: 'content',
+    orderColumn: 'timestamp',
+    select: 'id,user_id,content,timestamp,mentions,importance_score,type',
+  },
+  {
+    layer: 'l4',
+    table: 'temporal_events',
+    textField: 'event_description',
+    orderColumn: 'created_at',
+    select: 'id,user_id,event_description,created_at,state',
+  },
+  {
+    layer: 'l5',
+    table: 'document_chunks',
+    textField: 'content',
+    orderColumn: 'timestamp',
+    select: 'id,user_id,content,source,timestamp',
+  },
 ];
 
 function rowText(row, spec) {
@@ -36,7 +66,14 @@ function classifySupabaseError(error) {
   if (code === 'PGRST301' || /JWT|session|auth|401/i.test(message)) {
     return 'auth_failed';
   }
+  if (code === '42703' || /column .* does not exist/i.test(message)) {
+    return 'schema_mismatch';
+  }
   return 'network';
+}
+
+function rowCreatedAt(row) {
+  return row?.created_at || row?.timestamp || null;
 }
 
 async function deleteRows(table, userId, ids) {
@@ -78,9 +115,9 @@ async function consolidateLayer(userId, spec) {
   while (true) {
     const { data: rows, error } = await supabase
       .from(spec.table)
-      .select('*')
+      .select(spec.select)
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
+      .order(spec.orderColumn, { ascending: false })
       .range(offset, offset + BATCH_SIZE - 1);
 
     if (error) throw error;
@@ -115,7 +152,7 @@ async function consolidateLayer(userId, spec) {
         const id = String(row?.id || '');
         if (!id || idsToDelete.has(id)) continue;
         const retention = ebbinghausRetention({
-          createdAt: row.created_at || row.timestamp,
+          createdAt: rowCreatedAt(row),
           mentionCount: row.mention_count || row.mentions || 1,
           importanceScore: row.importance_score || row.importance || 5,
         });
@@ -152,14 +189,26 @@ async function consolidateAllLayers(userId) {
  * Cloud consolidation via Supabase session (user JWT + RLS).
  * Deletes duplicate/noise/decayed rows in L1–L5 vault tables.
  */
-export async function runDirectSupabaseConsolidation(userId) {
+export async function runDirectSupabaseConsolidation(userId, authToken = null) {
   if (!userId) {
     return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_signed_in' };
   }
 
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
+  let accessToken = authToken;
+  if (!accessToken) {
+    const { data: { session } } = await supabase.auth.getSession();
+    accessToken = session?.access_token || null;
+  }
+  if (!accessToken) {
     return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_signed_in' };
+  }
+
+  const { data: { session: activeSession } } = await supabase.auth.getSession();
+  if (!activeSession?.access_token || activeSession.access_token !== accessToken) {
+    await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: activeSession?.refresh_token || '',
+    }).catch(() => {});
   }
 
   try {

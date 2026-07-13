@@ -375,7 +375,7 @@ export async function tryRunMemoryConsolidation(authToken, userId = null) {
     return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_signed_in' };
   }
 
-  const direct = await runDirectSupabaseConsolidation(userId);
+  const direct = await runDirectSupabaseConsolidation(userId, authToken);
   if (direct.serverRan) return direct;
 
   let lastSkipReason = direct.skipReason || null;

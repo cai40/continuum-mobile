@@ -626,6 +626,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                   lines.push('Server: consolidation unavailable — on-device dedupe only.');
                 } else if (result.skipReason === 'upstream_unavailable' || result.skipReason === 'network') {
                   lines.push('Server: cloud busy or offline — on-device dedupe only.');
+                } else if (result.skipReason === 'schema_mismatch') {
+                  lines.push('Server: vault schema mismatch — update the app and retry. Device dedupe ran.');
                 } else {
                   lines.push('Server: skipped — on-device dedupe only.');
                 }
