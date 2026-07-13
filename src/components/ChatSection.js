@@ -800,7 +800,10 @@ const ChatSection = () => {
           chatMessage = built.message;
           documentTextInjected = built.documentTextInjected;
           if (documentTextInjected && built.extractedFileCount) {
-            const confirmedContent = `${displayInput}\n✓ Extracted text from ${built.extractedFileCount} file(s)`;
+            const pdfNote = built.pdfFileCount
+              ? ` (${built.pdfFileCount} PDF${built.pdfFileCount > 1 ? 's' : ''} uploaded)`
+              : '';
+            const confirmedContent = `${displayInput}\n✓ Prepared ${built.extractedFileCount} file(s)${pdfNote}`;
             setMessages((prev) => prev.map((m) => (
               m.id === userMsg.id ? { ...m, content: confirmedContent } : m
             )));

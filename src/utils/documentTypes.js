@@ -35,6 +35,13 @@ export function isSupportedDocumentType(mimeType, fileName) {
   return DOCUMENT_MIME_TYPES.includes(resolved);
 }
 
+export function isPdfAttachment(file) {
+  const name = file?.name || '';
+  const resolved = resolveDocumentMimeType(name, file?.type);
+  const ext = String(name).split('.').pop()?.toLowerCase() || '';
+  return ext === 'pdf' || resolved.includes('pdf');
+}
+
 export function documentTypeLabel(mimeType, fileName) {
   const resolved = resolveDocumentMimeType(fileName, mimeType);
   if (resolved.includes('pdf')) return 'PDF';
