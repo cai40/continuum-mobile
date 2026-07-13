@@ -599,12 +599,22 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 session?.access_token,
                 user?.id,
               );
-              await onRefreshMemories();
+              try {
+                await onRefreshMemories();
+              } catch {
+                // vault counts may lag if Render is waking — local dedupe still applied
+              }
               const lines = [];
               if (result.serverRan) {
                 lines.push(`Server: removed ${result.serverRemoved} fragment(s).`);
               } else if (result.serverSkipped) {
-                lines.push('Server: route not deployed — on-device dedupe only.');
+                if (result.skipReason === 'not_deployed') {
+                  lines.push('Server: consolidation route not deployed — on-device dedupe only.');
+                } else if (result.skipReason === 'upstream_unavailable' || result.skipReason === 'network') {
+                  lines.push('Server: cloud busy or waking — on-device dedupe only.');
+                } else {
+                  lines.push('Server: skipped — on-device dedupe only.');
+                }
               }
               if (result.localRemoved > 0) {
                 const c = result.localCounts;
