@@ -43,6 +43,43 @@ export async function saveLocalPinnedMemory(userId, content, label = 'Pinned') {
   return pin;
 }
 
+export async function removeLocalPinnedMemory(userId, pinId) {
+  const existing = await loadLocalPinnedMemories(userId);
+  const id = String(pinId || '');
+  const next = existing.filter((row) => String(row.id) !== id);
+  if (next.length === existing.length) return false;
+  await AsyncStorage.setItem(storageKey(userId), JSON.stringify(next));
+  return true;
+}
+
+export async function removeLocalPinnedByContent(userId, content) {
+  const needle = String(content || '').trim().toLowerCase();
+  if (!needle) return false;
+  const existing = await loadLocalPinnedMemories(userId);
+  const next = existing.filter((row) => row.content.trim().toLowerCase() !== needle);
+  if (next.length === existing.length) return false;
+  await AsyncStorage.setItem(storageKey(userId), JSON.stringify(next));
+  return true;
+}
+
+/** Remove duplicate local pins — keeps newest per normalized content. */
+export async function dedupeLocalPinnedMemories(userId) {
+  const existing = await loadLocalPinnedMemories(userId);
+  const seen = new Set();
+  const kept = [];
+  for (const row of existing) {
+    const key = row.content.trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    kept.push(row);
+  }
+  const removed = existing.length - kept.length;
+  if (removed > 0) {
+    await AsyncStorage.setItem(storageKey(userId), JSON.stringify(kept));
+  }
+  return { removed, kept };
+}
+
 export function mergePinnedMemories(cloudPins, localPins) {
   const cloud = Array.isArray(cloudPins) ? cloudPins : [];
   const local = Array.isArray(localPins) ? localPins : [];

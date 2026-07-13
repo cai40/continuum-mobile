@@ -17,7 +17,7 @@ import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import * as Constants from "expo-constants";
 import { useAppContext } from "../context/AppContext";
-import { pulseFetch, ingestDocuments, pinCoreMemory } from "../services/apiService";
+import { pulseFetch, ingestDocuments, pinCoreMemory, deleteMemoryItem, dedupeMemoryLayer, dedupeAllMemoryLayers } from "../services/apiService";
 import {
   DOCUMENT_MIME_TYPES,
   MAX_DOCUMENT_ATTACHMENTS,
@@ -248,6 +248,7 @@ const SettingsSection = (props) => {
               kind={kind}
               expanded={!!expandedMemoryIds[key]}
               onToggle={() => toggleMemoryExpanded(key)}
+              onDelete={() => handleDeleteMemory(layer, item)}
               borderColor={kind === 'evidence' ? theme.colors.success : borderColor}
             />
           );
@@ -265,6 +266,17 @@ const SettingsSection = (props) => {
       </>
     );
   };
+
+  const renderLayerDedupeAction = (layer, label) => (
+    <TouchableOpacity
+      onPress={() => handleDedupeLayer(layer, label)}
+      style={{ alignSelf: 'flex-end', marginBottom: 10 }}
+    >
+      <Text style={{ fontSize: 11, fontWeight: '600', color: theme.colors.danger }}>
+        Remove duplicates in {label}
+      </Text>
+    </TouchableOpacity>
+  );
 
   const handleSyncKnowledge = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -476,6 +488,129 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
     } catch (e) {
       Alert.alert('Pin failed', e?.message || 'Could not save to Core Memory.');
     }
+  };
+
+  const removeItemFromLayerState = (layer, item) => {
+    const sameItem = (row) => {
+      if (item?.id != null && row?.id != null) return String(row.id) === String(item.id);
+      return memoryItemText(row, layer) === memoryItemText(item, layer);
+    };
+    const dec = (n) => Math.max(0, (n || 0) - 1);
+    if (layer === 'l1') {
+      setPinnedMemories((prev) => prev.filter((row) => !sameItem(row)));
+      setTrueCounts((prev) => ({ ...prev, l1: dec(prev.l1) }));
+    } else if (layer === 'l2') {
+      setEpisodicSegments((prev) => prev.filter((row) => !sameItem(row)));
+      setTrueCounts((prev) => ({ ...prev, l2: dec(prev.l2) }));
+    } else if (layer === 'l3') {
+      setSemanticProfile((prev) => prev.filter((row) => !sameItem(row)));
+      setTrueCounts((prev) => ({ ...prev, l3: dec(prev.l3) }));
+    } else if (layer === 'l4') {
+      setTemporalEvents((prev) => prev.filter((row) => !sameItem(row)));
+      setTrueCounts((prev) => ({ ...prev, l4: dec(prev.l4) }));
+    } else if (layer === 'l5') {
+      setKnowledgeBase((prev) => prev.filter((row) => !sameItem(row)));
+      setTrueCounts((prev) => ({ ...prev, l5: dec(prev.l5) }));
+    }
+  };
+
+  const handleDeleteMemory = (layer, item) => {
+    const preview = memoryItemText(item, layer).slice(0, 140);
+    Alert.alert(
+      'Remove this memory?',
+      `${preview}${preview.length >= 140 ? '…' : ''}\n\nRemoved items stay hidden on this device. Cloud delete runs when the backend supports it.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              await deleteMemoryItem(layer, item, session?.access_token, user?.id);
+              removeItemFromLayerState(layer, item);
+              try {
+                await onRefreshMemories();
+              } catch {
+                // hidden locally
+              }
+            } catch (e) {
+              Alert.alert('Remove failed', e?.message || 'Could not remove this memory.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDedupeLayer = (layer, label) => {
+    const itemsByLayer = {
+      l1: pinnedMemories,
+      l2: episodicSegments,
+      l3: semanticProfile,
+      l4: temporalEvents,
+      l5: knowledgeBase,
+    };
+    Alert.alert(
+      `Remove duplicates in ${label}?`,
+      'Keeps the newest copy of each identical fragment (punctuation-insensitive). Others are removed or hidden.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove duplicates',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsSyncing(true);
+              const removed = await dedupeMemoryLayer(
+                layer,
+                itemsByLayer[layer] || [],
+                session?.access_token,
+                user?.id,
+              );
+              await onRefreshMemories();
+              Alert.alert('Done', removed > 0 ? `Removed ${removed} duplicate(s) in ${label}.` : `No duplicates found in ${label}.`);
+            } catch (e) {
+              Alert.alert('Dedupe failed', e?.message || 'Could not remove duplicates.');
+            } finally {
+              setIsSyncing(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleDedupeAllLayers = () => {
+    Alert.alert(
+      'Remove duplicates in all layers?',
+      'Scans L1–L5 and keeps the newest copy of each identical fragment.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove all duplicates',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setIsSyncing(true);
+              const counts = await dedupeAllMemoryLayers(memoryLayers, session?.access_token, user?.id);
+              await onRefreshMemories();
+              const total = Object.values(counts).reduce((a, b) => a + b, 0);
+              Alert.alert(
+                'Done',
+                total > 0
+                  ? `Removed ${total} duplicate(s):\nL1 ${counts.l1}, L2 ${counts.l2}, L3 ${counts.l3}, L4 ${counts.l4}, L5 ${counts.l5}`
+                  : 'No duplicates found.',
+              );
+            } catch (e) {
+              Alert.alert('Dedupe failed', e?.message || 'Could not remove duplicates.');
+            } finally {
+              setIsSyncing(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const handleDeleteAccount = () => {
@@ -1251,6 +1386,17 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       </View>
 
       <View style={{ marginBottom: 30 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <Text style={{ fontSize: 10, fontWeight: '800', color: theme.colors.gray }}>
+            MEMORY VAULT
+          </Text>
+          <TouchableOpacity onPress={handleDedupeAllLayers} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.danger }}>
+              Remove duplicates (all)
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <MemorySearchPanel
           query={memorySearchQuery}
           onChangeQuery={setMemorySearchQuery}
@@ -1260,6 +1406,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           onToggleExpanded={toggleMemoryExpanded}
           questionLogCount={questionLogCount}
           onPinFragment={handlePinMemoryFragment}
+          onDeleteMatch={(row) => handleDeleteMemory(row.layer, row.item)}
         />
 
         {/* --- LAYER 1: PINNED --- */}
@@ -1293,6 +1440,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l1 && (
           <View style={{ marginBottom: 16 }}>
+            {renderLayerDedupeAction('l1', 'L1')}
             {showAddCore && (
               <View
                 style={{
@@ -1359,6 +1507,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l2 && (
           <View>
+            {renderLayerDedupeAction('l2', 'L2')}
             {renderMemoryLayerItems(episodicSegments, 'l2', theme.colors.gray, 'No recent conversations cached.')}
           </View>
         )}
@@ -1387,6 +1536,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l3 && (
           <View>
+            {renderLayerDedupeAction('l3', 'L3')}
             {renderMemoryLayerItems(semanticProfile, 'l3', theme.colors.primary, 'No permanent facts extracted yet.')}
           </View>
         )}
@@ -1415,6 +1565,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l4 && (
           <View>
+            {renderLayerDedupeAction('l4', 'L4')}
             {renderMemoryLayerItems(temporalEvents, 'l4', theme.colors.secondary, 'No temporal events recorded.')}
           </View>
         )}
@@ -1443,6 +1594,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
         {expandedLayers.l5 && (
           <View>
+            {renderLayerDedupeAction('l5', 'L5')}
             <TouchableOpacity
               onPress={handleSyncKnowledge}
               style={{

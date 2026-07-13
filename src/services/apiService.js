@@ -4,7 +4,17 @@ import {
   loadLocalPinnedMemories,
   saveLocalPinnedMemory,
   mergePinnedMemories,
+  removeLocalPinnedMemory,
+  removeLocalPinnedByContent,
+  dedupeLocalPinnedMemories,
 } from "../utils/localPinnedMemory";
+import { loadHiddenMemories, hideMemoryItem, filterHiddenMemoryList } from "../utils/hiddenMemories";
+import { memoryItemText } from "../utils/memoryDisplay";
+import {
+  findDuplicateGroups,
+  memoryContentFingerprint,
+  pickDuplicateRemovals,
+} from "../utils/memoryDedup";
 
 /**
  * GLOBAL PULSE ENGINE:
@@ -116,7 +126,7 @@ export const fetchMemories = async (
   userId = null,
 ) => {
   try {
-    const [rawLayerData, pinData, analytics, localPins] = await Promise.all([
+    const [rawLayerData, pinData, analytics, localPins, hiddenMemories] = await Promise.all([
       pulseFetch(`${API_URL}/memories`, {}, 3, onStatusUpdate, authToken).catch(() => null),
       pulseFetch(
         `${API_URL}/memories/pinned`,
@@ -127,8 +137,12 @@ export const fetchMemories = async (
       ).catch(() => []),
       fetchBrainAnalytics(onStatusUpdate, authToken).catch(() => ({})),
       loadLocalPinnedMemories(userId),
+      loadHiddenMemories(userId),
     ]);
     const mergedPins = mergePinnedMemories(pinData, localPins);
+    const filterHidden = (items, layer) =>
+      filterHiddenMemoryList(items, layer, hiddenMemories, memoryItemText);
+    const visiblePins = filterHidden(mergedPins, 'l1');
 
     // SMART MAPPING: Handle 2.0 Structured Maps OR 1.0 Flat Arrays
     let processedLayeredData = {
@@ -142,25 +156,29 @@ export const fetchMemories = async (
     if (rawLayerData && !Array.isArray(rawLayerData)) {
       // 2.0 Match
       processedLayeredData = {
-        semanticProfile: rawLayerData.semanticProfile || [],
-        temporalEvents: rawLayerData.temporalEvents || [],
-        episodicSegments: rawLayerData.episodicSegments || [],
-        knowledgeBase: rawLayerData.knowledgeBase || [],
+        semanticProfile: filterHidden(rawLayerData.semanticProfile || [], 'l3'),
+        temporalEvents: filterHidden(rawLayerData.temporalEvents || [], 'l4'),
+        episodicSegments: filterHidden(rawLayerData.episodicSegments || [], 'l2'),
+        knowledgeBase: filterHidden(rawLayerData.knowledgeBase || [], 'l5'),
         trueCounts: rawLayerData.trueCounts || { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 }
       };
     } else if (Array.isArray(rawLayerData)) {
       // 1.0 Rollback/Transition safety
-      processedLayeredData.episodicSegments = rawLayerData;
+      processedLayeredData.episodicSegments = filterHidden(rawLayerData, 'l2');
     }
 
     // HYBRID SYNC: Inject local L1 counts into the global metrics
     if (processedLayeredData.trueCounts) {
-       processedLayeredData.trueCounts.l1 = Array.isArray(mergedPins) ? mergedPins.length : 0;
+       processedLayeredData.trueCounts.l1 = Array.isArray(visiblePins) ? visiblePins.length : 0;
+       processedLayeredData.trueCounts.l2 = processedLayeredData.episodicSegments?.length ?? processedLayeredData.trueCounts.l2;
+       processedLayeredData.trueCounts.l3 = processedLayeredData.semanticProfile?.length ?? processedLayeredData.trueCounts.l3;
+       processedLayeredData.trueCounts.l4 = processedLayeredData.temporalEvents?.length ?? processedLayeredData.trueCounts.l4;
+       processedLayeredData.trueCounts.l5 = processedLayeredData.knowledgeBase?.length ?? processedLayeredData.trueCounts.l5;
     }
 
     return {
       layeredData: processedLayeredData,
-      pinData: Array.isArray(mergedPins) ? mergedPins : [],
+      pinData: Array.isArray(visiblePins) ? visiblePins : [],
       analytics: analytics || {},
     };
   } catch (e) {
@@ -208,6 +226,121 @@ export async function pinCoreMemory(content, authToken, label = 'Email evidence'
   }).catch(() => {});
 
   return { status: 'success', pin, source: 'local' };
+}
+
+const LAYER_TABLE = {
+  l1: 'pinned_memories',
+  l2: 'episodic_segments',
+  l3: 'semantic_memories',
+  l4: 'temporal_events',
+  l5: 'document_chunks',
+};
+
+async function tryCloudDeleteMemory(layer, id, authToken) {
+  if (!authToken || id == null || String(id).trim() === '') return false;
+  const sid = String(id);
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${authToken}`,
+    'User-Agent': 'Continuum-Mobile/1.0',
+  };
+  const attempts = [
+    {
+      url: `${API_URL}/memories/delete`,
+      options: {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ layer, id: sid, table: LAYER_TABLE[layer] }),
+      },
+    },
+    {
+      url: `${API_URL}/memories/${layer}/${encodeURIComponent(sid)}`,
+      options: { method: 'DELETE', headers },
+    },
+    ...(layer === 'l1'
+      ? [{
+          url: `${API_URL}/memories/pinned/${encodeURIComponent(sid)}`,
+          options: { method: 'DELETE', headers },
+        }]
+      : []),
+  ];
+  for (const { url, options } of attempts) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return true;
+    } catch {
+      // try next endpoint shape
+    }
+  }
+  return false;
+}
+
+/**
+ * Remove one memory item. L1 local pins delete from AsyncStorage; cloud rows
+ * call backend when available, otherwise hide on this device.
+ */
+export async function deleteMemoryItem(layer, item, authToken, userId = null) {
+  const layerKey = String(layer || '').toLowerCase();
+  if (!['l1', 'l2', 'l3', 'l4', 'l5'].includes(layerKey)) {
+    throw new Error('Invalid memory layer');
+  }
+  const content = memoryItemText(item, layerKey);
+  const fingerprint = memoryContentFingerprint(content);
+  const id = item?.id;
+
+  if (layerKey === 'l1') {
+    if (item?.local && id) {
+      await removeLocalPinnedMemory(userId, id);
+    }
+    if (content) {
+      await removeLocalPinnedByContent(userId, content);
+    }
+  }
+
+  const cloudDeleted = await tryCloudDeleteMemory(layerKey, id, authToken);
+  if (!cloudDeleted) {
+    await hideMemoryItem(userId, layerKey, { id, contentFingerprint: fingerprint });
+  }
+
+  return { cloudDeleted, hidden: !cloudDeleted };
+}
+
+/** Remove duplicate items in one layer (keeps newest per normalized content). */
+export async function dedupeMemoryLayer(layer, items, authToken, userId = null) {
+  const layerKey = String(layer || '').toLowerCase();
+  const groups = findDuplicateGroups(items, layerKey, memoryItemText);
+  let removed = 0;
+
+  if (layerKey === 'l1') {
+    const { removed: localRemoved } = await dedupeLocalPinnedMemories(userId);
+    removed += localRemoved;
+  }
+
+  for (const group of groups) {
+    const victims = pickDuplicateRemovals(group, layerKey, memoryItemText);
+    for (const item of victims) {
+      await deleteMemoryItem(layerKey, item, authToken, userId);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
+/** Dedupe all visible layers; returns counts per layer. */
+export async function dedupeAllMemoryLayers(layers, authToken, userId = null) {
+  const specs = [
+    ['l1', layers.pinnedMemories],
+    ['l2', layers.episodicSegments],
+    ['l3', layers.semanticProfile],
+    ['l4', layers.temporalEvents],
+    ['l5', layers.knowledgeBase],
+  ];
+  const counts = {};
+  for (const [layer, items] of specs) {
+    counts[layer] = await dedupeMemoryLayer(layer, items || [], authToken, userId);
+  }
+  return counts;
 }
 
 export const chatStream = (
