@@ -1,6 +1,41 @@
 # Continuum Mobile — Agent Instructions
 
-**Read this file first** before changing OpenClaw bridge, IMAP, or VPS-related code.
+**Read this file first** before changing OpenClaw bridge, IMAP, VPS-related code, or shipping any mobile release.
+
+---
+
+## Device testing (mandatory — all projects, all releases)
+
+**Never ship a release based only on unit tests, Node scripts, or “bundle compiles.”** A successful EAS export or CI green build is **not** device testing.
+
+### Rule
+
+Before marking any release complete — OTA update, TestFlight build, store build, or hotfix — you **must** verify the changed behavior on a **real device or official simulator** for every platform you ship (at minimum **iOS** for this app).
+
+### Minimum bar per release
+
+1. Install the **exact build or OTA update** you are about to publish (not just `master` source in a dev shell).
+2. Walk through the **user path end-to-end** for every feature you touched.
+3. Confirm the app **does not crash** on launch, on the changed flow, and on background/foreground resume.
+4. Only then run `eas update`, `eas build`, or tell the user the release is ready.
+
+### What does not count as device testing
+
+- Running extraction or logic in **Node.js** only
+- `eas update` / `expo export` succeeding with no runtime test
+- Assuming dynamic imports or heavy native/JS libs are safe because the bundle built
+- Asking the user to be the first tester
+
+### What went wrong before (do not repeat)
+
+- PDF attach fix was “tested” in Node and via EAS bundle export only
+- `pdfjs-dist` was shipped OTA without opening the app on iOS
+- Attaching a PDF **crashed Continuum AI Advisor** on device
+- Bundle success ≠ runtime safety on Hermes/iOS
+
+### If device testing is blocked
+
+Do **not** deploy. State clearly what is blocked (no simulator, no TestFlight, no device access) and ship only after device verification — or revert to a known-safe approach.
 
 ---
 
@@ -124,6 +159,7 @@ Chat examples that must work:
 ## PR checklist (before closing task)
 
 - [ ] Merged to `master` and pushed
+- [ ] **Device-tested** on iOS (and Android if changed) — real device or simulator, exact release artifact
 - [ ] VPS command uses `git pull origin master` (not feature branch)
 - [ ] `bridgeVersion.js` bumped if bridge/IMAP behavior changed
 - [ ] User given `/health` check to confirm deploy
