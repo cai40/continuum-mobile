@@ -17,7 +17,7 @@ import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
 import * as Constants from "expo-constants";
 import { useAppContext } from "../context/AppContext";
-import { pulseFetch, ingestDocuments, pinCoreMemory, deleteMemoryItem, dedupeMemoryLayer, dedupeAllMemoryLayers, runMemoryConsolidation } from "../services/apiService";
+import { pulseFetch, ingestDocuments, pinCoreMemory, deleteMemoryItem, dedupeMemoryLayer, runMemoryCleanup } from "../services/apiService";
 import {
   DOCUMENT_MIME_TYPES,
   MAX_DOCUMENT_ATTACHMENTS,
@@ -103,6 +103,7 @@ const SettingsSection = (props) => {
 
   // Memory Sub-Tab States
   const [isSyncing, setIsSyncing] = useState(false);
+  const [runningMemoryCleanup, setRunningMemoryCleanup] = useState(false);
   const [syncProgress, setSyncProgress] = useState("");
   const [isCloudChecking, setIsCloudChecking] = useState(false);
   const [newCoreMemory, setNewCoreMemory] = useState("");
@@ -581,70 +582,46 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
     );
   };
 
-  const handleDedupeAllLayers = () => {
+  const handleMemoryCleanup = () => {
     Alert.alert(
-      'Remove duplicates in all layers?',
-      'Scans L1–L5 and keeps the newest copy of each identical fragment.',
+      'Run memory cleanup?',
+      'Scans L1–L5 for duplicates (keeps newest), runs server consolidation when available, then cleans duplicates on this device.\n\nPinned truths and email evidence you kept are not affected unless they are exact duplicates.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Remove all duplicates',
-          style: 'destructive',
+          text: 'Run cleanup',
           onPress: async () => {
             try {
-              setIsSyncing(true);
-              const counts = await dedupeAllMemoryLayers(memoryLayers, session?.access_token, user?.id);
-              await onRefreshMemories();
-              const total = Object.values(counts).reduce((a, b) => a + b, 0);
-              Alert.alert(
-                'Done',
-                total > 0
-                  ? `Removed ${total} duplicate(s):\nL1 ${counts.l1}, L2 ${counts.l2}, L3 ${counts.l3}, L4 ${counts.l4}, L5 ${counts.l5}`
-                  : 'No duplicates found.',
+              setRunningMemoryCleanup(true);
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const result = await runMemoryCleanup(
+                memoryLayers,
+                session?.access_token,
+                user?.id,
               );
-            } catch (e) {
-              Alert.alert('Dedupe failed', e?.message || 'Could not remove duplicates.');
-            } finally {
-              setIsSyncing(false);
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const handleRunConsolidation = () => {
-    Alert.alert(
-      'Run memory consolidation?',
-      'Server-side dedupe, L2 noise purge, and low-retention cleanup (requires backend deploy). Falls back to on-device dedupe if the route is not live yet.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Consolidate',
-          onPress: async () => {
-            try {
-              setIsSyncing(true);
-              const result = await runMemoryConsolidation(session?.access_token);
               await onRefreshMemories();
-              const removed = result?.total_removed ?? 0;
-              Alert.alert(
-                'Consolidation complete',
-                removed > 0
-                  ? `Removed ${removed} fragment(s) across your vault.`
-                  : 'No fragments removed — vault already compact.',
-              );
-            } catch (e) {
-              const msg = String(e?.message || e || '');
-              if (/404|not found|405/i.test(msg)) {
-                Alert.alert(
-                  'Backend not ready',
-                  'POST /memories/consolidate is not deployed yet. Use Remove duplicates (all) for on-device cleanup, or deploy integrations/continuum-backend/MEMORY_CONSOLIDATION.md on Render.',
-                );
-              } else {
-                Alert.alert('Consolidation failed', msg || 'Could not run consolidation.');
+              const lines = [];
+              if (result.serverRan) {
+                lines.push(`Server: removed ${result.serverRemoved} fragment(s).`);
+              } else if (result.serverSkipped) {
+                lines.push('Server: route not deployed — on-device dedupe only.');
               }
+              if (result.localRemoved > 0) {
+                const c = result.localCounts;
+                lines.push(
+                  `Device: removed ${result.localRemoved} duplicate(s) (L1 ${c.l1}, L2 ${c.l2}, L3 ${c.l3}, L4 ${c.l4}, L5 ${c.l5}).`,
+                );
+              } else if (!result.serverRan || result.serverRemoved === 0) {
+                lines.push('No duplicates found on this device.');
+              }
+              Alert.alert(
+                result.totalRemoved > 0 ? 'Memory cleanup complete' : 'Memory vault is clean',
+                lines.join('\n'),
+              );
+            } catch (e) {
+              Alert.alert('Cleanup failed', e?.message || 'Could not run memory cleanup.');
             } finally {
-              setIsSyncing(false);
+              setRunningMemoryCleanup(false);
             }
           },
         },
@@ -1429,18 +1406,25 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           MEMORY VAULT
         </Text>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginBottom: 8, gap: 16 }}>
-          <TouchableOpacity onPress={handleRunConsolidation} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.primary }}>
-              Consolidate (server)
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleDedupeAllLayers} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.danger }}>
-              Remove duplicates (all)
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={handleMemoryCleanup}
+          disabled={runningMemoryCleanup || isSyncing}
+          style={{
+            backgroundColor: theme.colors.primary,
+            paddingVertical: 14,
+            borderRadius: 12,
+            marginBottom: 8,
+            alignItems: 'center',
+            opacity: runningMemoryCleanup || isSyncing ? 0.6 : 1,
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+            {runningMemoryCleanup ? 'Cleaning memory…' : 'Run memory cleanup'}
+          </Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 16, marginBottom: 12 }}>
+          Manual dedupe across L1–L5. Uses server consolidation when deployed; always removes duplicates on this device.
+        </Text>
 
         <MemorySearchPanel
           query={memorySearchQuery}
