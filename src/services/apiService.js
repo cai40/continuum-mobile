@@ -15,6 +15,7 @@ import {
   memoryContentFingerprint,
   pickDuplicateRemovals,
 } from "../utils/memoryDedup";
+import { runDirectSupabaseConsolidation } from "../utils/cloudMemoryCleanup";
 
 /**
  * GLOBAL PULSE ENGINE:
@@ -366,12 +367,18 @@ export async function runMemoryConsolidation(authToken) {
 
 /**
  * Best-effort server consolidation — never throws (404 / cold start / network).
+ * Tries direct Supabase first, then backend / email bridge.
  * Used by manual memory cleanup so device dedupe always runs.
  */
-export async function tryRunMemoryConsolidation(authToken) {
+export async function tryRunMemoryConsolidation(authToken, userId = null) {
   if (!authToken) {
     return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_signed_in' };
   }
+
+  const direct = await runDirectSupabaseConsolidation(userId);
+  if (direct.serverRan) return direct;
+
+  let lastSkipReason = direct.skipReason || null;
 
   const bases = [API_URL, RENDER_EMAIL_BRIDGE_URL];
   for (const base of bases) {
@@ -389,6 +396,14 @@ export async function tryRunMemoryConsolidation(authToken) {
       if (res.status === 404 || res.status === 405 || res.status === 501) {
         continue;
       }
+      if (res.status === 401) {
+        lastSkipReason = 'auth_failed';
+        continue;
+      }
+      if (res.status === 403) {
+        lastSkipReason = 'rls_blocked';
+        continue;
+      }
       if (res.status === 503) {
         const detail = await res.text();
         if (/SERVICE_ROLE|not configured/i.test(detail)) {
@@ -399,9 +414,16 @@ export async function tryRunMemoryConsolidation(authToken) {
             skipReason: 'service_key_missing',
           };
         }
+        lastSkipReason = 'upstream_unavailable';
         continue;
       }
       if (!res.ok) {
+        const detail = await res.text();
+        if (/RLS|policy|permission/i.test(detail)) {
+          lastSkipReason = 'rls_blocked';
+        } else {
+          lastSkipReason = 'upstream_unavailable';
+        }
         continue;
       }
       const contentType = res.headers.get('content-type') || '';
@@ -414,11 +436,20 @@ export async function tryRunMemoryConsolidation(authToken) {
         source: base === RENDER_EMAIL_BRIDGE_URL ? 'email_bridge' : 'backend',
       };
     } catch {
-      // try next base URL
+      lastSkipReason = 'network';
     }
   }
 
-  return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: 'not_deployed' };
+  if (lastSkipReason === 'rls_blocked' || lastSkipReason === 'auth_failed') {
+    return { serverRan: false, serverSkipped: true, serverRemoved: 0, skipReason: lastSkipReason };
+  }
+
+  return {
+    serverRan: false,
+    serverSkipped: true,
+    serverRemoved: 0,
+    skipReason: lastSkipReason || 'not_deployed',
+  };
 }
 
 /**
@@ -426,7 +457,7 @@ export async function tryRunMemoryConsolidation(authToken) {
  * Never throws — local dedupe always runs even if Render is waking or route is missing.
  */
 export async function runMemoryCleanup(layers, authToken, userId = null) {
-  const server = await tryRunMemoryConsolidation(authToken);
+  const server = await tryRunMemoryConsolidation(authToken, userId);
 
   let localCounts = { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 };
   let localRemoved = 0;
@@ -442,6 +473,7 @@ export async function runMemoryCleanup(layers, authToken, userId = null) {
     serverSkipped: server.serverSkipped,
     serverRemoved: server.serverRemoved,
     skipReason: server.skipReason,
+    source: server.source || null,
     localRemoved,
     localCounts,
     totalRemoved: server.serverRemoved + localRemoved,
