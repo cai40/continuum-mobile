@@ -48,8 +48,14 @@ function saveState(state) {
   fs.writeFileSync(file, JSON.stringify({ runs: (state.runs || []).slice(0, 30) }, null, 2), 'utf8');
 }
 
+/** Service role available (nightly cron / admin). */
 function serviceConfigured() {
   return Boolean(SUPABASE_SERVICE_ROLE_KEY.trim());
+}
+
+/** User-scoped cleanup via JWT + RLS (no Render secret required). */
+function cleanupConfigured() {
+  return Boolean(SUPABASE_ANON_KEY.trim());
 }
 
 function adminHeaders() {
@@ -59,6 +65,23 @@ function adminHeaders() {
     'Content-Type': 'application/json',
     Prefer: 'return=minimal',
   };
+}
+
+function userHeaders(authorization) {
+  return {
+    apikey: SUPABASE_ANON_KEY,
+    Authorization: authorization,
+    'Content-Type': 'application/json',
+    Prefer: 'return=minimal',
+  };
+}
+
+function requestHeaders(authorization, useAdmin) {
+  if (useAdmin) return adminHeaders();
+  if (!authorization?.startsWith('Bearer ')) {
+    throw new Error('Missing bearer token for user-scoped memory cleanup');
+  }
+  return userHeaders(authorization);
 }
 
 function rowText(row, spec) {
@@ -87,7 +110,7 @@ async function verifyBearerUser(authorization) {
   }
 }
 
-async function fetchRows(table, userId, offset, limit) {
+async function fetchRows(table, userId, offset, limit, authorization, useAdmin) {
   const url = new URL(`${SUPABASE_URL}/rest/v1/${table}`);
   url.searchParams.set('select', '*');
   url.searchParams.set('user_id', `eq.${userId}`);
@@ -95,7 +118,7 @@ async function fetchRows(table, userId, offset, limit) {
 
   const res = await fetch(url.toString(), {
     headers: {
-      ...adminHeaders(),
+      ...requestHeaders(authorization, useAdmin),
       Range: `${offset}-${offset + limit - 1}`,
     },
   });
@@ -107,7 +130,7 @@ async function fetchRows(table, userId, offset, limit) {
   return res.json();
 }
 
-async function deleteRows(table, userId, ids) {
+async function deleteRows(table, userId, ids, authorization, useAdmin) {
   if (!ids.length) return 0;
   const chunks = [];
   for (let i = 0; i < ids.length; i += 100) {
@@ -117,9 +140,17 @@ async function deleteRows(table, userId, ids) {
   for (const batch of chunks) {
     const filter = batch.map((id) => encodeURIComponent(id)).join(',');
     const url = `${SUPABASE_URL}/rest/v1/${table}?id=in.(${filter})&user_id=eq.${encodeURIComponent(userId)}`;
-    const res = await fetch(url, { method: 'DELETE', headers: adminHeaders() });
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: requestHeaders(authorization, useAdmin),
+    });
     if (!res.ok) {
       const detail = await res.text();
+      if (!useAdmin && (res.status === 401 || res.status === 403)) {
+        throw new Error(
+          `Supabase RLS blocked delete on ${table}. Add DELETE policy for auth.uid() = user_id, or set SUPABASE_SERVICE_ROLE_KEY on Render.`,
+        );
+      }
       throw new Error(`Supabase delete ${table}: ${res.status} ${detail.slice(0, 200)}`);
     }
     deleted += batch.length;
@@ -127,7 +158,7 @@ async function deleteRows(table, userId, ids) {
   return deleted;
 }
 
-async function consolidateLayer(userId, spec) {
+async function consolidateLayer(userId, spec, authorization, useAdmin) {
   const report = {
     layer: spec.layer,
     scanned: 0,
@@ -140,7 +171,7 @@ async function consolidateLayer(userId, spec) {
   let offset = 0;
 
   while (true) {
-    const rows = await fetchRows(spec.table, userId, offset, BATCH_SIZE);
+    const rows = await fetchRows(spec.table, userId, offset, BATCH_SIZE, authorization, useAdmin);
     if (!rows.length) break;
     report.scanned += rows.length;
 
@@ -184,7 +215,7 @@ async function consolidateLayer(userId, spec) {
     }
 
     if (idsToDelete.size) {
-      report.removed += await deleteRows(spec.table, userId, [...idsToDelete]);
+      report.removed += await deleteRows(spec.table, userId, [...idsToDelete], authorization, useAdmin);
     }
 
     if (rows.length < BATCH_SIZE) break;
@@ -194,19 +225,20 @@ async function consolidateLayer(userId, spec) {
   return report;
 }
 
-async function runConsolidationForUser(userId) {
-  if (!serviceConfigured()) {
-    const err = new Error('SUPABASE_SERVICE_ROLE_KEY not configured on email bridge');
+async function runConsolidationForUser(userId, authorization) {
+  if (!cleanupConfigured()) {
+    const err = new Error('Supabase anon key not configured');
     err.code = 'SERVICE_NOT_CONFIGURED';
     throw err;
   }
 
+  const useAdmin = serviceConfigured() && !authorization?.startsWith('Bearer ');
   const startedAt = new Date().toISOString();
   const layers = [];
   let totalRemoved = 0;
 
   for (const spec of LAYERS) {
-    const layerReport = await consolidateLayer(userId, spec);
+    const layerReport = await consolidateLayer(userId, spec, authorization, useAdmin);
     layers.push(layerReport);
     totalRemoved += layerReport.removed;
   }
@@ -217,6 +249,7 @@ async function runConsolidationForUser(userId) {
     started_at: startedAt,
     finished_at: new Date().toISOString(),
     total_removed: totalRemoved,
+    mode: useAdmin ? 'service_role' : 'user_jwt',
     layers,
   };
 
@@ -228,6 +261,9 @@ async function runConsolidationForUser(userId) {
 }
 
 async function fetchDistinctUserIds() {
+  if (!serviceConfigured()) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY required for all-user cron');
+  }
   const ids = new Set();
   for (const spec of LAYERS) {
     let offset = 0;
@@ -254,24 +290,27 @@ async function fetchDistinctUserIds() {
 }
 
 async function runConsolidationAllUsers() {
+  if (!serviceConfigured()) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY required for cron memory-consolidate');
+  }
   const userIds = await fetchDistinctUserIds();
   const startedAt = new Date().toISOString();
   const users = [];
   let totalRemoved = 0;
   let errors = 0;
 
-  for (const userId of userIds) {
+  for (const uid of userIds) {
     try {
-      const report = await runConsolidationForUser(userId);
+      const report = await runConsolidationForUser(uid, null);
       users.push({
-        user_id: userId,
+        user_id: uid,
         total_removed: report.total_removed,
         layers: report.layers,
       });
       totalRemoved += report.total_removed;
     } catch (e) {
       errors += 1;
-      users.push({ user_id: userId, error: e.message });
+      users.push({ user_id: uid, error: e.message });
     }
   }
 
@@ -293,23 +332,26 @@ async function runConsolidationAllUsers() {
   return summary;
 }
 
-async function deleteMemoryForUser(userId, layer, id) {
+async function deleteMemoryForUser(userId, layer, id, authorization) {
   const spec = LAYERS.find((l) => l.layer === layer);
   if (!spec) throw new Error('Invalid layer');
   if (!id) throw new Error('Missing id');
-  if (!serviceConfigured()) {
-    const err = new Error('SUPABASE_SERVICE_ROLE_KEY not configured');
+  if (!cleanupConfigured()) {
+    const err = new Error('Supabase not configured');
     err.code = 'SERVICE_NOT_CONFIGURED';
     throw err;
   }
-  await deleteRows(spec.table, userId, [String(id)]);
-  return { status: 'success', layer, id };
+  const useAdmin = false;
+  await deleteRows(spec.table, userId, [String(id)], authorization, useAdmin);
+  return { status: 'success', layer, id, mode: 'user_jwt' };
 }
 
 function getLatestRuns(limit = 14) {
   const state = loadState();
   return {
-    configured: serviceConfigured(),
+    configured: cleanupConfigured(),
+    user_scoped: cleanupConfigured(),
+    cron_ready: serviceConfigured(),
     last_cron: state.last_cron || null,
     runs: (state.runs || []).slice(0, limit),
   };
@@ -317,6 +359,7 @@ function getLatestRuns(limit = 14) {
 
 module.exports = {
   serviceConfigured,
+  cleanupConfigured,
   verifyBearerUser,
   runConsolidationForUser,
   runConsolidationAllUsers,

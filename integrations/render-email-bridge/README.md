@@ -103,11 +103,11 @@ Dedupe, L2 noise purge, and Ebbinghaus decay on Supabase memory tables.
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `SUPABASE_SERVICE_ROLE_KEY` | **Yes** | Delete rows in `pinned_memories`, `episodic_segments`, etc. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No (cron only) | Nightly `/cron/memory-consolidate` all-users job |
 | `SUPABASE_URL` | No | Defaults to project URL in mobile Config |
-| `SUPABASE_ANON_KEY` | No | JWT verification for user routes |
+| `SUPABASE_ANON_KEY` | No | User JWT cleanup (manual app runs — **no extra Render setup**) |
 
-Get the service role key from **Supabase → Project Settings → API → service_role** (keep secret).
+Manual cleanup from the app uses your **Supabase session JWT** + RLS — works without `SUPABASE_SERVICE_ROLE_KEY`.
 
 ### Nightly cron (optional)
 
