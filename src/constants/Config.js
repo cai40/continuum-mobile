@@ -15,4 +15,4 @@ export const SHORT_SILENCE_TIMEOUT = 2000; // 2s
 export const LONG_SILENCE_TIMEOUT = 10000; // 10s
 export const BUILD_ID = "3.4.104-DirectCloudCleanup";
 export const APP_VERSION = "3.4.104";
-export const GIT_COMMIT = 'f91d0d8';
+export const GIT_COMMIT = '497746c';
