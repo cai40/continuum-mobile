@@ -606,9 +606,15 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               }
               const lines = [];
               if (result.serverRan) {
-                lines.push(`Server: removed ${result.serverRemoved} fragment(s).`);
+                lines.push(
+                  result.source === 'email_bridge'
+                    ? `Server (email bridge): removed ${result.serverRemoved} fragment(s) from cloud vault.`
+                    : `Server: removed ${result.serverRemoved} fragment(s).`,
+                );
               } else if (result.serverSkipped) {
-                if (result.skipReason === 'not_deployed') {
+                if (result.skipReason === 'service_key_missing') {
+                  lines.push('Server: add SUPABASE_SERVICE_ROLE_KEY on Render email bridge (see README). Device dedupe ran.');
+                } else if (result.skipReason === 'not_deployed') {
                   lines.push('Server: consolidation route not deployed — on-device dedupe only.');
                 } else if (result.skipReason === 'upstream_unavailable' || result.skipReason === 'network') {
                   lines.push('Server: cloud busy or waking — on-device dedupe only.');
