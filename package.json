@@ -30,6 +30,7 @@
     "expo-local-authentication": "~17.0.8",
     "expo-location": "~19.0.8",
     "expo-media-library": "~18.2.1",
+    "expo-pdf-text-extract": "^1.1.0",
     "expo-speech": "~14.0.8",
     "expo-speech-recognition": "^3.1.2",
     "expo-status-bar": "~3.0.9",

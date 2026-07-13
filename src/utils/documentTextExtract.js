@@ -1,4 +1,5 @@
 import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
+import { extractTextWithInfo, isAvailable as isPdfExtractAvailable } from 'expo-pdf-text-extract';
 import * as XLSX from 'xlsx';
 import { isPdfAttachment, resolveDocumentMimeType } from './documentTypes';
 
@@ -14,6 +15,34 @@ async function readBase64(uri) {
   return readAsStringAsync(uri, {
     encoding: EncodingType.Base64,
   });
+}
+
+async function extractPdfText(uri) {
+  if (!isPdfExtractAvailable()) {
+    throw new Error(
+      'PDF text extraction needs the latest Continuum build from TestFlight. '
+      + 'OTA updates alone cannot add this feature — install the newest app build, then retry.',
+    );
+  }
+
+  const result = await extractTextWithInfo(uri);
+  if (!result.success) {
+    if (result.passwordRequired || result.errorCode === 'PASSWORD_REQUIRED') {
+      throw new Error('This PDF is password-protected. Remove the password and try again.');
+    }
+    if (result.errorCode === 'INCORRECT_PASSWORD') {
+      throw new Error('Incorrect PDF password.');
+    }
+    throw new Error(result.error || 'Could not extract text from PDF.');
+  }
+
+  const text = truncate(result.text);
+  if (!text) {
+    throw new Error(
+      'No text found in PDF. It may be scanned-only. Try a text-based PDF or use Setup → Layer 5 ingest.',
+    );
+  }
+  return text;
 }
 
 async function extractExcelText(uri) {
@@ -41,7 +70,7 @@ export async function extractAttachmentText(file) {
   if (!uri) return null;
 
   if (isPdfAttachment(file)) {
-    return null;
+    return extractPdfText(uri);
   }
 
   const resolved = resolveDocumentMimeType(name, file.type);
@@ -66,26 +95,13 @@ export async function extractAttachmentText(file) {
 export async function buildMessageWithAttachments(userMessage, attachments) {
   const list = Array.isArray(attachments) ? attachments : [];
   const blocks = [];
-  const pdfFiles = [];
 
   for (const file of list) {
     if (file.type?.startsWith('image/')) continue;
-    if (isPdfAttachment(file)) {
-      pdfFiles.push(file.name || 'document.pdf');
-      continue;
-    }
     const text = await extractAttachmentText(file);
     if (text) {
       blocks.push(`[Attached file: ${file.name}]\n${text}`);
     }
-  }
-
-  for (const name of pdfFiles) {
-    blocks.push(
-      `[Attached PDF: ${name}]\n`
-      + 'The PDF binary is included in this request as a multipart file upload. '
-      + 'Analyze the document from the uploaded file content.',
-    );
   }
 
   if (blocks.length === 0) {
@@ -106,6 +122,5 @@ export async function buildMessageWithAttachments(userMessage, attachments) {
     ].join('\n'),
     documentTextInjected: true,
     extractedFileCount: blocks.length,
-    pdfFileCount: pdfFiles.length,
   };
 }
