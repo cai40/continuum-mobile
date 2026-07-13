@@ -606,18 +606,26 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               }
               const lines = [];
               if (result.serverRan) {
-                lines.push(
-                  result.source === 'email_bridge'
-                    ? `Server (email bridge): removed ${result.serverRemoved} fragment(s) from cloud vault.`
-                    : `Server: removed ${result.serverRemoved} fragment(s).`,
-                );
+                if (result.source === 'supabase_direct') {
+                  lines.push(`Server (cloud vault): removed ${result.serverRemoved} duplicate fragment(s).`);
+                } else if (result.source === 'email_bridge') {
+                  lines.push(
+                    `Server (email bridge): removed ${result.serverRemoved} fragment(s) from cloud vault.`,
+                  );
+                } else {
+                  lines.push(`Server: removed ${result.serverRemoved} fragment(s).`);
+                }
               } else if (result.serverSkipped) {
                 if (result.skipReason === 'service_key_missing') {
                   lines.push('Server: add SUPABASE_SERVICE_ROLE_KEY on Render email bridge (see README). Device dedupe ran.');
+                } else if (result.skipReason === 'rls_blocked') {
+                  lines.push('Server: cloud delete blocked by Supabase RLS — run memory_rls_delete_policies.sql once. Device dedupe ran.');
+                } else if (result.skipReason === 'auth_failed') {
+                  lines.push('Server: session expired — sign out and back in, then retry. Device dedupe ran.');
                 } else if (result.skipReason === 'not_deployed') {
-                  lines.push('Server: consolidation route not deployed — on-device dedupe only.');
+                  lines.push('Server: consolidation unavailable — on-device dedupe only.');
                 } else if (result.skipReason === 'upstream_unavailable' || result.skipReason === 'network') {
-                  lines.push('Server: cloud busy or waking — on-device dedupe only.');
+                  lines.push('Server: cloud busy or offline — on-device dedupe only.');
                 } else {
                   lines.push('Server: skipped — on-device dedupe only.');
                 }
@@ -1439,7 +1447,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </Text>
         </TouchableOpacity>
         <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 16, marginBottom: 12 }}>
-          Manual dedupe across L1–L5. Uses server consolidation when deployed; always removes duplicates on this device.
+          Manual dedupe across L1–L5. Deletes cloud duplicates via Supabase when signed in; always cleans this device too.
         </Text>
 
         <MemorySearchPanel
