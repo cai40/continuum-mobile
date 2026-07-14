@@ -207,18 +207,27 @@ const ChatSection = () => {
         await AsyncStorage.setItem('@daily_cleanup_last_seen', run.ran_at);
         const moved = run.moved_to_trash ?? 0;
         const scanned = run.fetched ?? 0;
-        Alert.alert(
-          'Daily email cleanup',
-          moved > 0
-            ? `Moved ${moved} newsletter/promo email(s) to Trash (${scanned} scanned, ${run.lookback || '24h'}).`
-            : `Scanned ${scanned} email(s); nothing to trash in the last ${run.lookback || '24h'}.`,
-        );
+        const summary = (run.summary_text && run.summary_text.trim())
+          ? run.summary_text.trim()
+          : (moved > 0
+            ? `Daily email cleanup: moved ${moved} newsletter/promo email(s) to Trash (${scanned} scanned, ${run.lookback || '24h'}).`
+            : `Daily email cleanup: scanned ${scanned} email(s); nothing to trash in the last ${run.lookback || '24h'}.`);
+        setMessages((prev) => {
+          if (prev.some((m) => m.dailyCleanupRunAt === run.ran_at)) return prev;
+          return [...prev, {
+            id: `daily-cleanup-${run.ran_at}`,
+            role: 'assistant',
+            content: summary,
+            timestamp: run.ran_at,
+            dailyCleanupRunAt: run.ran_at,
+          }];
+        });
       } catch {
         // bridge may be offline or old version
       }
     })();
     return () => { cancelled = true; };
-  }, [activeTab, renderEmailEnabled, renderEmailBridgeSecret]);
+  }, [activeTab, renderEmailEnabled, renderEmailBridgeSecret, setMessages]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
