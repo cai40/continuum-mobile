@@ -121,6 +121,66 @@ export const fetchChatHistory = async (
   }
 };
 
+/**
+ * Delete chat messages from cloud history.
+ * Returns number of ids submitted (best-effort — backend may ignore unknown ids).
+ */
+export const deleteChatMessages = async (messageIds, authToken = null) => {
+  const ids = (Array.isArray(messageIds) ? messageIds : [])
+    .map((id) => {
+      if (typeof id === 'number' && Number.isFinite(id)) return id;
+      const parsed = parseInt(String(id), 10);
+      return Number.isNaN(parsed) ? null : parsed;
+    })
+    .filter((id) => id != null);
+
+  if (ids.length === 0 || !authToken) return { submitted: 0, ok: false };
+
+  const res = await fetch(`${API_URL}/chat/delete`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authToken}`,
+      'User-Agent': 'Continuum-Mobile/1.0',
+    },
+    body: JSON.stringify({ message_ids: ids }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(text || `Chat delete failed (${res.status})`);
+  }
+  return { submitted: ids.length, ok: true };
+};
+
+/**
+ * Wipe all remote chat history for the signed-in user (fetch + delete in batches).
+ */
+export const clearRemoteChatHistory = async (authToken = null, localMessages = []) => {
+  if (!authToken) return { deleted: 0, cloudCleared: false };
+
+  const remote = await fetchChatHistory(null, authToken);
+  const idSet = new Set();
+  for (const m of [...(localMessages || []), ...(remote || [])]) {
+    if (m?.id == null) continue;
+    const parsed = parseInt(String(m.id), 10);
+    if (!Number.isNaN(parsed)) idSet.add(parsed);
+  }
+
+  const ids = Array.from(idSet);
+  if (ids.length === 0) return { deleted: 0, cloudCleared: true };
+
+  const BATCH = 200;
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const chunk = ids.slice(i, i + BATCH);
+    await deleteChatMessages(chunk, authToken);
+    deleted += chunk.length;
+  }
+  return { deleted, cloudCleared: true };
+};
+
 export const fetchMemories = async (
   onStatusUpdate = null,
   authToken = null,

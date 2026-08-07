@@ -1268,13 +1268,13 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <View style={{ marginBottom: 20, marginTop: 24 }}>
         {renderSectionTitle("DEVICE CONTROLS")}
         {renderSettingItem(
-          "Clear Local Chat History",
-          "Doesn't affect cloud memories.",
+          "Clear Chat History",
+          "Clears this device and cloud chat. L1–L5 memory vault is not deleted.",
           "trash-outline",
           () =>
             Alert.alert(
-              "Clear History",
-              "Are you sure? This only clears your local screen.",
+              "Clear Chat History",
+              "This removes chat messages from this device and from cloud history. Memory layers (L1–L5) are not deleted.",
               [
                 { text: "Cancel", style: "cancel" },
                 {

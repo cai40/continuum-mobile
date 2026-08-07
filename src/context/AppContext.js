@@ -12,6 +12,7 @@ import { supabase } from "../services/supabase";
 import { 
   fetchBrainAnalytics as apiFetchAnalytics,
   fetchChatHistory as apiFetchHistory,
+  clearRemoteChatHistory as apiClearRemoteChatHistory,
   fetchMemories,
   pulseFetch,
   fetchSystemVersion
@@ -21,6 +22,20 @@ import { clampEmailLimit, normalizeEmailRecent } from "../utils/openclawEmailOpt
 import { sanitizeUserVisibleContent } from "../utils/helpers";
 
 const AppContext = createContext();
+const CHAT_HISTORY_CLEARED_AT_KEY = "@chat_history_cleared_at";
+
+function messageTimeMs(message) {
+  const raw = message?.timestamp || message?.created_at || message?.createdAt;
+  if (raw) {
+    const ms = new Date(raw).getTime();
+    if (Number.isFinite(ms) && ms > 0) return ms;
+  }
+  // Local chat ids are often Date.now() strings — use as fallback so post-clear
+  // messages without timestamps are not wiped on restart.
+  const idMs = parseInt(String(message?.id ?? ''), 10);
+  if (Number.isFinite(idMs) && idMs > 1e12) return idMs;
+  return 0;
+}
 
 async function pulseServerHealth(maxAttempts = 3) {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -246,6 +261,7 @@ export const AppProvider = ({ children }) => {
           "@provider",
           "@selected_voice",
           "@chat_history",
+          CHAT_HISTORY_CLEARED_AT_KEY,
           "@persona",
           "@stt_lang",
           "@openclaw_vps_ip",
@@ -259,6 +275,13 @@ export const AppProvider = ({ children }) => {
           "@openclaw_email_auto_trash_junk",
           "@render_email_enabled",
         ]);
+
+        let clearedAtMs = 0;
+        const clearedAtEntry = keys.find(([key]) => key === CHAT_HISTORY_CLEARED_AT_KEY);
+        if (clearedAtEntry?.[1]) {
+          const ms = new Date(clearedAtEntry[1]).getTime();
+          if (Number.isFinite(ms)) clearedAtMs = ms;
+        }
 
         keys.forEach(([key, value]) => {
           if (!value) return;
@@ -286,6 +309,7 @@ export const AppProvider = ({ children }) => {
             setMessages(
               parsed
                 .filter((m) => m.content !== "🎙 Voice Transmission")
+                .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
                 .map((m) => (
                   m?.role === 'user'
                     ? { ...m, content: sanitizeUserVisibleContent(m.content) }
@@ -335,10 +359,15 @@ export const AppProvider = ({ children }) => {
     try {
       setIsSyncingHistory(true);
       console.log(`[Hydration] Syncing history (Attempt ${retryCount + 1})...`);
-      const history = await apiFetchHistory(setCloudWakingUp, token);
+      const [history, clearedAtRaw] = await Promise.all([
+        apiFetchHistory(setCloudWakingUp, token),
+        AsyncStorage.getItem(CHAT_HISTORY_CLEARED_AT_KEY),
+      ]);
+      const clearedAtMs = clearedAtRaw ? new Date(clearedAtRaw).getTime() : 0;
+      const hasValidClearedAt = Number.isFinite(clearedAtMs) && clearedAtMs > 0;
       
       if (history && Array.isArray(history)) {
-        if (history.length === 0 && retryCount < 2) {
+        if (history.length === 0 && retryCount < 2 && !hasValidClearedAt) {
            console.log("[Hydration] Empty history received, retrying in 2s...");
            setTimeout(() => syncRemoteHistory(token, retryCount + 1), 2000);
            return;
@@ -346,9 +375,11 @@ export const AppProvider = ({ children }) => {
 
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
-          // Strict filtering to prevent crashes from malformed remote data
+          // Strict filtering to prevent crashes from malformed remote data.
+          // After an intentional clear, never rehydrate messages from before the clear.
           const incoming = history
             .filter(m => m && m.id && m.content && !existingIds.has(m.id))
+            .filter((m) => !hasValidClearedAt || messageTimeMs(m) > clearedAtMs)
             .map((m) => (
               m.role === 'user'
                 ? { ...m, content: sanitizeUserVisibleContent(m.content) }
@@ -547,11 +578,28 @@ export const AppProvider = ({ children }) => {
 
   const clearLocalHistory = async () => {
     try {
+      const snapshot = Array.isArray(messages) ? [...messages] : [];
+      const clearedAt = new Date().toISOString();
+
+      // Persist clear watermark first so a concurrent remote sync cannot resurrect old chat.
+      await AsyncStorage.setItem(CHAT_HISTORY_CLEARED_AT_KEY, clearedAt);
       setMessages([]);
       await AsyncStorage.removeItem("@chat_history");
+
+      const token = session?.access_token;
+      if (token) {
+        try {
+          await apiClearRemoteChatHistory(token, snapshot);
+        } catch (cloudErr) {
+          console.warn("Cloud chat history clear failed:", cloudErr);
+          // Local clear + watermark still prevent old history from coming back on restart.
+        }
+      }
+
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       console.error("Clear local history failed:", e);
+      Alert.alert("Clear failed", e?.message || "Could not clear chat history.");
     }
   };
 
