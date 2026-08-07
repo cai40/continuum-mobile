@@ -57,6 +57,8 @@ const SettingsSection = (props) => {
     setOpenaiKey,
     openrouterKey,
     setOpenrouterKey,
+    deepseekKey,
+    setDeepseekKey,
     selectedVoice,
     setSelectedVoice,
     saveKeys,
@@ -100,6 +102,7 @@ const SettingsSection = (props) => {
   const [showGemini, setShowGemini] = useState(false);
   const [showOpenAI, setShowOpenAI] = useState(false);
   const [showOpenRouter, setShowOpenRouter] = useState(false);
+  const [showDeepseek, setShowDeepseek] = useState(false);
 
   // Memory Sub-Tab States
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1029,6 +1032,10 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             </TouchableOpacity>
           ))}
         </View>
+        <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 16, marginTop: 4 }}>
+          To use DeepSeek V4 Flash: tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text>,
+          paste your DeepSeek key below, then tap SECURE ALL KEYS. Header badge will show DS V4 FLASH.
+        </Text>
       </View>
 
       <Text style={categoryTitleStyle}>API CREDENTIALS (VAULT)</Text>
@@ -1058,7 +1065,15 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         />
         <Divider />
         <KeyInputRow
-          label="OpenRouter"
+          label="DeepSeek (DS V3.2 / V4 Pro / V4 Flash)"
+          value={deepseekKey}
+          setValue={setDeepseekKey}
+          show={showDeepseek}
+          setShow={setShowDeepseek}
+        />
+        <Divider />
+        <KeyInputRow
+          label="OpenRouter (Claude / Kimi / Qwen / MiniMax)"
           value={openrouterKey}
           setValue={setOpenrouterKey}
           show={showOpenRouter}

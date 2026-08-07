@@ -57,6 +57,7 @@ export const AppProvider = ({ children }) => {
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [openrouterKey, setOpenrouterKey] = useState("");
+  const [deepseekKey, setDeepseekKey] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("en-US-AvaNeural");
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
@@ -241,6 +242,7 @@ export const AppProvider = ({ children }) => {
           "@gemini_key",
           "@openai_key",
           "@openrouter_key",
+          "@deepseek_key",
           "@provider",
           "@selected_voice",
           "@chat_history",
@@ -264,6 +266,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@gemini_key") setGeminiKey(value);
           if (key === "@openai_key") setOpenaiKey(value);
           if (key === "@openrouter_key") setOpenrouterKey(value);
+          if (key === "@deepseek_key") setDeepseekKey(value);
           if (key === "@provider") setProvider(value);
           if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@persona") setPersona(value);
@@ -440,6 +443,7 @@ export const AppProvider = ({ children }) => {
         ["@gemini_key", geminiKey.trim()],
         ["@openai_key", openaiKey.trim()],
         ["@openrouter_key", openrouterKey.trim()],
+        ["@deepseek_key", deepseekKey.trim()],
         ["@selected_voice", selectedVoice],
         ["@provider", provider],
         ["@persona", persona],
@@ -592,6 +596,8 @@ export const AppProvider = ({ children }) => {
         setOpenaiKey,
         openrouterKey,
         setOpenrouterKey,
+        deepseekKey,
+        setDeepseekKey,
         selectedVoice,
         setSelectedVoice,
         persona,

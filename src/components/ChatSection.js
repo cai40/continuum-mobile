@@ -106,7 +106,7 @@ const FULL_FOLDER_PERSONA_APPEND = [
 const ChatSection = () => {
   const {
     messages, setMessages,
-    provider, groqKey, geminiKey, openaiKey, openrouterKey,
+    provider, groqKey, geminiKey, openaiKey, openrouterKey, deepseekKey,
     selectedVoice, persona,
     sttLang,
     activeTab,
@@ -651,17 +651,28 @@ const ChatSection = () => {
 
       let isEmailBridgeQuery = (isEmailQuery && !isEmailFollowUpOnly && !isEmailRecallQuestion) || isRecallEvidenceFetch || isFullFolderFetch;
 
+      const deepseekProviders = [
+        'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro', 'deepseek_v4_flash',
+      ];
       const openrouterProviders = [
-        'openrouter', 'or_free', 'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro',
-        'deepseek_v4_flash', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
+        'openrouter', 'or_free', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
       ];
       const activeKey =
         provider === 'groq' ? groqKey :
         (provider === 'gemini' ? geminiKey :
-        (openrouterProviders.includes(provider) ? openrouterKey : openaiKey));
+        (deepseekProviders.includes(provider)
+          ? (deepseekKey?.trim() || openrouterKey)
+          : (openrouterProviders.includes(provider) ? openrouterKey : openaiKey)));
 
       if (provider === 'gemini' && !activeKey?.trim()) {
         Alert.alert("Gemini key required", "Add your Gemini API key under Setup → Intelligence & API Keys.");
+        return;
+      }
+      if (deepseekProviders.includes(provider) && !activeKey?.trim()) {
+        Alert.alert(
+          "DeepSeek key required",
+          "Add your DeepSeek API key under Setup → Intelligence & API Keys (DeepSeek box). You can also use an OpenRouter key as fallback.",
+        );
         return;
       }
 
