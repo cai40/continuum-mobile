@@ -65,6 +65,71 @@ export function providerSelectionMessage(provider) {
     lines.push(
       'Paste your key in the DeepSeek box (OpenRouter key also works as fallback), then tap SECURE ALL KEYS.',
     );
+    lines.push(
+      'Asking the chat “what model are you?” is unreliable — models often misname themselves. Use Verify routing in Setup, or check OpenRouter usage.',
+    );
   }
   return lines.join('\n');
+}
+
+/**
+ * Ask OpenRouter which model id it actually served.
+ * Uses the Continuum→OpenRouter mapping for the selected provider.
+ */
+export async function verifyProviderRouting(provider, apiKey) {
+  const id = normalizeProviderId(provider);
+  const model = PROVIDER_OPENROUTER_MODELS[id];
+  const key = String(apiKey || '').trim();
+  if (!model) {
+    return { ok: false, error: `No OpenRouter model mapping for provider ${id}` };
+  }
+  if (!key) {
+    return { ok: false, error: 'Add an OpenRouter or DeepSeek (OpenRouter) key first.' };
+  }
+  if (!key.startsWith('sk-or-') && id.startsWith('deepseek')) {
+    // Platform DeepSeek keys cannot query OpenRouter model routing.
+    return {
+      ok: false,
+      error:
+        'Your key does not look like an OpenRouter key (sk-or-…). '
+        + 'Continuum DeepSeek buttons are routed through OpenRouter model ids. '
+        + 'Paste an OpenRouter key to verify V4 Flash routing, or check OpenRouter activity after a chat.',
+      provider: id,
+      expectedModel: model,
+    };
+  }
+
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://continuum.advisor',
+      'X-Title': 'Continuum Mobile',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: 'Reply with OK only.' }],
+      max_tokens: 8,
+    }),
+  });
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch { /* ignore */ }
+  if (!res.ok) {
+    return {
+      ok: false,
+      provider: id,
+      expectedModel: model,
+      error: json?.error?.message || text.slice(0, 240) || `OpenRouter error ${res.status}`,
+    };
+  }
+  const served = json?.model || null;
+  return {
+    ok: true,
+    provider: id,
+    expectedModel: model,
+    servedModel: served,
+    matched: !served || String(served).includes('v4-flash') || served === model || served.startsWith(`${model}`),
+  };
 }

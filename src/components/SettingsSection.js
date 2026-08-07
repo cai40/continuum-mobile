@@ -44,7 +44,7 @@ import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from "../util
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
-import { providerDisplayLabel, PROVIDER_OPENROUTER_MODELS, normalizeProviderId } from "../utils/providers";
+import { providerDisplayLabel, PROVIDER_OPENROUTER_MODELS, normalizeProviderId, verifyProviderRouting } from "../utils/providers";
 
 const SettingsSection = (props) => {
   const {
@@ -1046,8 +1046,46 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </Text>
           {"\n\n"}
           The DeepSeek API key alone does not pick V3 vs V4 Flash. Continuum sends the provider id above to the cloud; the cloud maps it to that OpenRouter model.
+          {"\n"}Asking chat “what model are you?” is unreliable — models often misname themselves.
           {"\n"}Tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text> (saves immediately). Header badge turns green and shows DS V4 FLASH.
         </Text>
+        <TouchableOpacity
+          onPress={async () => {
+            try {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const key = (deepseekKey || openrouterKey || '').trim();
+              const result = await verifyProviderRouting(provider, key);
+              if (!result.ok) {
+                Alert.alert('Routing check', result.error || 'Verification failed.');
+                return;
+              }
+              Alert.alert(
+                result.matched ? 'OpenRouter served Flash family' : 'OpenRouter model mismatch',
+                [
+                  `Continuum provider: ${result.provider}`,
+                  `Expected: ${result.expectedModel}`,
+                  `OpenRouter returned: ${result.servedModel || 'unknown'}`,
+                  '',
+                  'This checks OpenRouter with your key directly.',
+                  'Continuum cloud must map deepseek_v4_flash to the same model — if chat still “says” V3, that is usually the model misnaming itself, not the header being wrong.',
+                ].join('\n'),
+              );
+            } catch (e) {
+              Alert.alert('Routing check failed', e?.message || String(e));
+            }
+          }}
+          style={{
+            marginTop: 10,
+            backgroundColor: '#00B894',
+            paddingVertical: 12,
+            borderRadius: 12,
+            alignItems: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>
+            VERIFY OPENROUTER MODEL FOR CURRENT PROVIDER
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <Text style={categoryTitleStyle}>API CREDENTIALS (VAULT)</Text>

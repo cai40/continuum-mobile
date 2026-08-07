@@ -27,7 +27,7 @@ import {
 import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND } from '../utils/groundingPrompt';
 import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
-import { normalizeProviderId } from '../utils/providers';
+import { normalizeProviderId, providerDisplayLabel, PROVIDER_OPENROUTER_MODELS } from '../utils/providers';
 import {
   friendlyChatError,
   MAX_ATTACHMENT_BYTES,
@@ -874,6 +874,8 @@ const ChatSection = () => {
 
       formData.append('message', chatMessage);
       formData.append('provider', resolvedProvider);
+      const openRouterModel = PROVIDER_OPENROUTER_MODELS[resolvedProvider];
+      if (openRouterModel) formData.append('model', openRouterModel);
       formData.append('persona', appendGroundingPersona(persona, personaExtras));
       // Fresh file analysis or web search: drop chat history so prior replies
       // cannot override injected attachment text or live search results.
@@ -935,6 +937,12 @@ const ChatSection = () => {
             requestedDraft: wantsCopyDraft,
             baseId: Date.now(),
           });
+          aiMsgs = aiMsgs.map((m) => ({
+            ...m,
+            continuumProvider: resolvedProvider,
+            continuumProviderLabel: providerDisplayLabel(resolvedProvider),
+            continuumOpenRouterModel: PROVIDER_OPENROUTER_MODELS[resolvedProvider] || null,
+          }));
           const combinedText = aiMsgs.map((m) => m.content).join('\n\n');
           const pinBody = extractEmailEvidenceForPin(finalText) || extractEmailEvidenceForPin(combinedText);
           const offerPin = pinBody
@@ -1426,6 +1434,13 @@ const ChatSection = () => {
                   Pin to L1
                 </Text>
               </TouchableOpacity>
+            ) : null}
+            {item.role === 'assistant' && item.continuumProviderLabel ? (
+              <Text style={{ marginTop: 8, fontSize: 9, fontWeight: '700', color: theme.colors.gray }}>
+                Continuum requested: {item.continuumProviderLabel}
+                {item.continuumOpenRouterModel ? ` → ${item.continuumOpenRouterModel}` : ''}
+                {'\n'}(Model self-ID in chat is not proof of routing)
+              </Text>
             ) : null}
           </View>
           
