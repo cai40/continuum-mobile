@@ -657,18 +657,19 @@ const ChatSection = () => {
       const openrouterProviders = [
         'openrouter', 'or_free', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
       ];
+      const resolvedProvider = provider === 'deepseek' ? 'deepseek_v3.2' : provider;
       const activeKey =
-        provider === 'groq' ? groqKey :
-        (provider === 'gemini' ? geminiKey :
-        (deepseekProviders.includes(provider)
+        resolvedProvider === 'groq' ? groqKey :
+        (resolvedProvider === 'gemini' ? geminiKey :
+        (deepseekProviders.includes(resolvedProvider)
           ? (deepseekKey?.trim() || openrouterKey)
-          : (openrouterProviders.includes(provider) ? openrouterKey : openaiKey)));
+          : (openrouterProviders.includes(resolvedProvider) ? openrouterKey : openaiKey)));
 
-      if (provider === 'gemini' && !activeKey?.trim()) {
+      if (resolvedProvider === 'gemini' && !activeKey?.trim()) {
         Alert.alert("Gemini key required", "Add your Gemini API key under Setup → Intelligence & API Keys.");
         return;
       }
-      if (deepseekProviders.includes(provider) && !activeKey?.trim()) {
+      if (deepseekProviders.includes(resolvedProvider) && !activeKey?.trim()) {
         Alert.alert(
           "DeepSeek key required",
           "Add your DeepSeek API key under Setup → Intelligence & API Keys (DeepSeek box). You can also use an OpenRouter key as fallback.",
@@ -871,7 +872,7 @@ const ChatSection = () => {
       ];
 
       formData.append('message', chatMessage);
-      formData.append('provider', provider);
+      formData.append('provider', resolvedProvider);
       formData.append('persona', appendGroundingPersona(persona, personaExtras));
       // Fresh file analysis or web search: drop chat history so prior replies
       // cannot override injected attachment text or live search results.
@@ -1052,7 +1053,7 @@ const ChatSection = () => {
           : {};
         const payload = {
           message: bridgeMessage,
-          provider,
+          provider: resolvedProvider,
           persona: appendGroundingPersona(persona, [
             ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
             ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
@@ -1062,8 +1063,8 @@ const ChatSection = () => {
             ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
           ]),
           history: webSearchContext ? [] : historyForUpload,
-          gemini_key: provider === 'gemini' ? (geminiKey || '').trim() : '',
-          groq_key: provider === 'groq' ? (groqKey || '').trim() : '',
+          gemini_key: resolvedProvider === 'gemini' ? (geminiKey || '').trim() : '',
+          groq_key: resolvedProvider === 'groq' ? (groqKey || '').trim() : '',
           api_key: (activeKey || '').trim(),
           lat: location?.coords?.latitude?.toString(),
           lon: location?.coords?.longitude?.toString(),
@@ -1087,7 +1088,7 @@ const ChatSection = () => {
           const jobSecret = useRenderEmail ? renderEmailSecret : bridgeSecret;
           const jobPayload = buildEmailJobPayload({
             message: emailFetchIntentMessage,
-            provider,
+            provider: resolvedProvider,
             persona: payload.persona,
             emailFetch,
             emailDeleteEnabled: openclawEmailDeleteEnabled,

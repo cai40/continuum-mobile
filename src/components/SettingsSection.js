@@ -1033,8 +1033,10 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           ))}
         </View>
         <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 16, marginTop: 4 }}>
-          To use DeepSeek V4 Flash: tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text>,
-          paste your DeepSeek key below, then tap SECURE ALL KEYS. Header badge will show DS V4 FLASH.
+          Active model: <Text style={{ fontWeight: "800", color: theme.colors.black }}>{provider}</Text>
+          {"\n"}Tap a button to switch — it saves immediately. Header badge updates to match.
+          {"\n"}For DeepSeek V4 Flash: tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text>,
+          then paste your DeepSeek key below and tap SECURE ALL KEYS.
         </Text>
       </View>
 

@@ -90,7 +90,7 @@ const AppShell = () => {
   const providerLabel = {
     openrouter: 'CLAUDE',
     or_free: 'OR FREE',
-    deepseek: 'DEEPSEEK',
+    deepseek: 'DS V3.2',
     'deepseek_v3.2': 'DS V3.2',
     deepseek_v4_pro: 'DS V4 PRO',
     deepseek_v4_flash: 'DS V4 FLASH',

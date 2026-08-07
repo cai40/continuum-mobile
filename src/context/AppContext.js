@@ -67,7 +67,7 @@ export const AppProvider = ({ children }) => {
     serverStatusRef.current = 'healthy';
     setServerStatus('healthy');
   };
-  const [provider, setProvider] = useState("deepseek");
+  const [provider, setProviderState] = useState("deepseek_v3.2");
   const [groqKey, setGroqKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -290,7 +290,10 @@ export const AppProvider = ({ children }) => {
           if (key === "@openai_key") setOpenaiKey(value);
           if (key === "@openrouter_key") setOpenrouterKey(value);
           if (key === "@deepseek_key") setDeepseekKey(value);
-          if (key === "@provider") setProvider(value);
+          if (key === "@provider") {
+            // Legacy bare "deepseek" was ambiguous — keep as DS V3.2 for existing installs.
+            setProviderState(value === "deepseek" ? "deepseek_v3.2" : value);
+          }
           if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@persona") setPersona(value);
           if (key === "@stt_lang") setSttLang(value);
@@ -466,6 +469,14 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const setProvider = (nextProvider) => {
+    const normalized = nextProvider === "deepseek" ? "deepseek_v3.2" : nextProvider;
+    setProviderState(normalized);
+    AsyncStorage.setItem("@provider", normalized).catch((e) => {
+      console.warn("Provider persist failed:", e);
+    });
+  };
+
   const saveKeys = async () => {
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -476,14 +487,14 @@ export const AppProvider = ({ children }) => {
         ["@openrouter_key", openrouterKey.trim()],
         ["@deepseek_key", deepseekKey.trim()],
         ["@selected_voice", selectedVoice],
-        ["@provider", provider],
+        ["@provider", provider === "deepseek" ? "deepseek_v3.2" : provider],
         ["@persona", persona],
         ["@stt_lang", sttLang],
       ];
       await AsyncStorage.multiSet(keyData);
       Alert.alert(
         "🔒 Vault Locked",
-        "Credentials and preferences synchronized.",
+        `Credentials and preferences synchronized.\nActive model: ${provider === "deepseek" ? "deepseek_v3.2" : provider}`,
       );
     } catch (e) {
       Alert.alert("Error", "Could not lock the vault.");
