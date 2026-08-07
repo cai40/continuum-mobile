@@ -16,6 +16,7 @@ import HeaderBadge from './src/components/shared/HeaderBadge';
 import { styles, theme } from './src/styles/theme';
 import * as Sentry from '@sentry/react-native';
 import { SENTRY_DSN, BUILD_ID } from './src/constants/Config';
+import { providerDisplayLabel, providerBadgeColor } from './src/utils/providers';
 
 // Initialize Sentry for Phase 3 Production Observability
 if (SENTRY_DSN) {
@@ -87,21 +88,8 @@ const AppShell = () => {
     settings: 'Setup',
   }[activeTab] || 'Continuum';
 
-  const providerLabel = {
-    openrouter: 'CLAUDE',
-    or_free: 'OR FREE',
-    deepseek: 'DS V3.2',
-    'deepseek_v3.2': 'DS V3.2',
-    deepseek_v4_pro: 'DS V4 PRO',
-    deepseek_v4_flash: 'DS V4 FLASH',
-    qwen: 'QWEN',
-    gpt4o_mini: '4O MINI',
-    'kimi_k2.6': 'KIMI',
-    minimax: 'MINIMAX',
-    gemini: 'GEMINI',
-    groq: 'GROQ',
-    openai: 'OPENAI',
-  }[provider] || String(provider || '').toUpperCase();
+  const providerLabel = providerDisplayLabel(provider);
+  const providerColor = providerBadgeColor(provider, theme.colors);
 
   const cycleSttLang = () => {
     try {
@@ -137,9 +125,7 @@ const AppShell = () => {
           </View>
           
           <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end'}}>
-            {activeTab === 'chat' && (
-              <HeaderBadge label={providerLabel} color={theme.colors.gray} />
-            )}
+            <HeaderBadge label={providerLabel} color={providerColor} />
 
             <HeaderBadge label="CLOUD" color={theme.colors.success} />
 

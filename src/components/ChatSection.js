@@ -27,6 +27,7 @@ import {
 import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND } from '../utils/groundingPrompt';
 import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
+import { normalizeProviderId } from '../utils/providers';
 import {
   friendlyChatError,
   MAX_ATTACHMENT_BYTES,
@@ -657,7 +658,7 @@ const ChatSection = () => {
       const openrouterProviders = [
         'openrouter', 'or_free', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
       ];
-      const resolvedProvider = provider === 'deepseek' ? 'deepseek_v3.2' : provider;
+      const resolvedProvider = normalizeProviderId(provider);
       const activeKey =
         resolvedProvider === 'groq' ? groqKey :
         (resolvedProvider === 'gemini' ? geminiKey :

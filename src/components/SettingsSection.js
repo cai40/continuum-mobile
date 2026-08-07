@@ -44,6 +44,7 @@ import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from "../util
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
+import { providerDisplayLabel, PROVIDER_OPENROUTER_MODELS, normalizeProviderId } from "../utils/providers";
 
 const SettingsSection = (props) => {
   const {
@@ -1033,10 +1034,19 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           ))}
         </View>
         <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 16, marginTop: 4 }}>
-          Active model: <Text style={{ fontWeight: "800", color: theme.colors.black }}>{provider}</Text>
-          {"\n"}Tap a button to switch — it saves immediately. Header badge updates to match.
-          {"\n"}For DeepSeek V4 Flash: tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text>,
-          then paste your DeepSeek key below and tap SECURE ALL KEYS.
+          Active Continuum provider:{" "}
+          <Text style={{ fontWeight: "800", color: theme.colors.black }}>
+            {normalizeProviderId(provider)}
+          </Text>
+          {" "}({providerDisplayLabel(provider)})
+          {"\n"}
+          OpenRouter model Continuum should call:{" "}
+          <Text style={{ fontWeight: "800", color: theme.colors.black }}>
+            {PROVIDER_OPENROUTER_MODELS[normalizeProviderId(provider)] || "—"}
+          </Text>
+          {"\n\n"}
+          The DeepSeek API key alone does not pick V3 vs V4 Flash. Continuum sends the provider id above to the cloud; the cloud maps it to that OpenRouter model.
+          {"\n"}Tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text> (saves immediately). Header badge turns green and shows DS V4 FLASH.
         </Text>
       </View>
 

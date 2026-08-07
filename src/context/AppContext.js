@@ -20,6 +20,7 @@ import {
 import { API_URL, DEFAULT_OPENCLAW_EMAIL_LIMIT, DEFAULT_OPENCLAW_EMAIL_RECENT } from "../constants/Config";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/openclawEmailOptions";
 import { sanitizeUserVisibleContent } from "../utils/helpers";
+import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
 
 const AppContext = createContext();
 const CHAT_HISTORY_CLEARED_AT_KEY = "@chat_history_cleared_at";
@@ -291,8 +292,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@openrouter_key") setOpenrouterKey(value);
           if (key === "@deepseek_key") setDeepseekKey(value);
           if (key === "@provider") {
-            // Legacy bare "deepseek" was ambiguous — keep as DS V3.2 for existing installs.
-            setProviderState(value === "deepseek" ? "deepseek_v3.2" : value);
+            setProviderState(normalizeProviderId(value));
           }
           if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@persona") setPersona(value);
@@ -470,16 +470,18 @@ export const AppProvider = ({ children }) => {
   };
 
   const setProvider = (nextProvider) => {
-    const normalized = nextProvider === "deepseek" ? "deepseek_v3.2" : nextProvider;
+    const normalized = normalizeProviderId(nextProvider);
     setProviderState(normalized);
     AsyncStorage.setItem("@provider", normalized).catch((e) => {
       console.warn("Provider persist failed:", e);
     });
+    Alert.alert(`Model: ${providerDisplayLabel(normalized)}`, providerSelectionMessage(normalized));
   };
 
   const saveKeys = async () => {
     try {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const activeProvider = normalizeProviderId(provider);
       const keyData = [
         ["@groq_key", groqKey.trim()],
         ["@gemini_key", geminiKey.trim()],
@@ -487,14 +489,14 @@ export const AppProvider = ({ children }) => {
         ["@openrouter_key", openrouterKey.trim()],
         ["@deepseek_key", deepseekKey.trim()],
         ["@selected_voice", selectedVoice],
-        ["@provider", provider === "deepseek" ? "deepseek_v3.2" : provider],
+        ["@provider", activeProvider],
         ["@persona", persona],
         ["@stt_lang", sttLang],
       ];
       await AsyncStorage.multiSet(keyData);
       Alert.alert(
         "🔒 Vault Locked",
-        `Credentials and preferences synchronized.\nActive model: ${provider === "deepseek" ? "deepseek_v3.2" : provider}`,
+        `Credentials synchronized.\n${providerSelectionMessage(activeProvider)}`,
       );
     } catch (e) {
       Alert.alert("Error", "Could not lock the vault.");
