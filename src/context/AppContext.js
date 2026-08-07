@@ -68,7 +68,7 @@ export const AppProvider = ({ children }) => {
     serverStatusRef.current = 'healthy';
     setServerStatus('healthy');
   };
-  const [provider, setProviderState] = useState("deepseek_v3.2");
+  const [provider, setProviderState] = useState("deepseek_v4_flash");
   const [groqKey, setGroqKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");

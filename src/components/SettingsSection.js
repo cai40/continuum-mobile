@@ -44,7 +44,7 @@ import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from "../util
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
-import { providerDisplayLabel, PROVIDER_OPENROUTER_MODELS, normalizeProviderId, verifyProviderRouting } from "../utils/providers";
+import { providerDisplayLabel, normalizeProviderId, deepseekPlatformModel, isDeepseekProvider, verifyProviderRouting } from "../utils/providers";
 
 const SettingsSection = (props) => {
   const {
@@ -1040,38 +1040,45 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </Text>
           {" "}({providerDisplayLabel(provider)})
           {"\n"}
-          OpenRouter model Continuum should call:{" "}
-          <Text style={{ fontWeight: "800", color: theme.colors.black }}>
-            {PROVIDER_OPENROUTER_MODELS[normalizeProviderId(provider)] || "—"}
-          </Text>
-          {"\n\n"}
-          The DeepSeek API key alone does not pick V3 vs V4 Flash. Continuum sends the provider id above to the cloud; the cloud maps it to that OpenRouter model.
-          {"\n"}Asking chat “what model are you?” is unreliable — models often misname themselves.
-          {"\n"}Tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text> (saves immediately). Header badge turns green and shows DS V4 FLASH.
+          {isDeepseekProvider(provider) ? (
+            <>
+              DeepSeek API model (api.deepseek.com):{" "}
+              <Text style={{ fontWeight: "800", color: theme.colors.black }}>
+                {deepseekPlatformModel(provider)}
+              </Text>
+              {"\n\n"}
+              DeepSeek buttons call{" "}
+              <Text style={{ fontWeight: "800", color: theme.colors.black }}>api.deepseek.com</Text>
+              {" "}directly — not OpenRouter.
+              {"\n"}Paste a key from{" "}
+              <Text style={{ fontWeight: "800", color: theme.colors.black }}>platform.deepseek.com</Text>
+              {" "}in the DeepSeek box (not an sk-or-… OpenRouter key).
+              {"\n"}Tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text> — header turns green.
+            </>
+          ) : (
+            <>Select a DeepSeek model to use the DeepSeek platform API.</>
+          )}
         </Text>
         <TouchableOpacity
           onPress={async () => {
             try {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              const key = (deepseekKey || openrouterKey || '').trim();
-              const result = await verifyProviderRouting(provider, key);
+              const result = await verifyProviderRouting(provider, deepseekKey);
               if (!result.ok) {
-                Alert.alert('Routing check', result.error || 'Verification failed.');
+                Alert.alert('DeepSeek API check', result.error || 'Verification failed.');
                 return;
               }
               Alert.alert(
-                result.matched ? 'OpenRouter served Flash family' : 'OpenRouter model mismatch',
+                result.matched ? 'DeepSeek API OK' : 'DeepSeek model mismatch',
                 [
-                  `Continuum provider: ${result.provider}`,
-                  `Expected: ${result.expectedModel}`,
-                  `OpenRouter returned: ${result.servedModel || 'unknown'}`,
-                  '',
-                  'This checks OpenRouter with your key directly.',
-                  'Continuum cloud must map deepseek_v4_flash to the same model — if chat still “says” V3, that is usually the model misnaming itself, not the header being wrong.',
+                  `Provider: ${result.provider}`,
+                  `Requested model: ${result.expectedModel}`,
+                  `API returned: ${result.servedModel || 'unknown'}`,
+                  `Endpoint: ${result.via || 'api.deepseek.com'}`,
                 ].join('\n'),
               );
             } catch (e) {
-              Alert.alert('Routing check failed', e?.message || String(e));
+              Alert.alert('DeepSeek API check failed', e?.message || String(e));
             }
           }}
           style={{
@@ -1083,7 +1090,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           }}
         >
           <Text style={{ color: '#fff', fontWeight: '800', fontSize: 12 }}>
-            VERIFY OPENROUTER MODEL FOR CURRENT PROVIDER
+            VERIFY DEEPSEEK API KEY + MODEL
           </Text>
         </TouchableOpacity>
       </View>
@@ -1115,7 +1122,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         />
         <Divider />
         <KeyInputRow
-          label="DeepSeek (DS V3.2 / V4 Pro / V4 Flash)"
+          label="DeepSeek platform (api.deepseek.com)"
           value={deepseekKey}
           setValue={setDeepseekKey}
           show={showDeepseek}

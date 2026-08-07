@@ -652,6 +652,125 @@ export const chatStream = (
 };
 
 /**
+ * Stream chat directly from DeepSeek platform API (api.deepseek.com).
+ * OpenAI-compatible SSE. Used when Setup DeepSeek key is a platform key.
+ */
+export const deepseekChatStream = (
+  {
+    apiKey,
+    model = 'deepseek-v4-flash',
+    system = '',
+    history = [],
+    message = '',
+  },
+  onUpdate,
+  onDone,
+  onError,
+  timeoutMs = 130000,
+) => {
+  const xhr = new XMLHttpRequest();
+  let lastProcessedIndex = 0;
+  let doneCalled = false;
+  let fullText = '';
+
+  const finish = (errorMsg) => {
+    if (doneCalled) return;
+    doneCalled = true;
+    if (errorMsg) onError(errorMsg);
+    else onDone(fullText, '');
+  };
+
+  const messages = [];
+  if (system && String(system).trim()) {
+    messages.push({ role: 'system', content: String(system) });
+  }
+  const hist = Array.isArray(history) ? history : [];
+  for (const m of hist) {
+    if (!m?.role || !m?.content) continue;
+    const role = m.role === 'assistant' ? 'assistant' : 'user';
+    messages.push({ role, content: String(m.content) });
+  }
+  messages.push({ role: 'user', content: String(message || '') });
+
+  xhr.open('POST', 'https://api.deepseek.com/chat/completions');
+  xhr.timeout = timeoutMs;
+  xhr.setRequestHeader('Authorization', `Bearer ${String(apiKey || '').trim()}`);
+  xhr.setRequestHeader('Content-Type', 'application/json');
+  xhr.setRequestHeader('Accept', 'text/event-stream');
+
+  xhr.onreadystatechange = () => {
+    if (xhr.readyState !== 3 && xhr.readyState !== 4) return;
+
+    if (xhr.readyState === 4 && xhr.status >= 400) {
+      const responseText = xhr.responseText || '';
+      let msg = `DeepSeek API error (${xhr.status})`;
+      try {
+        const parsed = JSON.parse(responseText);
+        msg = parsed?.error?.message || parsed?.detail || parsed?.message || msg;
+      } catch {
+        if (responseText.trim()) msg = responseText.slice(0, 400);
+      }
+      finish(msg);
+      return;
+    }
+
+    const responseText = xhr.responseText || '';
+    if (!responseText) {
+      if (xhr.readyState === 4) finish(null);
+      return;
+    }
+
+    let lastNewLineIndex = responseText.lastIndexOf('\n');
+    if (xhr.readyState === 4) lastNewLineIndex = responseText.length;
+    if (lastNewLineIndex <= lastProcessedIndex) {
+      if (xhr.readyState === 4) finish(null);
+      return;
+    }
+
+    const completeData = responseText.substring(lastProcessedIndex, lastNewLineIndex);
+    lastProcessedIndex = lastNewLineIndex;
+
+    for (const rawLine of completeData.split('\n')) {
+      const line = rawLine.trim();
+      if (!line.startsWith('data:')) continue;
+      const rawData = line.replace(/^data:\s?/, '').trim();
+      if (!rawData) continue;
+      if (rawData === '[DONE]') {
+        finish(null);
+        return;
+      }
+      try {
+        const json = JSON.parse(rawData);
+        const token =
+          json?.choices?.[0]?.delta?.content
+          || json?.choices?.[0]?.message?.content
+          || '';
+        if (token) {
+          fullText += token;
+          onUpdate('text', { token });
+        }
+      } catch {
+        // ignore partial JSON chunks
+      }
+    }
+
+    if (xhr.readyState === 4) finish(null);
+  };
+
+  xhr.onerror = () => finish('Network error reaching api.deepseek.com');
+  xhr.ontimeout = () => finish('DeepSeek API timed out');
+
+  xhr.send(JSON.stringify({
+    model,
+    messages,
+    stream: true,
+    thinking: { type: 'disabled' },
+  }));
+
+  return xhr;
+};
+
+/**
  * Chat via OpenClaw VPS bridge: Continuum memory + Yahoo email skills.
  */
 function sanitizeBridgeErrorMessage(raw, status) {

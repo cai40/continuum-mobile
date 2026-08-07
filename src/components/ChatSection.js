@@ -14,7 +14,7 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory } from '../services/apiService';
+import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/openclawBridge';
 import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
@@ -27,7 +27,14 @@ import {
 import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND } from '../utils/groundingPrompt';
 import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
-import { normalizeProviderId, providerDisplayLabel, PROVIDER_OPENROUTER_MODELS } from '../utils/providers';
+import {
+  normalizeProviderId,
+  providerDisplayLabel,
+  deepseekPlatformModel,
+  isDeepseekProvider,
+  isOpenRouterKey,
+  DEEPSEEK_PROVIDERS,
+} from '../utils/providers';
 import {
   friendlyChatError,
   MAX_ATTACHMENT_BYTES,
@@ -652,28 +659,38 @@ const ChatSection = () => {
 
       let isEmailBridgeQuery = (isEmailQuery && !isEmailFollowUpOnly && !isEmailRecallQuestion) || isRecallEvidenceFetch || isFullFolderFetch;
 
-      const deepseekProviders = [
-        'deepseek', 'deepseek_v3.2', 'deepseek_v4_pro', 'deepseek_v4_flash',
-      ];
+      const deepseekProviders = DEEPSEEK_PROVIDERS;
       const openrouterProviders = [
         'openrouter', 'or_free', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
       ];
       const resolvedProvider = normalizeProviderId(provider);
+      const deepseekPlatformKey = (deepseekKey || '').trim();
+      const useDirectDeepseek =
+        isDeepseekProvider(resolvedProvider)
+        && !!deepseekPlatformKey
+        && !isOpenRouterKey(deepseekPlatformKey);
       const activeKey =
         resolvedProvider === 'groq' ? groqKey :
         (resolvedProvider === 'gemini' ? geminiKey :
         (deepseekProviders.includes(resolvedProvider)
-          ? (deepseekKey?.trim() || openrouterKey)
+          ? (deepseekPlatformKey || openrouterKey)
           : (openrouterProviders.includes(resolvedProvider) ? openrouterKey : openaiKey)));
 
       if (resolvedProvider === 'gemini' && !activeKey?.trim()) {
         Alert.alert("Gemini key required", "Add your Gemini API key under Setup → Intelligence & API Keys.");
         return;
       }
-      if (deepseekProviders.includes(resolvedProvider) && !activeKey?.trim()) {
+      if (deepseekProviders.includes(resolvedProvider) && !deepseekPlatformKey) {
         Alert.alert(
           "DeepSeek key required",
-          "Add your DeepSeek API key under Setup → Intelligence & API Keys (DeepSeek box). You can also use an OpenRouter key as fallback.",
+          "Add your DeepSeek platform API key (from platform.deepseek.com) under Setup → Intelligence & API Keys → DeepSeek. Continuum calls api.deepseek.com directly — not OpenRouter.",
+        );
+        return;
+      }
+      if (deepseekProviders.includes(resolvedProvider) && isOpenRouterKey(deepseekPlatformKey)) {
+        Alert.alert(
+          "Use DeepSeek platform key",
+          "The DeepSeek box has an OpenRouter key (sk-or-…). For direct DeepSeek API, paste a key from https://platform.deepseek.com instead.",
         );
         return;
       }
@@ -874,8 +891,9 @@ const ChatSection = () => {
 
       formData.append('message', chatMessage);
       formData.append('provider', resolvedProvider);
-      const openRouterModel = PROVIDER_OPENROUTER_MODELS[resolvedProvider];
-      if (openRouterModel) formData.append('model', openRouterModel);
+      if (useDirectDeepseek) {
+        formData.append('model', deepseekPlatformModel(resolvedProvider));
+      }
       formData.append('persona', appendGroundingPersona(persona, personaExtras));
       // Fresh file analysis or web search: drop chat history so prior replies
       // cannot override injected attachment text or live search results.
@@ -941,7 +959,9 @@ const ChatSection = () => {
             ...m,
             continuumProvider: resolvedProvider,
             continuumProviderLabel: providerDisplayLabel(resolvedProvider),
-            continuumOpenRouterModel: PROVIDER_OPENROUTER_MODELS[resolvedProvider] || null,
+            continuumOpenRouterModel: useDirectDeepseek
+              ? `api.deepseek.com/${deepseekPlatformModel(resolvedProvider)}`
+              : null,
           }));
           const combinedText = aiMsgs.map((m) => m.content).join('\n\n');
           const pinBody = extractEmailEvidenceForPin(finalText) || extractEmailEvidenceForPin(combinedText);
@@ -1227,6 +1247,21 @@ const ChatSection = () => {
               activeToken,
             );
         abortControllerRef.current = { abort: () => xhr.abort() };
+      } else if (useDirectDeepseek) {
+        const dsModel = deepseekPlatformModel(resolvedProvider);
+        const xhr = deepseekChatStream(
+          {
+            apiKey: deepseekPlatformKey,
+            model: dsModel,
+            system: appendGroundingPersona(persona, personaExtras),
+            history: documentTextInjected || webSearchContext ? [] : historyForUpload,
+            message: chatMessage,
+          },
+          onStreamUpdate,
+          finishSuccess,
+          finishError,
+        );
+        abortControllerRef.current = { abort: () => xhr.abort() };
       } else {
         startRenderStream();
       }
@@ -1437,9 +1472,8 @@ const ChatSection = () => {
             ) : null}
             {item.role === 'assistant' && item.continuumProviderLabel ? (
               <Text style={{ marginTop: 8, fontSize: 9, fontWeight: '700', color: theme.colors.gray }}>
-                Continuum requested: {item.continuumProviderLabel}
-                {item.continuumOpenRouterModel ? ` → ${item.continuumOpenRouterModel}` : ''}
-                {'\n'}(Model self-ID in chat is not proof of routing)
+                Via: {item.continuumProviderLabel}
+                {item.continuumOpenRouterModel ? ` · ${item.continuumOpenRouterModel}` : ''}
               </Text>
             ) : null}
           </View>
