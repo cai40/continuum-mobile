@@ -475,7 +475,9 @@ export const AppProvider = ({ children }) => {
     AsyncStorage.setItem("@provider", normalized).catch((e) => {
       console.warn("Provider persist failed:", e);
     });
-    Alert.alert(`Model: ${providerDisplayLabel(normalized)}`, providerSelectionMessage(normalized));
+    if (String(normalized).startsWith("deepseek")) {
+      Alert.alert(`Model: ${providerDisplayLabel(normalized)}`, providerSelectionMessage(normalized));
+    }
   };
 
   const saveKeys = async () => {
