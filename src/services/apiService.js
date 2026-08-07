@@ -672,12 +672,13 @@ export const deepseekChatStream = (
   let lastProcessedIndex = 0;
   let doneCalled = false;
   let fullText = '';
+  let servedModel = model;
 
   const finish = (errorMsg) => {
     if (doneCalled) return;
     doneCalled = true;
     if (errorMsg) onError(errorMsg);
-    else onDone(fullText, '');
+    else onDone(fullText, '', { servedModel });
   };
 
   const messages = [];
@@ -741,6 +742,9 @@ export const deepseekChatStream = (
       }
       try {
         const json = JSON.parse(rawData);
+        if (json?.model) {
+          servedModel = json.model;
+        }
         const token =
           json?.choices?.[0]?.delta?.content
           || json?.choices?.[0]?.message?.content

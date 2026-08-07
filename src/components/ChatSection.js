@@ -728,6 +728,12 @@ const ChatSection = () => {
       }
 
       const useOpenClawBridge = useVpsBridge;
+      // Prefer direct DeepSeek API for normal chat. Only keep bridges for email jobs.
+      const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery;
+
+      const isModelIdentityQuestion = /\b(what|which)\b[\s\S]{0,40}\b(model|llm|ai|version)\b/i.test(finalInput)
+        || /\b(are you|you are|you're)\b[\s\S]{0,20}\b(deepseek|gpt|gemini|claude|v3|v4)\b/i.test(finalInput)
+        || /\bmodel\s+(are you|is this|do you use|am i talking)\b/i.test(finalInput);
 
       const isWebSearchQuery =
         wantsWebSearch(finalInput) && !isEmailQuery && !activeAttachments.length;
@@ -887,7 +893,15 @@ const ChatSection = () => {
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
         ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
         ...(wantsCopyDraft ? [DRAFT_OUTPUT_APPEND] : []),
+        ...(preferDirectDeepseek ? [
+          `MODEL IDENTITY: You are running as DeepSeek API model "${deepseekPlatformModel(resolvedProvider)}" via api.deepseek.com.`,
+          'If asked which model/LLM/version you are, answer with that exact model id. Do not say DeepSeek V3 or V3.2.',
+        ].join(' ') : []),
       ];
+
+      const historyForDeepseek = (
+        documentTextInjected || webSearchContext || isModelIdentityQuestion
+      ) ? [] : historyForUpload;
 
       formData.append('message', chatMessage);
       formData.append('provider', resolvedProvider);
@@ -917,8 +931,9 @@ const ChatSection = () => {
       const clientTime = new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
       let isHandled = false;
-      let bridgeAttempted = useOpenClawBridge || useRenderEmail;
+      let bridgeAttempted = (useOpenClawBridge || useRenderEmail) && !preferDirectDeepseek;
       let renderFallbackUsed = false;
+      let lastServedModel = preferDirectDeepseek ? deepseekPlatformModel(resolvedProvider) : null;
 
       const typingSafetyTimer = setTimeout(() => {
         setIsTyping(false);
@@ -927,7 +942,8 @@ const ChatSection = () => {
 
       const clearTypingSafety = () => clearTimeout(typingSafetyTimer);
 
-      const finishSuccess = (finalText, voiceTranscript) => {
+      const finishSuccess = (finalText, voiceTranscript, meta = null) => {
+        if (meta?.servedModel) lastServedModel = meta.servedModel;
         if (!finalText.trim() && bridgeAttempted && !renderFallbackUsed) {
           const hint = useRenderEmail
             ? (isEmailRecallQuestion
@@ -959,8 +975,8 @@ const ChatSection = () => {
             ...m,
             continuumProvider: resolvedProvider,
             continuumProviderLabel: providerDisplayLabel(resolvedProvider),
-            continuumOpenRouterModel: useDirectDeepseek
-              ? `api.deepseek.com/${deepseekPlatformModel(resolvedProvider)}`
+            continuumOpenRouterModel: preferDirectDeepseek
+              ? `api.deepseek.com/${lastServedModel || deepseekPlatformModel(resolvedProvider)}`
               : null,
           }));
           const combinedText = aiMsgs.map((m) => m.content).join('\n\n');
@@ -1001,6 +1017,25 @@ const ChatSection = () => {
         }
       };
 
+      const startDirectDeepseekStream = () => {
+        const dsModel = deepseekPlatformModel(resolvedProvider);
+        lastServedModel = dsModel;
+        const xhr = deepseekChatStream(
+          {
+            apiKey: deepseekPlatformKey,
+            model: dsModel,
+            system: appendGroundingPersona(persona, personaExtras),
+            history: historyForDeepseek,
+            message: chatMessage,
+          },
+          onStreamUpdate,
+          finishSuccess,
+          finishError,
+        );
+        abortControllerRef.current = { abort: () => xhr.abort() };
+        return xhr;
+      };
+
       const startRenderStream = () => {
         const xhrDirect = chatStream(
           formData,
@@ -1024,7 +1059,8 @@ const ChatSection = () => {
           renderFallbackUsed = true;
           bridgeAttempted = false;
           isHandled = false;
-          startRenderStream();
+          if (preferDirectDeepseek) startDirectDeepseekStream();
+          else startRenderStream();
           return;
         }
         if (isHandled) {
@@ -1061,7 +1097,9 @@ const ChatSection = () => {
         }
       };
 
-      if (useRenderEmail || useOpenClawBridge) {
+      if (preferDirectDeepseek) {
+        startDirectDeepseekStream();
+      } else if (useRenderEmail || useOpenClawBridge) {
         const useEnrichedBridgeMessage = !isEmailConfirm
           && (memoryRecallContext || isRecallEvidenceFetch || isAnyRecallTurn);
         const emailSourceMessage = isEmailConfirm
@@ -1246,21 +1284,6 @@ const ChatSection = () => {
               finishError,
               activeToken,
             );
-        abortControllerRef.current = { abort: () => xhr.abort() };
-      } else if (useDirectDeepseek) {
-        const dsModel = deepseekPlatformModel(resolvedProvider);
-        const xhr = deepseekChatStream(
-          {
-            apiKey: deepseekPlatformKey,
-            model: dsModel,
-            system: appendGroundingPersona(persona, personaExtras),
-            history: documentTextInjected || webSearchContext ? [] : historyForUpload,
-            message: chatMessage,
-          },
-          onStreamUpdate,
-          finishSuccess,
-          finishError,
-        );
         abortControllerRef.current = { abort: () => xhr.abort() };
       } else {
         startRenderStream();
