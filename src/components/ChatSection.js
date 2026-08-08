@@ -28,6 +28,8 @@ import {
 import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
+import GoogleDrivePickerModal from './GoogleDrivePickerModal';
+import { isGoogleDriveConnected } from '../services/googleDriveAuth';
 import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import {
@@ -160,6 +162,7 @@ const ChatSection = () => {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [location, setLocation] = useState(null);
+  const [drivePickerVisible, setDrivePickerVisible] = useState(false);
 
   const chatListRef = useRef();
   const inputRef = useRef(null);
@@ -1594,6 +1597,7 @@ const ChatSection = () => {
   };
 
   return (
+    <>
     <KeyboardAvoidingView 
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
@@ -1721,15 +1725,36 @@ const ChatSection = () => {
         </TouchableOpacity>
 
         <TouchableOpacity 
-          onPress={() => {
+          onPress={async () => {
+            let driveConnected = false;
+            try {
+              driveConnected = await isGoogleDriveConnected();
+            } catch {
+              driveConnected = false;
+            }
+            const buttons = [
+              { text: "Cancel", style: "cancel" },
+              { text: "Photo Library", onPress: pickImage },
+              { text: "Browse Documents", onPress: pickDocument },
+            ];
+            if (driveConnected) {
+              buttons.push({
+                text: "Google Drive",
+                onPress: () => setDrivePickerVisible(true),
+              });
+            } else {
+              buttons.push({
+                text: "Google Drive (connect in Setup)",
+                onPress: () => Alert.alert(
+                  "Google Drive",
+                  "Open Setup → Google Drive, add your Google OAuth Client ID, then Connect. After that you can attach Drive files here.",
+                ),
+              });
+            }
             Alert.alert(
               "Attach Context",
-              "Add photos or documents (PDF, Word, PowerPoint, Excel, text). You can select multiple files.",
-              [
-                { text: "Cancel", style: "cancel" },
-                { text: "Photo Library", onPress: pickImage },
-                { text: "Browse Documents", onPress: pickDocument },
-              ]
+              "Add photos, documents, or Google Drive files. You can select multiple files.",
+              buttons,
             );
           }}
           style={{ marginRight: 8, marginBottom: 4, padding: 10, backgroundColor: theme.colors.light, borderRadius: 25 }}
@@ -1765,6 +1790,12 @@ const ChatSection = () => {
         </View>
       </View>
     </KeyboardAvoidingView>
+    <GoogleDrivePickerModal
+      visible={drivePickerVisible}
+      onClose={() => setDrivePickerVisible(false)}
+      onPicked={(file) => addAttachments([file])}
+    />
+    </>
   );
 };
 

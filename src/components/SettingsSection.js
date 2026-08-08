@@ -44,6 +44,7 @@ import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from "../util
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
+import GoogleDriveIntegrationSection from "./GoogleDriveIntegrationSection";
 import { providerDisplayLabel, normalizeProviderId, deepseekPlatformModel, isDeepseekProvider, verifyProviderRouting } from "../utils/providers";
 
 const SettingsSection = (props) => {
@@ -96,7 +97,7 @@ const SettingsSection = (props) => {
   const onUpgrade = props.onUpgrade;
 
   // Navigation State
-  const [activeSubTab, setActiveSubTab] = useState(null); // null, 'api', 'voice', 'persona', 'data', 'openclaw', 'diag', 'account'
+  const [activeSubTab, setActiveSubTab] = useState(null); // null, 'api', 'voice', 'persona', 'data', 'openclaw', 'gdrive', 'diag', 'account'
 
   // Visibility States
   const [showGroq, setShowGroq] = useState(false);
@@ -2240,6 +2241,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       case "data": return renderDataSettings();
       case "openclaw":
         return <OpenClawIntegrationSection onBack={() => setActiveSubTab(null)} />;
+      case "gdrive":
+        return <GoogleDriveIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "diag": return renderDiagnostics();
       case "account": return renderAccountSettings();
       default: return null;
@@ -2318,6 +2321,12 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             icon="link-outline"
             label="OpenClaw Gateway"
             onPress={() => setActiveSubTab("openclaw")}
+          />
+          <Divider />
+          <MenuRow
+            icon="logo-google"
+            label="Google Drive"
+            onPress={() => setActiveSubTab("gdrive")}
           />
           <Divider />
           <MenuRow
