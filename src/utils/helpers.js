@@ -75,9 +75,27 @@ function safeJsonStringify(value) {
 
 export { safeJsonStringify };
 
-/** Backend multipart limit is 1024KB per form field. */
+/** Chat history JSON field should stay under the server multipart part limit. */
 export const MAX_CHAT_UPLOAD_PART_BYTES = 900 * 1024;
+/** Non-image chat attachments (docs / other files). */
 export const MAX_ATTACHMENT_BYTES = 1024 * 1024;
+/** Image chat attachments — gallery pick + upload. */
+export const MAX_IMAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+export function attachmentSizeLimitBytes(file) {
+  const type = String(file?.type || '');
+  if (type.startsWith('image/')) return MAX_IMAGE_ATTACHMENT_BYTES;
+  return MAX_ATTACHMENT_BYTES;
+}
+
+export function formatAttachmentBytes(bytes) {
+  const n = Number(bytes) || 0;
+  if (n >= 1024 * 1024) {
+    const mb = n / (1024 * 1024);
+    return `${mb >= 10 ? Math.round(mb) : Math.round(mb * 10) / 10}MB`;
+  }
+  return `${Math.max(1, Math.round(n / 1024))}KB`;
+}
 
 function utf8ByteLength(str) {
   let bytes = 0;

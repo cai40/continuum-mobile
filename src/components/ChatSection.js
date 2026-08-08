@@ -40,7 +40,8 @@ import {
 } from '../utils/providers';
 import {
   friendlyChatError,
-  MAX_ATTACHMENT_BYTES,
+  attachmentSizeLimitBytes,
+  formatAttachmentBytes,
   sanitizeUserVisibleContent,
   trimChatHistoryForUpload,
   trimChatHistoryForEmailRecall,
@@ -445,16 +446,21 @@ const ChatSection = () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_DOCUMENT_ATTACHMENTS,
       quality: 0.8,
     });
 
     if (!result.canceled) {
-      const asset = result.assets[0];
-      addAttachments([{
+      const assets = (result.assets || []).slice(0, MAX_DOCUMENT_ATTACHMENTS);
+      if ((result.assets || []).length > MAX_DOCUMENT_ATTACHMENTS) {
+        Alert.alert('File limit', `Only the first ${MAX_DOCUMENT_ATTACHMENTS} images were added.`);
+      }
+      addAttachments(assets.map((asset, idx) => ({
         uri: asset.uri,
-        name: asset.fileName || 'image.jpg',
+        name: asset.fileName || `image_${idx + 1}.jpg`,
         type: asset.mimeType || 'image/jpeg',
-      }]);
+      })));
     }
   };
 
@@ -501,9 +507,10 @@ const ChatSection = () => {
     for (const file of files) {
       if (!file?.uri) continue;
       const info = await FileSystem.getInfoAsync(file.uri);
-      if (info.exists && info.size > MAX_ATTACHMENT_BYTES) {
+      const limit = attachmentSizeLimitBytes(file);
+      if (info.exists && info.size > limit) {
         throw new Error(
-          `"${file.name || 'Attachment'}" is ${Math.round(info.size / 1024)}KB. Maximum upload size is 1024KB per file.`,
+          `"${file.name || 'Attachment'}" is ${formatAttachmentBytes(info.size)}. Maximum upload size is ${formatAttachmentBytes(limit)} per ${String(file.type || '').startsWith('image/') ? 'image' : 'file'}.`,
         );
       }
     }
@@ -775,8 +782,9 @@ const ChatSection = () => {
       }
 
       const useOpenClawBridge = useVpsBridge;
-      // Prefer direct DeepSeek API for normal chat. Only keep bridges for email jobs.
-      const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery;
+      const hasImageAttachments = activeAttachments.some((f) => f.type?.startsWith('image/'));
+      // Prefer direct DeepSeek for text chat. Image uploads need Continuum multipart.
+      const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery && !hasImageAttachments;
 
       const isModelIdentityQuestion = /\b(what|which)\b[\s\S]{0,40}\b(model|llm|ai|version)\b/i.test(finalInput)
         || /\b(are you|you are|you're)\b[\s\S]{0,20}\b(deepseek|gpt|gemini|claude|v3|v4)\b/i.test(finalInput)
