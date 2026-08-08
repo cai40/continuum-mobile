@@ -10,6 +10,7 @@ const STORAGE = {
   refreshToken: '@gdrive_refresh_token',
   expiresAt: '@gdrive_expires_at',
   email: '@gdrive_account_email',
+  oauthClientId: '@gdrive_oauth_client_id',
   webClientId: '@gdrive_web_client_id',
   iosClientId: '@gdrive_ios_client_id',
   androidClientId: '@gdrive_android_client_id',
@@ -74,11 +75,28 @@ async function storageDelete(key) {
   await AsyncStorage.removeItem(key);
 }
 
-export function getGoogleDriveRedirectUri() {
-  return AuthSession.makeRedirectUri({
-    scheme: 'continuum',
-    path: 'oauth',
-  });
+/** Google iOS/Android clients use reversed client ID as the redirect (AppAuth). */
+export function googleNativeRedirectUri(clientId) {
+  const id = String(clientId || '')
+    .trim()
+    .replace(/\.apps\.googleusercontent\.com$/i, '');
+  if (!id) return '';
+  return `com.googleusercontent.apps.${id}:/oauthredirect`;
+}
+
+/**
+ * Resolve the redirect URI that matches the client type Google will accept.
+ * iOS client → reversed client ID (required by Google).
+ * Desktop/Web → continuum:/oauth (often blocked by Google policy on mobile).
+ */
+export function getGoogleDriveRedirectUri(ids = {}) {
+  if (Platform.OS === 'ios' && ids.iosClientId) {
+    return googleNativeRedirectUri(ids.iosClientId);
+  }
+  if (Platform.OS === 'android' && ids.androidClientId) {
+    return googleNativeRedirectUri(ids.androidClientId);
+  }
+  return 'continuum:/oauth';
 }
 
 export async function loadGoogleClientIds() {
@@ -124,12 +142,13 @@ export async function getGoogleDriveConnection() {
   };
 }
 
-async function persistTokens({ accessToken, refreshToken, expiresIn, email }) {
+async function persistTokens({ accessToken, refreshToken, expiresIn, email, clientId }) {
   const expiresAt = Date.now() + Math.max(60, Number(expiresIn) || 3600) * 1000 - 60_000;
   await storageSet(STORAGE.accessToken, accessToken || '');
   if (refreshToken) await storageSet(STORAGE.refreshToken, refreshToken);
   await storageSet(STORAGE.expiresAt, String(expiresAt));
   if (email) await storageSet(STORAGE.email, email);
+  if (clientId) await storageSet(STORAGE.oauthClientId, clientId);
 }
 
 async function fetchGoogleEmail(accessToken) {
@@ -164,6 +183,7 @@ async function refreshAccessToken(refreshToken, clientId) {
     accessToken: json.access_token,
     refreshToken: json.refresh_token || refreshToken,
     expiresIn: json.expires_in,
+    clientId,
   });
   return json.access_token;
 }
@@ -171,7 +191,8 @@ async function refreshAccessToken(refreshToken, clientId) {
 /** Returns a valid access token, refreshing when needed. */
 export async function getValidGoogleDriveAccessToken() {
   const ids = await loadGoogleClientIds();
-  const clientId = pickClientId(ids);
+  const storedClientId = (await storageGet(STORAGE.oauthClientId)) || '';
+  const clientId = storedClientId || pickClientId(ids);
   const conn = await getGoogleDriveConnection();
   if (!conn.accessToken && !conn.refreshToken) {
     throw new Error('Google Drive is not connected. Open Setup → Google Drive to connect.');
@@ -193,11 +214,19 @@ export async function connectGoogleDrive() {
   const clientId = pickClientId(ids);
   if (!clientId) {
     throw new Error(
-      'Add a Google OAuth Client ID first (Setup → Google Drive). Create a Web client in Google Cloud Console and paste the Client ID.',
+      Platform.OS === 'ios'
+        ? 'Add your iOS OAuth Client ID first (Setup → Google Drive). In Google Cloud, create an iOS client with bundle ID com.continuum.advisor.cloud.'
+        : 'Add a Google OAuth Client ID first (Setup → Google Drive).',
     );
   }
 
-  const redirectUri = getGoogleDriveRedirectUri();
+  if (Platform.OS === 'ios' && !ids.iosClientId) {
+    throw new Error(
+      'On iPhone, paste the iOS Client ID (type “iOS” in Google Cloud — not Desktop). Desktop/Web clients are blocked by Google’s OAuth policy with Continuum’s redirect.',
+    );
+  }
+
+  const redirectUri = getGoogleDriveRedirectUri(ids);
   const request = new AuthSession.AuthRequest({
     clientId,
     redirectUri,
@@ -242,6 +271,7 @@ export async function connectGoogleDrive() {
     refreshToken: tokenResult.refreshToken,
     expiresIn: tokenResult.expiresIn,
     email,
+    clientId,
   });
 
   return getGoogleDriveConnection();
@@ -265,6 +295,7 @@ export async function disconnectGoogleDrive() {
     storageDelete(STORAGE.refreshToken),
     storageDelete(STORAGE.expiresAt),
     storageDelete(STORAGE.email),
+    storageDelete(STORAGE.oauthClientId),
   ]);
 }
 

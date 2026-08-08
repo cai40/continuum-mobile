@@ -41,12 +41,22 @@ const GoogleDriveIntegrationSection = ({ onBack }) => {
     setAndroidClientId(ids.androidClientId);
     setConnected(conn.connected);
     setEmail(conn.email || '');
-    setRedirectUri(getGoogleDriveRedirectUri());
+    setRedirectUri(getGoogleDriveRedirectUri(ids));
   }, []);
 
   useEffect(() => {
     refresh().catch(() => {});
   }, [refresh]);
+
+  useEffect(() => {
+    setRedirectUri(
+      getGoogleDriveRedirectUri({
+        webClientId,
+        iosClientId,
+        androidClientId,
+      }),
+    );
+  }, [webClientId, iosClientId, androidClientId]);
 
   const saveIds = async () => {
     setBusy(true);
@@ -164,9 +174,9 @@ const GoogleDriveIntegrationSection = ({ onBack }) => {
       </Text>
       <Text style={{ fontSize: 12, color: theme.colors.gray, lineHeight: 18, marginBottom: 12 }}>
         1) Create a project at console.cloud.google.com{'\n'}
-        2) Enable Google Drive API{'\n'}
-        3) Create OAuth client (Web application recommended){'\n'}
-        4) Add this redirect URI, then paste the Client ID below
+        2) Enable Google Drive API + OAuth consent (add yourself as Test user){'\n'}
+        3) Create OAuth client type iOS, bundle ID: com.continuum.advisor.cloud{'\n'}
+        4) Paste that iOS Client ID below (Desktop/Web IDs are blocked by Google)
       </Text>
 
       <TouchableOpacity
@@ -184,15 +194,15 @@ const GoogleDriveIntegrationSection = ({ onBack }) => {
         <View style={{ marginLeft: 10, flex: 1 }}>
           <Text style={{ fontSize: 11, fontWeight: '700', color: theme.colors.gray }}>REDIRECT URI</Text>
           <Text style={{ fontSize: 12, color: theme.colors.black, marginTop: 2 }} selectable>
-            {redirectUri || 'continuum://oauth'}
+            {redirectUri || '(paste iOS Client ID to see redirect)'}
           </Text>
         </View>
       </TouchableOpacity>
 
-      <Text style={labelStyle}>Web Client ID (required)</Text>
+      <Text style={labelStyle}>iOS Client ID (required on iPhone)</Text>
       <TextInput
-        value={webClientId}
-        onChangeText={setWebClientId}
+        value={iosClientId}
+        onChangeText={setIosClientId}
         autoCapitalize="none"
         autoCorrect={false}
         placeholder="xxxxx.apps.googleusercontent.com"
@@ -200,13 +210,13 @@ const GoogleDriveIntegrationSection = ({ onBack }) => {
         style={inputStyle}
       />
 
-      <Text style={labelStyle}>iOS Client ID (optional)</Text>
+      <Text style={labelStyle}>Desktop / Web Client ID (optional, not used on iPhone)</Text>
       <TextInput
-        value={iosClientId}
-        onChangeText={setIosClientId}
+        value={webClientId}
+        onChangeText={setWebClientId}
         autoCapitalize="none"
         autoCorrect={false}
-        placeholder="iOS OAuth client ID"
+        placeholder="optional"
         placeholderTextColor={theme.colors.gray}
         style={inputStyle}
       />

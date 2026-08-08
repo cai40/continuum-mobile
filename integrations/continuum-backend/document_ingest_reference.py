@@ -10,6 +10,7 @@ Wire into existing ingest handler before chunking/embedding.
 from __future__ import annotations
 
 import io
+import os
 from typing import Optional
 
 
@@ -21,8 +22,22 @@ def extract_document_text(filename: str, raw: bytes) -> Optional[str]:
         doc = Document(io.BytesIO(raw))
         return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
     if name.endswith(".doc"):
-        # Legacy .doc — prefer client upload as .docx, or use textract/antiword on server
-        return None
+        # Legacy binary .doc (OLE2). The app now extracts text on-device for chat,
+        # but Layer 5 ingest should also handle .doc so users can upload old files.
+        # Install one of the following on the Render host:
+        #   pip install textract        (wraps antiword; needs antiword binary)
+        #   apt-get install antiword
+        #   OR use LibreOffice headless: soffice --headless --convert-to txt --outdir /tmp file.doc
+        try:
+            import textract  # type: ignore
+
+            with open("/tmp/_continuum_doc.doc", "wb") as fh:
+                fh.write(raw)
+            text = textract.process("/tmp/_continuum_doc.doc").decode("utf-8", errors="replace")
+            os.remove("/tmp/_continuum_doc.doc")
+            return text.strip() or None
+        except Exception:
+            return None
     if name.endswith(".pptx"):
         from pptx import Presentation
 
