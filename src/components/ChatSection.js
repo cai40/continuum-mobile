@@ -7,6 +7,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
+import * as Speech from 'expo-speech';
 import * as Location from 'expo-location';
 import {
   ExpoSpeechRecognitionModule,
@@ -24,7 +25,9 @@ import {
   documentIconName,
   normalizePickedAsset,
 } from '../utils/documentTypes';
-import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND } from '../utils/groundingPrompt';
+import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
+import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
+import AssistantMarkdown from './shared/AssistantMarkdown';
 import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import {
@@ -115,7 +118,7 @@ const ChatSection = () => {
   const {
     messages, setMessages,
     provider, groqKey, geminiKey, openaiKey, openrouterKey, deepseekKey,
-    selectedVoice, persona,
+    persona,
     sttLang,
     activeTab,
     user,
@@ -168,7 +171,9 @@ const ChatSection = () => {
   const silenceTimerRef = useRef(null);
   const longSilenceTimerRef = useRef(null);
   const stopRecordingRef = useRef(null);
+  const startRecordingRef = useRef(null);
   const sendMessageRef = useRef(null);
+  const speakAssistantReplyRef = useRef(null);
 
   const dismissKeyboard = useCallback(() => {
     inputRef.current?.blur();
@@ -304,6 +309,7 @@ const ChatSection = () => {
     }
     setIsTyping(false);
     setStreamingContent('');
+    try { Speech.stop(); } catch (_) { /* ignore */ }
     if (soundRef.current) {
       soundRef.current.stopAsync();
       soundRef.current.unloadAsync();
@@ -312,6 +318,46 @@ const ChatSection = () => {
     isPlayingQueueRef.current = false;
     setIsSpeaking(false);
   };
+
+  const speakAssistantReply = useCallback((rawText) => {
+    const spoken = stripMarkdownForSpeech(rawText);
+    if (!spoken) {
+      if (isVoiceMode && activeTab === 'chat') {
+        setTimeout(() => startRecordingRef.current?.(), 500);
+      }
+      return;
+    }
+    try { Speech.stop(); } catch (_) { /* ignore */ }
+    // Drop any queued server audio so markdown markers are never spoken.
+    soundQueueRef.current = [];
+    isPlayingQueueRef.current = false;
+    if (soundRef.current) {
+      try {
+        soundRef.current.stopAsync();
+        soundRef.current.unloadAsync();
+      } catch (_) { /* ignore */ }
+      soundRef.current = null;
+    }
+    setIsSpeaking(true);
+    Speech.speak(spoken, {
+      language: (sttLang || 'en-US').split('-').length >= 2 ? sttLang : 'en-US',
+      rate: 0.96,
+      onDone: () => {
+        setIsSpeaking(false);
+        if (isVoiceMode && activeTab === 'chat') {
+          setTimeout(() => startRecordingRef.current?.(), 400);
+        }
+      },
+      onStopped: () => setIsSpeaking(false),
+      onError: () => {
+        setIsSpeaking(false);
+        if (isVoiceMode && activeTab === 'chat') {
+          setTimeout(() => startRecordingRef.current?.(), 400);
+        }
+      },
+    });
+  }, [activeTab, isVoiceMode, sttLang]);
+  speakAssistantReplyRef.current = speakAssistantReply;
 
   const resumePendingEmailJob = useCallback(async () => {
     if (!renderEmailEnabled || isTyping || backgroundJobRef.current) return;
@@ -534,6 +580,7 @@ const ChatSection = () => {
       Alert.alert("Voice Error", "The speech engine could not start. Please check your system settings.");
     }
   };
+  startRecordingRef.current = startRecording;
 
   const stopRecording = async () => {
     try {
@@ -768,6 +815,7 @@ const ChatSection = () => {
             ...prev,
             { id: (Date.now() + 1).toString(), role: 'assistant', content: result.content },
           ]);
+          if (isVoiceMode) speakAssistantReplyRef.current?.(result.content);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (e) {
           if (isPhotoCleanupCancelledError(e)) {
@@ -775,6 +823,7 @@ const ChatSection = () => {
               ...prev,
               { id: (Date.now() + 1).toString(), role: 'assistant', content: 'Photo cleanup stopped.' },
             ]);
+            if (isVoiceMode) speakAssistantReplyRef.current?.('Photo cleanup stopped.');
           } else {
             Alert.alert('Photo cleanup failed', friendlyChatError(e.message || String(e)));
           }
@@ -893,6 +942,7 @@ const ChatSection = () => {
         ...(documentTextInjected ? [DOCUMENT_ATTACHMENT_APPEND] : []),
         ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
         ...(wantsCopyDraft ? [DRAFT_OUTPUT_APPEND] : []),
+        ...(isVoiceMode ? [VOICE_MODE_APPEND] : []),
         ...(preferDirectDeepseek ? [
           `MODEL IDENTITY: You are running as DeepSeek API model "${deepseekPlatformModel(resolvedProvider)}" via api.deepseek.com.`,
           'If asked which model/LLM/version you are, answer with that exact model id. Do not say DeepSeek V3 or V3.2.',
@@ -913,10 +963,8 @@ const ChatSection = () => {
       // cannot override injected attachment text or live search results.
       formData.append('history', safeJsonStringify(documentTextInjected || webSearchContext ? [] : historyForUpload));
       if (activeKey) formData.append('api_key', activeKey.trim());
-      if (isVoiceMode) {
-        formData.append('synthesize_voice', 'True');
-        formData.append('voice_model', selectedVoice);
-      }
+      // Hands-free speech uses on-device TTS with markdown stripped so "*" is never spoken.
+      // (Server Azure synthesis reads raw markdown markers aloud.)
       if (activeAttachments.length && !isFromVoice) {
         for (const file of activeAttachments) {
           formData.append('file', { uri: file.uri, name: file.name, type: file.type });
@@ -997,6 +1045,10 @@ const ChatSection = () => {
           }
           return [...prev, ...aiMsgs];
         });
+
+        if (isVoiceMode) {
+          speakAssistantReplyRef.current?.(finalText);
+        }
 
         const pinBodyForAlert = extractEmailEvidenceForPin(finalText)
           || extractEmailEvidenceForPin(finalText.replace(/\*\*/g, ''));
@@ -1082,6 +1134,8 @@ const ChatSection = () => {
         } else if (event === 'status' && json.detail) {
           setStreamingContent(String(json.detail));
         } else if (event === 'audio' && json.audio) {
+          // Hands-free uses on-device TTS (markdown-stripped). Ignore server audio.
+          if (isVoiceMode) return;
           soundQueueRef.current.push(json.audio);
           if (!isPlayingQueueRef.current) playNextStreamChunk();
         } else if (event === 'transcript') {
@@ -1467,12 +1521,16 @@ const ChatSection = () => {
                 )}
               </View>
             ))}
-            <Text style={[
-              item.role === 'user' ? styles.userChatText : styles.chatText,
-              isCopyDraft && { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 13, lineHeight: 19 },
-            ]}>
-              {item.role === 'user' ? sanitizeUserVisibleContent(item.content) : item.content}
-            </Text>
+            {item.role === 'user' || isCopyDraft ? (
+              <Text style={[
+                item.role === 'user' ? styles.userChatText : styles.chatText,
+                isCopyDraft && { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 13, lineHeight: 19 },
+              ]}>
+                {item.role === 'user' ? sanitizeUserVisibleContent(item.content) : item.content}
+              </Text>
+            ) : (
+              <AssistantMarkdown>{item.content}</AssistantMarkdown>
+            )}
             {item.pinOffer ? (
               <TouchableOpacity
                 onPress={() => handlePinEmailEvidence(item.pinOffer)}

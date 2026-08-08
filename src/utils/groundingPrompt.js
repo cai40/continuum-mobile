@@ -18,6 +18,14 @@ export const WEB_SEARCH_APPEND = [
   'Do NOT say "no results" or "cannot provide details" when headlines or sources are listed below.',
 ].join(' ');
 
+/** Hands-free voice: keep replies speakable; UI still renders markdown if any slips through. */
+export const VOICE_MODE_APPEND = [
+  'VOICE MODE: This reply will be spoken aloud.',
+  'Write in clear spoken prose with short paragraphs.',
+  'Do NOT use markdown emphasis markers (asterisks *, underscores _), headings (#), bullet/numbered list markers, code fences, or table pipe syntax.',
+  'Prefer plain sentences. Spell out emphasis with words when needed.',
+].join(' ');
+
 export function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);
