@@ -96,7 +96,7 @@ const EMAIL_RECALL_EVIDENCE_APPEND = [
 ].join(' ');
 
 const RECALL_TURN_APPEND = [
-  'RECALL TURN: Answer from [CONTINUUM MEMORY], chat history persona text, or live Min-folder inbox below.',
+  'RECALL TURN: Answer from [CONTINUUM MEMORY], chat history persona text, or live Min and Kids folder inbox below.',
   'Do NOT write meta-commentary about missing blocks or list what you need from the user.',
   'Never cite JavaScript heap OOM or zero-email fetch from prior turns — those are superseded.',
   'If live inbox data appears below, cite UID and Date from it. If memory has L1 evidence, cite that.',
@@ -111,7 +111,7 @@ const MEMORY_RECALL_APPEND = [
 ].join(' ');
 
 const FULL_FOLDER_PERSONA_APPEND = [
-  'FULL FOLDER SCAN: The live Min-folder inbox block below is the authoritative corpus for this turn.',
+  'FULL FOLDER SCAN: The live Min and Kids folder inbox block below is the authoritative corpus for this turn.',
   'Ignore stale [CONTINUUM MEMORY] fragments that describe only a small April 2026 batch (e.g. 18 emails).',
   'Quote the MAILBOX SCAN Date filter / Matched / Emails loaded lines verbatim — expect 2022 through today and hundreds of emails.',
   'Build SENDER PERSONA and ATTITUDE TIMELINE from the full fetched span, not from memory alone.',
@@ -935,8 +935,8 @@ const ChatSection = () => {
             ? 'Continuum memory: injected above.'
             : 'Continuum memory: no UID+Date evidence in L1–L5 (question logs excluded).',
           liveEmailFetchScheduled
-            ? 'Min-folder IMAP: fetched synchronously via email bridge this turn (inbox block appears below if successful).'
-            : 'Min-folder IMAP: not scheduled (use prior persona text or memory only).',
+            ? 'Min and Kids folder IMAP: fetched synchronously via email bridge this turn (inbox block appears below if successful).'
+            : 'Min and Kids folder IMAP: not scheduled (use prior persona text or memory only).',
           'Do not claim OOM or zero fetch unless shown in live inbox data this turn.',
           'Do NOT say you are awaiting fetch completion — answer now from memory and/or live inbox below.',
           '',
@@ -1007,7 +1007,7 @@ const ChatSection = () => {
           const hint = useRenderEmail
             ? (isEmailRecallQuestion
               ? "Could not answer from chat history. Force-quit and reopen Continuum, then retry in the same thread. If the persona analysis is far above in chat, scroll up and confirm it is still there."
-              : "Email bridge returned no reply. Check your Gemini / 4o MINI API key and Render email secret. For persona scans, try: “Read every email from Min in Min folder — build persona, cite UID and Date.”")
+              : "Email bridge returned no reply. Check your Gemini / 4o MINI API key and Render email secret. For persona scans, try: “Read every email from Min in Min and Kids folder — build persona, cite UID and Date.”")
             : "Bridge returned empty reply. Check VPS bridge secret, HTTPS URL, and API key for your selected model.";
           finishError(hint);
           return;

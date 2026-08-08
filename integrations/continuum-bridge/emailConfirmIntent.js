@@ -89,7 +89,7 @@ function resolvePriorEmailIntent(history) {
 }
 
 function buildMinPersonaFetchMessage(followUp) {
-  return `Read every email from Min in Min folder from 2022 to today — ${followUp}`;
+  return `Read every email from Min in Min and Kids folder from 2022 to today — ${followUp}`;
 }
 
 function buildEffectiveEmailMessage(message, history) {

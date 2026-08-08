@@ -229,7 +229,8 @@ function formatEmailCleanupPreviewNextSteps({ dateRangeLabel = null, cleanupCoun
     '**Notes:**',
     `- **${cleanupCount}** message(s) above would move to Yahoo **Trash** (recoverable; not permanently deleted).`,
     '- Protected mail (banks, OTP/security, never-trash senders including MassHousing, Boston Sailing Center, Mass.gov notices, and Min Zhang) is not in the list above.',
-    '- **Min Zhang** mail is copied to the **Min** folder during cleanup (original stays in INBOX; not trashed).',
+    '- **Min Zhang, Daniel Cai, and Michael Cai** mail is copied to the **Min and Kids** folder during cleanup (original stays in INBOX; not trashed).',
+    '- Cleanup also automatically reads **all family emails** (Min, Daniel, Michael) and **Michelle Wang** into Continuum memory, so the AI keeps their facts, dates, and commitments fresh.',
     '- **To skip:** do nothing — this preview made no changes.',
   );
   return lines;

@@ -6,7 +6,7 @@ import * as Updates from 'expo-updates';
 import { AppProvider, useAppContext } from './src/context/AppContext';
 import ChatSection from './src/components/ChatSection';
 import SettingsSection from './src/components/SettingsSection';
-import EmailCleanupSection from './src/components/EmailCleanupSection';
+import MailClientSection from './src/components/MailClientSection';
 import PhotoCleanupSection from './src/components/PhotoCleanupSection';
 import LoginSection from './src/components/LoginSection';
 import SubscriptionSection from './src/components/SubscriptionSection';
@@ -162,7 +162,7 @@ const AppShell = () => {
           ]}
           pointerEvents={activeTab === 'email' ? 'auto' : 'none'}
         >
-          <EmailCleanupSection />
+          <MailClientSection />
         </View>
 
         <View 

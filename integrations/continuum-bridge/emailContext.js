@@ -17,6 +17,7 @@ const {
 const { maybeDeleteEmails, maybeAutoTrashJunk, wantsEmailDelete, wantsEmailCleanup, wantsEmailCleanupPreview, resolveChurchCommunityUids, CHURCH_COMMUNITY_INTENT, countCleanupTargets, mergeDeleteResults, formatCleanupPreviewBlock, formatEmailCleanupPreviewNextSteps, extractEmailCleanupPreviewBlock, CLEANUP_PREVIEW_LIST_MAX } = require('./emailDelete');
 const { maybeMoveEmailsToFolder, maybeCopyFolderToInbox, wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox, parseDestinationFolder, parseMoveSenderFromMessage } = require('./emailMove');
 const { maybeAutoFileCleanupFolders } = require('./emailCleanupFolder');
+const { runFamilyMemoryIngest, formatFamilyIngestSummary } = require('./emailFamilyIngest');
 const { evaluateOverLimitPermission, formatPermissionBlock, resolveDeleteCap } = require('./emailPermission');
 const { wantsTriage, buildTriageContext, classifyEmail, triageMessages } = require('./emailTriage');
 
@@ -334,7 +335,7 @@ function extractPrefilledSummaryFromText(text) {
   return m?.[1]?.trim() || null;
 }
 
-function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult, permission, cleanupRequested, cleanupPreviewRequested, cleanupPreviewBlock, cleanupFolderResult }) {
+function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, deleteResult, permission, cleanupRequested, cleanupPreviewRequested, cleanupPreviewBlock, cleanupFolderResult, familyIngestSummary }) {
   if (!Array.isArray(messages) || messages.length === 0) return null;
 
   const triaged = triageMessages(messages);
@@ -432,6 +433,9 @@ function buildPrefilledSummaryReply({ dateRangeLabel, scanMeta, messages, delete
       'Most mail was classified informational (alerts, receipts, account mail).',
       'For a specific retailer: *"Mattress firm promotional should be trashed unless receipt or invoice"*.',
     );
+  }
+  if (familyIngestSummary) {
+    lines.push('', familyIngestSummary);
   }
   lines.push('', '[/PREFILLED SUMMARY]');
   return lines.join('\n');
@@ -835,7 +839,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
   if (quoteSearch && !mailbox) {
     mailbox = parseMailboxFromMessage(fetchIntent);
     if (!mailbox && /\b(?:she|min\s*zhang|min\s*z|her)\b/i.test(fetchIntent)) {
-      mailbox = 'Min';
+      mailbox = 'Min and Kids';
     }
     sender = sender || resolveSenderForMailboxIngest(fetchIntent) || 'Min Zhang';
   }
@@ -1227,6 +1231,20 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
       });
     }
 
+    // On real cleanup runs, also read all family emails (Min, Daniel, Michael) into
+    // memory. Skipped for previews (nothing executed) and per-month year-cleanup
+    // slices (they share one request and would re-ingest repeatedly).
+    let familyIngestSummary = null;
+    if (cleanupFlowActive && !cleanupPreviewRequested && !payloadOptions.year_cleanup_month) {
+      try {
+        if (onProgress) onProgress('Reading family emails into memory…');
+        const familyResults = await runFamilyMemoryIngest({ imapScript });
+        familyIngestSummary = formatFamilyIngestSummary(familyResults);
+      } catch (err) {
+        console.error('[continuum-bridge] family memory ingest failed:', err?.message || err);
+      }
+    }
+
     if (payloadOptions.email_auto_trash_junk && payloadOptions.email_delete_enabled && !permission && !moveRequested && !skipAutoTrashForCleanup && !cleanupPreviewRequested) {
       deleteResult = await maybeAutoTrashJunk(messages, imapScript, {
         enabled: true,
@@ -1311,6 +1329,9 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     } else if (cleanupPreviewRequested && cleanupFolderResult.summary) {
       finalContext = [finalContext, '', cleanupFolderResult.summary].filter(Boolean).join('\n');
     }
+    if (familyIngestSummary && !/\[PREFILLED SUMMARY/.test(finalContext)) {
+      finalContext = [finalContext, '', '[Family memory ingest]', familyIngestSummary].filter(Boolean).join('\n');
+    }
 
     const cleanupRequested = wantsEmailCleanup(effectiveMessage);
     const ingestContext = shouldBypassEmailSummaryMode(effectiveMessage);
@@ -1325,6 +1346,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
         cleanupPreviewRequested,
         cleanupPreviewBlock,
         cleanupFolderResult,
+        familyIngestSummary,
       });
       if (prefilled) {
         if (cleanupRequested || cleanupPreviewRequested) {

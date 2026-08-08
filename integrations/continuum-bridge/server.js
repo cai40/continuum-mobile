@@ -57,6 +57,7 @@ const {
   loadState,
   saveState,
 } = require('./dailyCleanup');
+const mailClient = require('./mailClient');
 const {
   serviceConfigured: memoryServiceRoleConfigured,
   cleanupConfigured: memoryCleanupConfigured,
@@ -655,7 +656,7 @@ async function handleChatStream(req, res, config) {
       message = [
         emailContext,
         '',
-        'The Min-folder fetch attempt finished but returned no usable inbox rows.',
+        'The Min and Kids folder fetch attempt finished but returned no usable inbox rows.',
         'Answer the user recall question NOW from [CONTINUUM MEMORY] (in User request below) and chat history.',
         'Do NOT say you are awaiting fetch completion.',
         '',
@@ -728,6 +729,96 @@ async function handleChatStream(req, res, config) {
 const server = http.createServer(async (req, res) => {
   try {
     const config = loadConfig();
+
+    // ---- Mail client REST API (browse / read / reply / memory ingest) ----
+    const mailSecretOk = () => verifyBridgeSecret(req, config);
+    const userAuth = req.headers.authorization || '';
+
+    if (req.method === 'GET' && req.url === '/mail/folders') {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const folders = await mailClient.listMailboxes();
+        return json(res, 200, { success: true, folders });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
+    if (req.method === 'GET' && req.url?.startsWith('/mail/list')) {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const url = new URL(req.url, 'http://localhost');
+        const folder = url.searchParams.get('folder') || 'INBOX';
+        const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 50, 200);
+        const offset = Math.max(parseInt(url.searchParams.get('offset'), 10) || 0, 0);
+        const emails = await mailClient.listEmails({ folder, limit, offset });
+        return json(res, 200, { success: true, folder, limit, offset, emails });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
+    const mailReadMatch = req.method === 'GET' && req.url?.match(/^\/mail\/read\/(\d+)$/);
+    if (mailReadMatch) {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const url = new URL(req.url, 'http://localhost');
+        const folder = url.searchParams.get('folder') || 'INBOX';
+        const email = await mailClient.fetchEmail(mailReadMatch[1], folder);
+        // Fire-and-forget memory ingest so opening an email loads it into the vault.
+        if (userAuth.startsWith('Bearer ') && email?.uid != null) {
+          mailClient.ingestEmailIntoMemory(email, userAuth.slice(7), config.apiUrl).catch((ingestErr) => {
+            console.error('[continuum-bridge] mail ingest-on-open failed:', ingestErr?.message || ingestErr);
+          });
+        }
+        return json(res, 200, { success: true, folder, email });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
+    if (req.method === 'POST' && req.url === '/mail/mark-read') {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const result = await mailClient.markRead(body.uids, body.folder || 'INBOX');
+        return json(res, 200, { success: true, ...result });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
+    if (req.method === 'POST' && req.url === '/mail/send') {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const result = await mailClient.sendEmail({
+          to: body.to,
+          cc: body.cc,
+          subject: body.subject,
+          body: body.body,
+        });
+        return json(res, 200, { success: true, sent: result });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
+    if (req.method === 'POST' && req.url === '/mail/ingest') {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      if (!userAuth.startsWith('Bearer ')) {
+        return json(res, 401, { success: false, error: 'Missing Continuum session token' });
+      }
+      try {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const email = body.email || (body.uid != null ? await mailClient.fetchEmail(body.uid, body.folder || 'INBOX') : null);
+        if (!email) return json(res, 400, { success: false, error: 'email or uid required' });
+        const result = await mailClient.ingestEmailIntoMemory(email, userAuth.slice(7), config.apiUrl);
+        return json(res, 200, { success: true, ...result });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
 
     if (req.method === 'GET' && req.url === '/health') {
       const quickHealth = process.env.RENDER === 'true' || process.env.HEALTH_CHECK_QUICK === '1';
@@ -825,6 +916,12 @@ server.listen(PORT, HOST, () => {
   console.log('  GET  /email-jobs/latest');
   console.log('  GET  /email-jobs/:id');
   console.log('  POST /email-jobs/:id/cancel');
+  console.log('  GET  /mail/folders        (mail client — list folders)');
+  console.log('  GET  /mail/list           (mail client — list emails)');
+  console.log('  GET  /mail/read/:uid      (mail client — open email + memory ingest)');
+  console.log('  POST /mail/mark-read      (mail client — mark read)');
+  console.log('  POST /mail/send           (mail client — reply/send)');
+  console.log('  POST /mail/ingest         (mail client — load email into memory)');
   console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');
   console.log('  POST /ask          (CLI / skill)');
 });

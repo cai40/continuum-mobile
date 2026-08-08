@@ -12,7 +12,8 @@ const INVALID_FOLDER_NAMES = new Set([
 
 /** Explicit folder nicknames mentioned in chat (case preserved for IMAP resolve). */
 const KNOWN_FOLDER_ALIASES = [
-  { pattern: /\bmin\s+folder\b/i, name: 'Min' },
+  { pattern: /\bmin\s+and\s+kids\s+folder\b/i, name: 'Min and Kids' },
+  { pattern: /\bmin\s+folder\b/i, name: 'Min and Kids' },
 ];
 
 function isValidFolderName(name) {

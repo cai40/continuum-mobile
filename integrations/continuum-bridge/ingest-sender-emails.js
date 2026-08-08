@@ -94,9 +94,9 @@ function formatEmailsForMemory(emails, sender) {
   return lines.join('\n').slice(0, 75000);
 }
 
-function runImapSearch(from, limit, recent) {
-  const skillRoot = path.dirname(path.dirname(IMAP));
-  const args = [IMAP, 'search', '--from', from, '--limit', String(limit), '--recent', recent, '--sort', 'date'];
+function runImapSearch(from, limit, recent, imapScript = IMAP) {
+  const skillRoot = path.dirname(path.dirname(imapScript));
+  const args = [imapScript, 'search', '--from', from, '--limit', String(limit), '--recent', recent, '--sort', 'date'];
   const stdout = execFileSync('node', args, {
     cwd: skillRoot,
     env: { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') },
@@ -105,59 +105,98 @@ function runImapSearch(from, limit, recent) {
   return JSON.parse(stdout.toString());
 }
 
-async function main() {
-  const opts = parseArgs(process.argv);
-  const stateFile = statePath(opts.from);
+/**
+ * Fetch emails from a sender via IMAP and feed new UIDs into Continuum memory.
+ * Tracks processed UIDs in the per-sender state file so repeated calls only
+ * ingest mail not yet seen. Returns { sender, fetched, ingested, uids, reply }.
+ */
+async function ingestSenderIntoMemory({
+  sender = DEFAULT_SENDER,
+  searchFrom = null,
+  limit = clampLimit(process.env.EMAIL_INGEST_LIMIT || '50'),
+  recent = process.env.EMAIL_INGEST_RECENT || '30d',
+  allNew = true,
+  dryRun = false,
+  imapScript = IMAP,
+  onLog = null,
+} = {}) {
+  const stateFile = statePath(sender);
   const state = loadState(stateFile);
   const seen = new Set((state.uids || []).map(Number));
+  const needle = searchFrom || sender;
 
-  console.log(`Searching Yahoo for FROM "${opts.from}" limit=${opts.limit} recent=${opts.recent}`);
-  const all = runImapSearch(opts.from, opts.limit, opts.recent);
+  const log = onLog || ((line) => console.log(line));
+  log(`Searching Yahoo for FROM "${needle}" limit=${limit} recent=${recent}`);
+  const all = runImapSearch(needle, limit, recent, imapScript);
   if (!Array.isArray(all) || all.length === 0) {
-    console.log('No matching emails found.');
-    return;
+    log('No matching emails found.');
+    return { sender, fetched: 0, ingested: 0, uids: [], reply: null };
   }
 
-  const batch = opts.allNew
+  const batch = allNew
     ? all.filter((m) => m.uid != null && !seen.has(Number(m.uid)))
     : all;
 
   if (batch.length === 0) {
-    console.log(`All ${all.length} fetched email(s) already ingested.`);
-    return;
+    log(`All ${all.length} fetched email(s) already ingested.`);
+    return { sender, fetched: all.length, ingested: 0, uids: [], reply: null };
   }
 
-  console.log(`Ingesting ${batch.length} email(s) (${seen.size} previously ingested).`);
-  if (opts.dryRun) {
-    for (const m of batch) console.log(`- UID ${m.uid}: ${m.subject}`);
-    return;
+  log(`Ingesting ${batch.length} email(s) (${seen.size} previously ingested).`);
+  if (dryRun) {
+    for (const m of batch) log(`- UID ${m.uid}: ${m.subject}`);
+    return {
+      sender,
+      fetched: all.length,
+      ingested: batch.length,
+      uids: batch.map((m) => Number(m.uid)).filter(Number.isFinite),
+      reply: null,
+      dryRun: true,
+    };
   }
 
   const config = loadConfig();
-  const emailBlock = formatEmailsForMemory(batch, opts.from);
+  const emailBlock = formatEmailsForMemory(batch, sender);
   const prompt = [
     emailBlock,
     '',
     '---',
-    `Summarize key facts from these ${opts.from} emails and ensure important commitments, dates, and project details are captured in memory.`,
+    `Summarize key facts from these ${sender} emails and ensure important commitments, dates, and project details are captured in memory.`,
     'Reply with a short confirmation of what was remembered (names, dates, action items).',
   ].join('\n');
 
   const result = await callContinuum(prompt, config, {
     channel: 'email',
-    sender: opts.from,
+    sender,
     clientTime: new Date().toLocaleString(),
   });
 
   const newUids = batch.map((m) => Number(m.uid)).filter(Number.isFinite);
   saveState(stateFile, [...new Set([...(state.uids || []), ...newUids])]);
 
-  console.log('\n[Continuum memory ingest complete]');
-  console.log(result.reply);
-  console.log(`\nMarked ${newUids.length} UID(s) as ingested in ${stateFile}`);
+  log('\n[Continuum memory ingest complete]');
+  log(result.reply);
+  log(`\nMarked ${newUids.length} UID(s) as ingested in ${stateFile}`);
+
+  return { sender, fetched: all.length, ingested: newUids.length, uids: newUids, reply: result.reply };
 }
 
-main().catch((err) => {
-  console.error(err.message || err);
-  process.exit(1);
-});
+async function main() {
+  const opts = parseArgs(process.argv);
+  await ingestSenderIntoMemory({
+    sender: opts.from,
+    limit: opts.limit,
+    recent: opts.recent,
+    allNew: opts.allNew,
+    dryRun: opts.dryRun,
+  });
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}
+
+module.exports = { ingestSenderIntoMemory, statePath, loadState, saveState, formatEmailsForMemory };

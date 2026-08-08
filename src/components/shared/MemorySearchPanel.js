@@ -84,7 +84,7 @@ export function MemorySearchPanel({
           <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 10 }}>
             {matchCount === 0
               ? (questionLogCount > 0
-                ? `Found ${questionLogCount} question log(s) in L2 but no UID/Date email evidence. Run an April Min-folder fetch in chat, then Pin to L1.`
+                ? `Found ${questionLogCount} question log(s) in L2 but no UID/Date email evidence. Run an April Min and Kids folder fetch in chat, then Pin to L1.`
                 : 'No fragments matched. Try “min”, “boundary”, or “april 2026”.')
               : `${matchCount} matching fragment${matchCount === 1 ? '' : 's'} (evidence ranked first)`}
           </Text>

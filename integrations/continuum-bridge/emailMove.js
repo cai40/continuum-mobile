@@ -257,7 +257,7 @@ async function maybeCopyFolderToInbox(message, imapScript, { enabled = false, on
     return {
       executed: false,
       summary: null,
-      error: 'Copy requested but no source folder found. Say: copy all emails in Min folder to inbox.',
+      error: 'Copy requested but no source folder found. Say: copy all emails in Min and Kids folder to inbox.',
       uids: [],
       sourceFolder: null,
       destFolder,
@@ -392,7 +392,7 @@ async function maybeMoveEmailsToFolder(message, emails, imapScript, { enabled = 
     return {
       executed: false,
       summary: null,
-      error: 'Move requested but no destination folder found. Say: move all emails from Min Zhang to Min folder.',
+      error: 'Move requested but no destination folder found. Say: move all emails from Min Zhang to Min and Kids folder.',
       uids: [],
       destFolder: null,
       sender,
@@ -403,7 +403,7 @@ async function maybeMoveEmailsToFolder(message, emails, imapScript, { enabled = 
     return {
       executed: false,
       summary: null,
-      error: 'Move requested but no sender found. Say: move all emails from Min Zhang (njsgas@gmail.com) to Min folder.',
+      error: 'Move requested but no sender found. Say: move all emails from Min Zhang (njsgas@gmail.com) to Min and Kids folder.',
       uids: [],
       destFolder,
       sender: null,
