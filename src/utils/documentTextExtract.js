@@ -2,6 +2,8 @@ import { readAsStringAsync, EncodingType } from 'expo-file-system/legacy';
 import { extractTextWithInfo, isAvailable as isPdfExtractAvailable } from 'expo-pdf-text-extract';
 import * as XLSX from 'xlsx';
 import { isPdfAttachment, resolveDocumentMimeType } from './documentTypes';
+import { extractDocxTextFromBase64 } from './docxTextExtract';
+import { extractDocTextFromBase64 } from './docTextExtract';
 
 const MAX_EXTRACT_CHARS = 60000;
 
@@ -75,6 +77,18 @@ export async function extractAttachmentText(file) {
 
   const resolved = resolveDocumentMimeType(name, file.type);
   const ext = String(name).split('.').pop()?.toLowerCase() || '';
+
+  if (
+    ext === 'docx'
+    || ext === 'doc'
+    || resolved.includes('word')
+    || resolved.includes('wordprocessing')
+  ) {
+    if (ext === 'doc' || resolved.includes('msword')) {
+      return truncate(await extractDocTextFromBase64(await readBase64(uri)));
+    }
+    return truncate(await extractDocxTextFromBase64(await readBase64(uri)));
+  }
 
   if (
     ext === 'xlsx'

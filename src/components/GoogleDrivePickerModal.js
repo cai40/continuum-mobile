@@ -16,6 +16,8 @@ import { isGoogleDriveConnected } from '../services/googleDriveAuth';
 import { listGoogleDriveFiles, downloadGoogleDriveFileToCache } from '../services/googleDriveApi';
 import { documentIconName } from '../utils/documentTypes';
 
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+
 function formatModified(iso) {
   if (!iso) return '';
   try {
@@ -39,8 +41,18 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
   const [connected, setConnected] = useState(false);
+  // Stack of { id, name } — last entry is current folder. Root = { id: 'root', name: 'My Drive' }
+  const [folderStack, setFolderStack] = useState([{ id: 'root', name: 'My Drive' }]);
 
-  const load = useCallback(async ({ append = false, pageToken = '', search = query } = {}) => {
+  const currentFolder = folderStack[folderStack.length - 1] || { id: 'root', name: 'My Drive' };
+  const isSearching = Boolean(String(query || '').trim());
+
+  const load = useCallback(async ({
+    append = false,
+    pageToken = '',
+    search = query,
+    folderId = currentFolder.id,
+  } = {}) => {
     if (append) setLoadingMore(true);
     else setLoading(true);
     try {
@@ -53,8 +65,9 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
       }
       const result = await listGoogleDriveFiles({
         query: search,
+        folderId,
         pageToken,
-        pageSize: 30,
+        pageSize: 40,
       });
       setFiles((prev) => (append ? [...prev, ...result.files] : result.files));
       setNextPageToken(result.nextPageToken || '');
@@ -64,15 +77,44 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [query]);
+  }, [query, currentFolder.id]);
 
   useEffect(() => {
     if (!visible) return;
     setQuery('');
-    load({ search: '' }).catch(() => {});
+    setFolderStack([{ id: 'root', name: 'My Drive' }]);
+    load({ search: '', folderId: 'root' }).catch(() => {});
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const openFolder = (folder) => {
+    const next = { id: folder.id, name: folder.name || 'Folder' };
+    setQuery('');
+    setFolderStack((prev) => [...prev, next]);
+    load({ search: '', folderId: next.id }).catch(() => {});
+  };
+
+  const goBack = () => {
+    if (folderStack.length <= 1) return;
+    const nextStack = folderStack.slice(0, -1);
+    setFolderStack(nextStack);
+    setQuery('');
+    const parent = nextStack[nextStack.length - 1];
+    load({ search: '', folderId: parent.id }).catch(() => {});
+  };
+
   const pickFile = async (file) => {
+    const isFolder = file.isFolder
+      || file.mimeType === FOLDER_MIME
+      || file.shortcutTargetMime === FOLDER_MIME;
+
+    if (isFolder) {
+      const target = file.shortcutTargetId
+        ? { id: file.shortcutTargetId, name: file.name }
+        : file;
+      openFolder(target);
+      return;
+    }
+
     setDownloadingId(file.id);
     try {
       const attachment = await downloadGoogleDriveFileToCache(file);
@@ -84,6 +126,10 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
     } finally {
       setDownloadingId(null);
     }
+  };
+
+  const runSearch = () => {
+    load({ search: query, folderId: currentFolder.id }).catch(() => {});
   };
 
   return (
@@ -103,8 +149,21 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
               <Ionicons name="close" size={24} color={theme.colors.gray} />
             </TouchableOpacity>
           </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
+            {folderStack.length > 1 && !isSearching ? (
+              <TouchableOpacity onPress={goBack} style={{ flexDirection: 'row', alignItems: 'center', marginRight: 10 }}>
+                <Ionicons name="chevron-back" size={20} color={theme.colors.primary} />
+                <Text style={{ color: theme.colors.primary, fontWeight: '700', marginLeft: 2 }}>Back</Text>
+              </TouchableOpacity>
+            ) : null}
+            <Text style={{ flex: 1, color: theme.colors.gray, fontSize: 13, fontWeight: '600' }} numberOfLines={1}>
+              {isSearching ? `Search results` : currentFolder.name}
+            </Text>
+          </View>
+
           <View style={{
-            marginTop: 12,
+            marginTop: 10,
             flexDirection: 'row',
             alignItems: 'center',
             backgroundColor: theme.colors.light,
@@ -115,14 +174,14 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
             <TextInput
               value={query}
               onChangeText={setQuery}
-              placeholder="Search Drive files"
+              placeholder="Search all Drive files"
               placeholderTextColor={theme.colors.gray}
               style={{ flex: 1, paddingHorizontal: 8, paddingVertical: 10, color: theme.colors.black }}
               autoCorrect={false}
               returnKeyType="search"
-              onSubmitEditing={() => load({ search: query })}
+              onSubmitEditing={runSearch}
             />
-            <TouchableOpacity onPress={() => load({ search: query })} disabled={loading}>
+            <TouchableOpacity onPress={runSearch} disabled={loading}>
               <Text style={{ color: theme.colors.primary, fontWeight: '700', paddingHorizontal: 6 }}>Go</Text>
             </TouchableOpacity>
           </View>
@@ -131,7 +190,7 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
         {!connected && !loading ? (
           <View style={{ padding: 24 }}>
             <Text style={{ color: theme.colors.darkGray, lineHeight: 20 }}>
-              Google Drive is not connected. Open Setup → Google Drive, paste your OAuth Client ID, and connect your account.
+              Google Drive is not connected. Open Setup → Google Drive and connect your account.
             </Text>
           </View>
         ) : loading ? (
@@ -145,11 +204,14 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
             contentContainerStyle={{ padding: 12, paddingBottom: 40 }}
             ListEmptyComponent={(
               <Text style={{ color: theme.colors.gray, textAlign: 'center', marginTop: 30 }}>
-                No files found.
+                {isSearching ? 'No files found.' : 'This folder is empty.'}
               </Text>
             )}
             renderItem={({ item }) => {
               const busy = downloadingId === item.id;
+              const isFolder = item.isFolder
+                || item.mimeType === FOLDER_MIME
+                || item.shortcutTargetMime === FOLDER_MIME;
               return (
                 <TouchableOpacity
                   onPress={() => pickFile(item)}
@@ -166,7 +228,11 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
                   }}
                 >
                   <Ionicons
-                    name={item.mimeType?.startsWith('image/') ? 'image' : documentIconName(item.mimeType, item.name)}
+                    name={
+                      isFolder
+                        ? 'folder'
+                        : (item.mimeType?.startsWith('image/') ? 'image' : documentIconName(item.mimeType, item.name))
+                    }
                     size={22}
                     color={theme.colors.primary}
                   />
@@ -175,21 +241,32 @@ const GoogleDrivePickerModal = ({ visible, onClose, onPicked }) => {
                       {item.name}
                     </Text>
                     <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 2 }}>
-                      {item.isGoogleDoc ? 'Google Doc (export)' : (item.mimeType || 'file')}
+                      {isFolder
+                        ? 'Folder'
+                        : (item.isGoogleDoc ? 'Google Doc (export)' : (item.mimeType || 'file'))}
                       {item.modifiedTime ? ` · ${formatModified(item.modifiedTime)}` : ''}
                     </Text>
                   </View>
                   {busy ? (
                     <ActivityIndicator color={theme.colors.primary} />
                   ) : (
-                    <Ionicons name="download-outline" size={20} color={theme.colors.gray} />
+                    <Ionicons
+                      name={isFolder ? 'chevron-forward' : 'download-outline'}
+                      size={20}
+                      color={theme.colors.gray}
+                    />
                   )}
                 </TouchableOpacity>
               );
             }}
             ListFooterComponent={nextPageToken ? (
               <TouchableOpacity
-                onPress={() => load({ append: true, pageToken: nextPageToken, search: query })}
+                onPress={() => load({
+                  append: true,
+                  pageToken: nextPageToken,
+                  search: query,
+                  folderId: currentFolder.id,
+                })}
                 disabled={loadingMore}
                 style={{ paddingVertical: 14, alignItems: 'center' }}
               >

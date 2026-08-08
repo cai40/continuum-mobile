@@ -906,7 +906,7 @@ const ChatSection = () => {
             setIsTyping(false);
             Alert.alert(
               'Could not read file',
-              'Text could not be extracted. For PDF, ensure the file is not password-protected or scanned-only. For Excel use .xlsx, or export to CSV and attach again.',
+              'Text could not be extracted. For PDF, ensure the file is not password-protected or scanned-only. For Word files, ensure they are saved from Word (not RTF renamed to .doc). For Excel use .xlsx, or export to CSV and attach again.',
             );
             return;
           }

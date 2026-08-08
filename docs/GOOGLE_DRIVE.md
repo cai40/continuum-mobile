@@ -13,18 +13,17 @@ Continuum can list and download files from your Google Drive and attach them in 
 1. Open [Google Cloud Console](https://console.cloud.google.com/)
 2. Create or select a project
 3. Enable **Google Drive API**
-4. Configure OAuth consent screen (External or Internal)
+4. Configure OAuth consent screen (External), add yourself as a **Test user**
 5. Create credentials → **OAuth client ID**
-   - Application type: **Web application** (recommended for Expo AuthSession)
-   - Authorized redirect URI: copy from Continuum **Setup → Google Drive** (usually `continuum://oauth`)
-6. Optional: also create iOS / Android clients with:
-   - iOS bundle ID: `com.continuum.advisor.cloud`
-   - Android package: `com.continuum.advisor.cloud`
+   - Application type: **iOS**
+   - Bundle ID: `com.continuum.advisor.cloud`
+   - Continuum builds the redirect as `com.googleusercontent.apps.<CLIENT_ID>:/oauthredirect`
+6. Do **not** use a Web or Desktop client on iPhone — Google blocks those with Continuum’s browser OAuth flow (`Error 400: invalid_request` / OAuth policy)
 
 ## In Continuum
 
 1. Setup → **Google Drive**
-2. Paste Web Client ID (and optional iOS/Android IDs)
+2. Paste the **iOS** Client ID into iOS Client ID
 3. Tap **Connect Google Drive** and sign in
 4. In chat, paperclip → **Google Drive** → pick a file
 
