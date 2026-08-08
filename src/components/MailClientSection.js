@@ -30,6 +30,8 @@ import {
 import { resolveRenderEmailBridgeSecret } from '../utils/openclawBridge';
 
 const DEFAULT_FOLDERS = ['INBOX', 'Min and Kids', 'Archive', 'Sent', 'Trash'];
+/** Folders pinned to the home folder bar. The rest are hidden behind "More". */
+const PRIMARY_FOLDERS = ['INBOX', 'Sent'];
 
 function formatListDate(iso) {
   if (!iso) return '';
@@ -75,6 +77,7 @@ const MailClientSection = () => {
 
   const [mode, setMode] = useState('mail'); // 'mail' | 'cleanup'
   const [folders, setFolders] = useState([]);
+  const [folderModalVisible, setFolderModalVisible] = useState(false);
   const [activeFolder, setActiveFolder] = useState('INBOX');
   const [emails, setEmails] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -231,6 +234,7 @@ const MailClientSection = () => {
 
   const switchFolder = (folder) => {
     if (folder === activeFolder) return;
+    safeSet(setFolderModalVisible, false);
     safeSet(setActiveFolder, folder);
     safeSet(setEmails, []);
     safeSet(setOffset, 0);
@@ -483,13 +487,18 @@ const MailClientSection = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 10 }}
-        style={{ backgroundColor: theme.colors.white, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}
+      <View
+        style={{
+          height: 46,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          backgroundColor: theme.colors.white,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
+        }}
       >
-        {folders.map((folder) => {
+        {PRIMARY_FOLDERS.map((folder) => {
           const active = folder === activeFolder;
           return (
             <TouchableOpacity
@@ -509,7 +518,29 @@ const MailClientSection = () => {
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+        {!PRIMARY_FOLDERS.includes(activeFolder) ? (
+          <TouchableOpacity
+            onPress={() => setFolderModalVisible(true)}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 7,
+              borderRadius: 16,
+              marginRight: 8,
+              backgroundColor: theme.colors.primary,
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: 'white' }}>{activeFolder}</Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity
+          onPress={() => setFolderModalVisible(true)}
+          hitSlop={8}
+          style={{ paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center' }}
+        >
+          <Ionicons name="list" size={16} color={theme.colors.primary} />
+          <Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.primary, marginLeft: 4 }}>More</Text>
+        </TouchableOpacity>
+      </View>
 
       {error ? (
         <View style={{ padding: 20, alignItems: 'center' }}>
@@ -628,6 +659,81 @@ const MailClientSection = () => {
             />
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={folderModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setFolderModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.35)',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <View style={{
+            backgroundColor: theme.colors.white,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            paddingBottom: 30,
+            maxHeight: '70%',
+          }}
+          >
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 16,
+              paddingVertical: 14,
+              borderBottomWidth: 1,
+              borderBottomColor: theme.colors.border,
+            }}
+            >
+              <Text style={{ flex: 1, fontSize: 16, fontWeight: '800', color: theme.colors.black }}>All folders</Text>
+              <TouchableOpacity onPress={() => setFolderModalVisible(false)} hitSlop={10}>
+                <Ionicons name="close" size={22} color={theme.colors.gray} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView>
+              {folders.map((folder) => {
+                const active = folder === activeFolder;
+                return (
+                  <TouchableOpacity
+                    key={folder}
+                    onPress={() => switchFolder(folder)}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      paddingHorizontal: 16,
+                      paddingVertical: 14,
+                      borderBottomWidth: 1,
+                      borderBottomColor: theme.colors.border,
+                    }}
+                  >
+                    <Ionicons
+                      name={active ? 'folder-open' : 'folder-outline'}
+                      size={18}
+                      color={active ? theme.colors.primary : theme.colors.gray}
+                      style={{ marginRight: 12 }}
+                    />
+                    <Text style={{
+                      flex: 1,
+                      fontSize: 15,
+                      fontWeight: active ? '700' : '500',
+                      color: active ? theme.colors.primary : theme.colors.black,
+                    }}
+                    >
+                      {folder}
+                    </Text>
+                    {active ? <Ionicons name="checkmark-circle" size={18} color={theme.colors.primary} /> : null}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </View>
   );
