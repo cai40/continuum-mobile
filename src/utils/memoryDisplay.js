@@ -124,7 +124,7 @@ export function extractEmailEvidenceForPin(assistantText, maxChars = 1800) {
     }
   }
   if (scanLines.length < 2) return '';
-  const header = 'Min folder email scan summary:';
+  const header = 'Min and Kids folder email scan summary:';
   let body = scanLines.join('\n');
   if (`${header}\n${body}`.length > maxChars) {
     body = body.slice(0, maxChars - header.length - 16) + '\n… [truncated]';

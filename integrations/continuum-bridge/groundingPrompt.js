@@ -83,7 +83,7 @@ const EMAIL_RECALL_EVIDENCE_APPEND = [
 ].join(' ');
 
 const RECALL_TURN_APPEND = [
-  'RECALL TURN: Answer from [CONTINUUM MEMORY], chat history persona text, or live Min-folder inbox below.',
+  'RECALL TURN: Answer from [CONTINUUM MEMORY], chat history persona text, or live Min and Kids folder inbox below.',
   'Do NOT write meta-commentary about missing blocks or list what you need from the user.',
   'Never cite JavaScript heap OOM or zero-email fetch from prior turns — those are superseded.',
   'If live inbox data appears below, cite UID and Date from it. If memory has L1 evidence, cite that.',
@@ -91,9 +91,9 @@ const RECALL_TURN_APPEND = [
 ].join(' ');
 
 const LIVE_INBOX_UNAVAILABLE_APPEND = [
-  'LIVE INBOX UNAVAILABLE: Min-folder IMAP returned no usable data this turn.',
+  'LIVE INBOX UNAVAILABLE: Min and Kids folder IMAP returned no usable data this turn.',
   'Answer immediately from [CONTINUUM MEMORY] and chat history — cite layer and date for memory facts.',
-  'State clearly when UID+Date email proof is missing; offer a fresh Min-folder scan.',
+  'State clearly when UID+Date email proof is missing; offer a fresh Min and Kids folder scan.',
   'Do NOT defer or say you are waiting for a fetch — the fetch attempt already finished.',
 ].join(' ');
 
@@ -105,7 +105,7 @@ const MEMORY_RECALL_APPEND = [
 ].join(' ');
 
 const FULL_FOLDER_PERSONA_APPEND = [
-  'FULL FOLDER SCAN: The live Min-folder inbox block below is the authoritative corpus for this turn.',
+  'FULL FOLDER SCAN: The live Min and Kids folder inbox block below is the authoritative corpus for this turn.',
   'Ignore stale [CONTINUUM MEMORY] fragments that describe only a small April 2026 batch (e.g. 18 emails).',
   'Quote the MAILBOX SCAN Date filter / Matched / Emails loaded lines verbatim — expect 2022 through today and hundreds of emails.',
   'Build SENDER PERSONA and ATTITUDE TIMELINE from the full fetched span, not from memory alone.',

@@ -81,8 +81,8 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
       liveFetchScheduled
       ? (fullFolderFetch
         ? 'FULL FOLDER SCAN runs this turn (2022 through today) — stale April-only memory batches are NOT the full corpus; cite UID+Date from live inbox below.'
-        : 'Min-folder IMAP runs synchronously this turn before your reply — cite UID and Date from the live inbox block below when present. If inbox is empty, answer from any L1 facts above and state UID+Date proof is missing. Do NOT write meta-denial lists or say you await a fetch.')
-      : 'Answer from any L1 facts above; note missing UID+Date proof. Offer a Min-folder fetch — do NOT claim OOM unless shown in this turn. Do NOT say you await fetch completion.',
+        : 'Min and Kids folder IMAP runs synchronously this turn before your reply — cite UID and Date from the live inbox block below when present. If inbox is empty, answer from any L1 facts above and state UID+Date proof is missing. Do NOT write meta-denial lists or say you await a fetch.')
+      : 'Answer from any L1 facts above; note missing UID+Date proof. Offer a Min and Kids folder fetch — do NOT claim OOM unless shown in this turn. Do NOT say you await fetch completion.',
     ].join('\n');
   }
 
@@ -94,7 +94,7 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
     liveFetchScheduled
       ? (fullFolderFetch
         ? 'FULL FOLDER SCAN below overrides stale April-only memory — prefer UID+Date from live inbox.'
-        : 'Live Min-folder inbox data may appear below this block — prefer UID+Date from inbox when present; use memory fragments for gaps only.')
+        : 'Live Min and Kids folder inbox data may appear below this block — prefer UID+Date from inbox when present; use memory fragments for gaps only.')
       : 'Do NOT say email content is not present yet or that you await a fetch — answer now from these fragments and chat history.',
     '',
   ];

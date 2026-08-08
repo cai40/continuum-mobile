@@ -63,7 +63,7 @@ function formatQuoteSearchResults(phrase, matches, { totalScanned = 0, sender = 
     lines.push(
       `NOT FOUND: "${phrase}" does not appear verbatim in any fetched email subject or body preview.`,
       'Do NOT invent a date or UID. Say the phrase was not found in this batch.',
-      'If the user expected it elsewhere, suggest widening the date range or searching INBOX + Min folder separately.',
+      'If the user expected it elsewhere, suggest widening the date range or searching INBOX + Min and Kids folder separately.',
     );
     return lines.join('\n');
   }

@@ -148,11 +148,11 @@ function defaultFolderPersonaDateRange() {
   };
 }
 
-/** When user names 敏 / Min Zhang but not a folder, default to Min folder for persona reads. */
+/** When user names 敏 / Min Zhang but not a folder, default to the Min and Kids folder for persona reads. */
 function defaultPersonaMailbox(message) {
   const text = String(message || '');
   if (parseMailboxFromMessage(text)) return parseMailboxFromMessage(text);
-  if (/\u654f/u.test(text) || /\bmin\s+(?:zhang|z)\b/i.test(text)) return 'Min';
+  if (/\u654f/u.test(text) || /\bmin\s+(?:zhang|z)\b/i.test(text)) return 'Min and Kids';
   return null;
 }
 

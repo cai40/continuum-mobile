@@ -1,0 +1,14 @@
+Add in-app mail client and family memory ingest
+
+- Mail client: Email tab is now a mail app — browse folders, list/open
+  emails (marks as read), reply via SMTP, and every opened email is loaded
+  into the Continuum memory bank. New bridge endpoints /mail/folders,
+  /mail/list, /mail/read/:uid, /mail/mark-read, /mail/send, /mail/ingest
+  backed by mailClient.js (IMAP + SMTP + memory ingest). Cleanup panel is
+  preserved behind a Mail/Cleanup toggle.
+- Cleanup folder renamed to "Min and Kids" and now copies Min Zhang, Daniel
+  Cai, and Michael Cai mail; emailFolderParse/persona defaults updated.
+- Family memory ingest on cleanup: Min, Daniel, Michael, and Michelle Wang
+  emails are read into memory automatically (deduped by UID).
+- Adds tests for mailClient, cleanup-folder rules, folder parsing, and
+  family ingest.

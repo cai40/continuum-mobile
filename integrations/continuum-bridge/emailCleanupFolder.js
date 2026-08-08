@@ -6,9 +6,21 @@ const { runImapCopyBatched } = require('./emailMove');
 const BUILTIN_CLEANUP_FOLDER = [
   {
     label: 'Min Zhang',
-    folder: 'Min',
+    folder: 'Min and Kids',
     copy: true,
     needles: ['min zhang', 'njsgas@gmail.com', 'min z <'],
+  },
+  {
+    label: 'Daniel Cai',
+    folder: 'Min and Kids',
+    copy: true,
+    needles: ['daniel cai', 'daniel c <', 'danielcai297@gmail.com'],
+  },
+  {
+    label: 'Michael Cai',
+    folder: 'Min and Kids',
+    copy: true,
+    needles: ['michael cai', 'michael c <'],
   },
 ];
 

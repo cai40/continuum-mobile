@@ -1020,6 +1020,66 @@ export const testOpenClawBridge = async (bridgeBaseUrl, bridgeSecret) => {
   return res.json();
 };
 
+// ---- Mail client API (browse / read / reply / memory ingest) ----
+
+function mailHeaders(bridgeSecret, authToken) {
+  return {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    ...(bridgeSecret ? { 'X-Bridge-Secret': bridgeSecret } : {}),
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+  };
+}
+
+async function mailRequest(path, bridgeSecret, authToken, init = {}) {
+  const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}${path}`, {
+    ...init,
+    headers: mailHeaders(bridgeSecret, authToken),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || data.detail || `Mail request failed (${res.status})`);
+  }
+  return data;
+}
+
+export const fetchMailFolders = async (bridgeSecret) => {
+  const data = await mailRequest('/mail/folders', bridgeSecret, null);
+  return data.folders || [];
+};
+
+export const fetchMailList = async (bridgeSecret, { folder = 'INBOX', limit = 50, offset = 0 } = {}) => {
+  const q = `folder=${encodeURIComponent(folder)}&limit=${limit}&offset=${offset}`;
+  const data = await mailRequest(`/mail/list?${q}`, bridgeSecret, null);
+  return { emails: data.emails || [], folder: data.folder || folder, limit: data.limit, offset: data.offset };
+};
+
+export const fetchMailMessage = async (bridgeSecret, authToken, uid, folder = 'INBOX') => {
+  const q = `folder=${encodeURIComponent(folder)}`;
+  return mailRequest(`/mail/read/${uid}?${q}`, bridgeSecret, authToken);
+};
+
+export const markMailRead = async (bridgeSecret, uids, folder = 'INBOX') => {
+  return mailRequest('/mail/mark-read', bridgeSecret, null, {
+    method: 'POST',
+    body: JSON.stringify({ uids: Array.isArray(uids) ? uids : [uids], folder }),
+  });
+};
+
+export const sendMailReply = async (bridgeSecret, { to, cc, subject, body } = {}) => {
+  return mailRequest('/mail/send', bridgeSecret, null, {
+    method: 'POST',
+    body: JSON.stringify({ to, cc, subject, body }),
+  });
+};
+
+export const ingestMailToMemory = async (bridgeSecret, authToken, { uid, folder = 'INBOX', email = null } = {}) => {
+  return mailRequest('/mail/ingest', bridgeSecret, authToken, {
+    method: 'POST',
+    body: JSON.stringify({ uid, folder, email }),
+  });
+};
+
 /**
  * LAYER 5 INGESTION:
  * Uploads document(s) (PDF, Word, PowerPoint, Excel, text) to be vectorized into the cloud knowledge base.
