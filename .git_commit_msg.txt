@@ -1,5 +1,0 @@
-Render HTML email bodies in the mail client
-
-Opened emails with an HTML body were shown as plain text. Use
-react-native-render-html (pure JS, OTA-safe) to render detail.html when
-present, falling back to the plain-text body otherwise.
