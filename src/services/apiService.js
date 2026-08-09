@@ -1032,15 +1032,30 @@ function mailHeaders(bridgeSecret, authToken) {
 }
 
 async function mailRequest(path, bridgeSecret, authToken, init = {}) {
-  const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}${path}`, {
-    ...init,
-    headers: mailHeaders(bridgeSecret, authToken),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || data.detail || `Mail request failed (${res.status})`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    let res;
+    try {
+      res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}${path}`, {
+        ...init,
+        signal: controller.signal,
+        headers: mailHeaders(bridgeSecret, authToken),
+      });
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        throw new Error('The email bridge took too long to respond. Try again.');
+      }
+      throw err;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || data.detail || `Mail request failed (${res.status})`);
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
   }
-  return data;
 }
 
 export const fetchMailFolders = async (bridgeSecret) => {

@@ -680,6 +680,9 @@ const MailClientSection = () => {
             paddingVertical: 10,
             borderBottomWidth: 1,
             borderBottomColor: theme.colors.border,
+            backgroundColor: theme.colors.white,
+            zIndex: 10,
+            elevation: 6,
           }}
           >
             <TouchableOpacity onPress={() => { safeSet(setDetail, null); safeSet(setSelectedUid, null); markAsRead(selectedUid); }} hitSlop={10} style={{ padding: 8 }}>
