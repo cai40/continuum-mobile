@@ -232,33 +232,35 @@ const MailClientSection = () => {
         folder,
         limit: 50,
         offset: start,
+        nocache: refresh, // refresh must bypass the bridge cache to see deletions
       });
-      // Merge by UID and keep newest-first date order so a refresh doesn't
-      // reorder existing items (which made the list "jump"). Exclude UIDs the
-      // user deleted locally so they don't reappear from a stale bridge cache.
-      safeSet(setEmails, (prev) => {
-        const merged = new Map();
-        const current = refresh ? (emailsCacheRef.current?.[folder] || []) : (Array.isArray(prev) ? prev : []);
-        for (const item of current) if (item?.uid != null) merged.set(Number(item.uid), item);
-        for (const item of rows) if (item?.uid != null) merged.set(Number(item.uid), item);
-        return [...merged.values()]
-          .filter((item) => !deletedUidsRef.current.has(Number(item.uid)))
-          .sort(mailRowSorter);
-      });
-      safeSet(setOffset, start + rows.length);
-      safeSet(setHasMore, rows.length >= 50);
-      if (rows.length) {
+      const filteredRows = (rows || []).filter((item) => !deletedUidsRef.current.has(Number(item.uid)));
+      // On refresh, REPLACE the list with the server's current state (so emails
+      // deleted externally disappear). The persisted cache is only used for the
+      // instant pre-refresh display. On "load more", append to the existing list.
+      safeSet(setEmails, refresh
+        ? [...filteredRows].sort(mailRowSorter)
+        : (prev) => {
+          const merged = new Map();
+          for (const item of (Array.isArray(prev) ? prev : [])) if (item?.uid != null) merged.set(Number(item.uid), item);
+          for (const item of filteredRows) if (item?.uid != null) merged.set(Number(item.uid), item);
+          return [...merged.values()].sort(mailRowSorter);
+        });
+      safeSet(setOffset, start + filteredRows.length);
+      safeSet(setHasMore, filteredRows.length >= 50);
+      if (filteredRows.length) {
         const unread = {};
-        for (const row of rows) {
+        for (const row of filteredRows) {
           if (Array.isArray(row.flags) && !row.flags.includes('\\Seen')) unread[row.uid] = true;
         }
         safeSet(setInboxUnread, (prev) => ({ ...prev, ...unread }));
-        emailsCacheRef.current = {
-          ...(emailsCacheRef.current || {}),
-          [folder]: mergeMailRows(emailsCacheRef.current?.[folder] || [], rows),
-        };
-        persistCache();
       }
+      // Cache only the current (filtered) page state.
+      emailsCacheRef.current = {
+        ...(emailsCacheRef.current || {}),
+        [folder]: refresh ? [...filteredRows].sort(mailRowSorter) : mergeMailRows(emailsCacheRef.current?.[folder] || [], filteredRows),
+      };
+      persistCache();
     } catch (err) {
       safeSet(setError, err?.message || 'Could not load emails.');
     } finally {

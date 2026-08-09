@@ -1048,8 +1048,8 @@ export const fetchMailFolders = async (bridgeSecret) => {
   return data.folders || [];
 };
 
-export const fetchMailList = async (bridgeSecret, { folder = 'INBOX', limit = 50, offset = 0 } = {}) => {
-  const q = `folder=${encodeURIComponent(folder)}&limit=${limit}&offset=${offset}`;
+export const fetchMailList = async (bridgeSecret, { folder = 'INBOX', limit = 50, offset = 0, nocache = false } = {}) => {
+  const q = `folder=${encodeURIComponent(folder)}&limit=${limit}&offset=${offset}${nocache ? '&nocache=1' : ''}`;
   const data = await mailRequest(`/mail/list?${q}`, bridgeSecret, null);
   return { emails: data.emails || [], folder: data.folder || folder, limit: data.limit, offset: data.offset };
 };
