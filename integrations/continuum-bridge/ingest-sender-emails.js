@@ -19,7 +19,12 @@ const { clampLimit } = require('./emailFetchOptions');
 
 const REPO = process.env.CONTINUUM_MOBILE_REPO || '/tmp/continuum-mobile';
 const IMAP = process.env.IMAP_SCRIPT || path.join(REPO, 'skills/@gzlicanyi/imap-smtp-email/scripts/imap.js');
-const STATE_DIR = path.join(process.env.HOME || '/root', '.config/continuum-openclaw');
+// Persist ingested-UID state on Render's persistent disk so it survives
+// redeploys; otherwise every deploy resets dedup and re-ingests everything.
+const STATE_DIR = process.env.EMAIL_INGEST_STATE_DIR
+  || (process.env.RENDER
+    ? path.join('/opt/render/project/src', '.continuum-bridge-data')
+    : path.join(process.env.HOME || '/root', '.config/continuum-openclaw'));
 const DEFAULT_SENDER = process.env.EMAIL_INGEST_SENDER || 'Min Zhang';
 
 function parseArgs(argv) {
