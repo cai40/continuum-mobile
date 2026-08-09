@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../styles/theme';
 import { useAppContext } from '../context/AppContext';
 import CleanupRangePanel from './CleanupRangePanel';
@@ -65,8 +66,15 @@ function formatFullDate(iso) {
 }
 
 function extractEmailAddress(value) {
-  const m = String(value || '').match(/<([^>]+)>/);
-  return (m ? m[1] : String(value || '')).trim();
+  const raw = String(value || '').trim();
+  const m = raw.match(/<([^>]+)>/);
+  const candidate = (m ? m[1] : raw).trim();
+  // Only return something that looks like an email address.
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(candidate) ? candidate : '';
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
 const MailClientSection = () => {
@@ -92,11 +100,13 @@ const MailClientSection = () => {
   const [detailError, setDetailError] = useState(null);
 
   const [composeVisible, setComposeVisible] = useState(false);
+  const [composeMode, setComposeMode] = useState('reply'); // 'new' | 'reply'
   const [composeTo, setComposeTo] = useState('');
   const [composeCc, setComposeCc] = useState('');
   const [composeSubject, setComposeSubject] = useState('');
   const [composeBody, setComposeBody] = useState('');
   const [composeSending, setComposeSending] = useState(false);
+  const [composeError, setComposeError] = useState(null);
 
   const [memoryNote, setMemoryNote] = useState(null);
   const [inboxUnread, setInboxUnread] = useState({});
@@ -108,10 +118,50 @@ const MailClientSection = () => {
   }, []);
 
   const foldersCacheRef = useRef(null);
+  const emailsCacheRef = useRef(null);
 
   const safeSet = useCallback((setter, value) => {
     if (mountedRef.current) setter(value);
   }, []);
+
+  const CACHE_KEY = '@continuum_mail_cache_v1';
+
+  // Restore last pull (folders + per-folder email lists) instantly, then refresh.
+  const restoreCache = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(CACHE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      if (Array.isArray(data.folders) && data.folders.length) {
+        foldersCacheRef.current = data.folders;
+        safeSet(setFolders, data.folders);
+      }
+      const perFolder = data.emails || {};
+      const list = perFolder[activeFolder];
+      if (Array.isArray(list) && list.length) {
+        emailsCacheRef.current = { ...(emailsCacheRef.current || {}), [activeFolder]: list };
+        safeSet(setEmails, list);
+        safeSet(setOffset, list.length);
+        safeSet(setHasMore, list.length >= 50);
+      }
+    } catch (err) {
+      console.warn('[mail] cache restore failed:', err?.message);
+    }
+  }, [activeFolder, safeSet]);
+
+  const persistCache = useCallback(async () => {
+    try {
+      const perFolder = { ...(emailsCacheRef.current || {}) };
+      if (emails.length) perFolder[activeFolder] = emails.slice(0, 100);
+      await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
+        folders: foldersCacheRef.current || folders,
+        emails: perFolder,
+        savedAt: Date.now(),
+      }));
+    } catch (err) {
+      console.warn('[mail] cache persist failed:', err?.message);
+    }
+  }, [activeFolder, emails, folders]);
 
   const loadFolders = useCallback(async () => {
     if (!bridgeSecret) return;
@@ -144,7 +194,8 @@ const MailClientSection = () => {
         limit: 50,
         offset: start,
       });
-      safeSet(setEmails, refresh ? rows : (prev) => [...prev, ...rows]);
+      const next = refresh ? rows : (prev) => [...prev, ...rows];
+      safeSet(setEmails, next);
       safeSet(setOffset, start + rows.length);
       safeSet(setHasMore, rows.length >= 50);
       if (rows.length) {
@@ -153,6 +204,11 @@ const MailClientSection = () => {
           if (Array.isArray(row.flags) && !row.flags.includes('\\Seen')) unread[row.uid] = true;
         }
         safeSet(setInboxUnread, (prev) => ({ ...prev, ...unread }));
+        emailsCacheRef.current = {
+          ...(emailsCacheRef.current || {}),
+          [folder]: refresh ? rows : [...(emailsCacheRef.current?.[folder] || []), ...rows],
+        };
+        persistCache();
       }
     } catch (err) {
       safeSet(setError, err?.message || 'Could not load emails.');
@@ -161,12 +217,15 @@ const MailClientSection = () => {
       safeSet(setRefreshing, false);
       safeSet(setLoadingMore, false);
     }
-  }, [bridgeSecret, renderEmailEnabled, activeFolder, offset, safeSet]);
+  }, [bridgeSecret, renderEmailEnabled, activeFolder, offset, safeSet, persistCache]);
 
   useEffect(() => {
-    loadFolders();
-    loadEmails({ refresh: true });
-  }, [loadFolders, loadEmails]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Show the last pull immediately (from AsyncStorage), then refresh in the background.
+    restoreCache().then(() => {
+      loadFolders();
+      loadEmails({ refresh: true });
+    });
+  }, [restoreCache, loadFolders, loadEmails]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openEmail = async (uid) => {
     if (!bridgeSecret) return;
@@ -204,19 +263,37 @@ const MailClientSection = () => {
   };
 
   const openReply = (email) => {
-    safeSet(setComposeTo, extractEmailAddress(email?.from || ''));
+    const to = extractEmailAddress(email?.from || '');
+    safeSet(setComposeMode, 'reply');
+    safeSet(setComposeTo, to);
     safeSet(setComposeCc, '');
     safeSet(setComposeSubject, email?.subject && !/^re:/i.test(email.subject) ? `Re: ${email.subject}` : (email?.subject || ''));
     safeSet(setComposeBody, `\n\n---\nOn ${formatFullDate(email?.date)}, ${email?.from} wrote:\n${String(email?.text || email?.snippet || '').slice(0, 1500)}\n`);
+    safeSet(setComposeError, null);
+    safeSet(setComposeVisible, true);
+  };
+
+  const openCompose = () => {
+    safeSet(setComposeMode, 'new');
+    safeSet(setComposeTo, '');
+    safeSet(setComposeCc, '');
+    safeSet(setComposeSubject, '');
+    safeSet(setComposeBody, '');
+    safeSet(setComposeError, null);
     safeSet(setComposeVisible, true);
   };
 
   const sendReply = async () => {
-    if (!composeTo.trim() || !composeSubject.trim() || !composeBody.trim()) {
-      Alert.alert('Missing fields', 'To, subject, and message are required.');
+    if (!isValidEmail(composeTo)) {
+      Alert.alert('Invalid recipient', 'Enter a valid email address for To.');
+      return;
+    }
+    if (!composeSubject.trim() || !composeBody.trim()) {
+      Alert.alert('Missing fields', 'Subject and message are required.');
       return;
     }
     safeSet(setComposeSending, true);
+    safeSet(setComposeError, null);
     try {
       await sendMailReply(bridgeSecret, {
         to: composeTo.trim(),
@@ -226,9 +303,9 @@ const MailClientSection = () => {
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       safeSet(setComposeVisible, false);
-      Alert.alert('Sent', `Reply sent to ${composeTo.trim()}.`);
+      Alert.alert('Sent', `Email sent to ${composeTo.trim()}.`);
     } catch (err) {
-      Alert.alert('Send failed', err?.message || 'Could not send the reply.');
+      safeSet(setComposeError, err?.message || 'Could not send the email.');
     } finally {
       safeSet(setComposeSending, false);
     }
@@ -238,9 +315,17 @@ const MailClientSection = () => {
     if (folder === activeFolder) return;
     safeSet(setFolderModalVisible, false);
     safeSet(setActiveFolder, folder);
-    safeSet(setEmails, []);
-    safeSet(setOffset, 0);
-    safeSet(setHasMore, true);
+    // Show cached emails for the folder instantly, then refresh in the background.
+    const cached = emailsCacheRef.current?.[folder];
+    if (Array.isArray(cached) && cached.length) {
+      safeSet(setEmails, cached);
+      safeSet(setOffset, cached.length);
+      safeSet(setHasMore, cached.length >= 50);
+    } else {
+      safeSet(setEmails, []);
+      safeSet(setOffset, 0);
+      safeSet(setHasMore, true);
+    }
     safeSet(setSelectedUid, null);
     safeSet(setDetail, null);
     setTimeout(() => loadEmails({ folder, refresh: true }), 0);
@@ -458,22 +543,29 @@ const MailClientSection = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        backgroundColor: theme.colors.white,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.border,
-      }}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{
+          backgroundColor: theme.colors.white,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
+          flexGrow: 0,
+        }}
+        contentContainerStyle={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 10,
+          paddingVertical: 8,
+          minHeight: 44,
+        }}
       >
         <TouchableOpacity
           onPress={() => setMode('mail')}
           style={{
-            paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16,
+            paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
             backgroundColor: mode === 'mail' ? theme.colors.primary : theme.colors.light,
-            marginRight: 8,
+            marginRight: 6,
           }}
         >
           <Text style={{ fontSize: 13, fontWeight: '700', color: mode === 'mail' ? 'white' : theme.colors.darkGray }}>Mail</Text>
@@ -481,25 +573,16 @@ const MailClientSection = () => {
         <TouchableOpacity
           onPress={() => setMode('cleanup')}
           style={{
-            paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16,
+            paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16,
             backgroundColor: mode === 'cleanup' ? theme.colors.primary : theme.colors.light,
+            marginRight: 8,
           }}
         >
           <Text style={{ fontSize: 13, fontWeight: '700', color: mode === 'cleanup' ? 'white' : theme.colors.darkGray }}>Cleanup</Text>
         </TouchableOpacity>
-      </View>
 
-      <View
-        style={{
-          height: 46,
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 12,
-          backgroundColor: theme.colors.white,
-          borderBottomWidth: 1,
-          borderBottomColor: theme.colors.border,
-        }}
-      >
+        <View style={{ width: 1, height: 20, backgroundColor: theme.colors.border, marginRight: 8 }} />
+
         {PRIMARY_FOLDERS.map((folder) => {
           const active = folder === activeFolder;
           return (
@@ -507,10 +590,10 @@ const MailClientSection = () => {
               key={folder}
               onPress={() => switchFolder(folder)}
               style={{
-                paddingHorizontal: 14,
-                paddingVertical: 7,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
                 borderRadius: 16,
-                marginRight: 8,
+                marginRight: 6,
                 backgroundColor: active ? theme.colors.primary : theme.colors.light,
               }}
             >
@@ -524,10 +607,10 @@ const MailClientSection = () => {
           <TouchableOpacity
             onPress={() => setFolderModalVisible(true)}
             style={{
-              paddingHorizontal: 14,
-              paddingVertical: 7,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
               borderRadius: 16,
-              marginRight: 8,
+              marginRight: 6,
               backgroundColor: theme.colors.primary,
             }}
           >
@@ -537,12 +620,23 @@ const MailClientSection = () => {
         <TouchableOpacity
           onPress={() => setFolderModalVisible(true)}
           hitSlop={8}
-          style={{ paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', alignItems: 'center' }}
+          style={{ paddingHorizontal: 8, paddingVertical: 6, flexDirection: 'row', alignItems: 'center', marginRight: 4 }}
         >
-          <Ionicons name="list" size={16} color={theme.colors.primary} />
-          <Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.primary, marginLeft: 4 }}>More</Text>
+          <Ionicons name="list" size={15} color={theme.colors.primary} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.primary, marginLeft: 3 }}>More</Text>
         </TouchableOpacity>
-      </View>
+
+        <View style={{ width: 1, height: 20, backgroundColor: theme.colors.border, marginRight: 8 }} />
+
+        <TouchableOpacity
+          onPress={openCompose}
+          hitSlop={8}
+          style={{ paddingHorizontal: 8, paddingVertical: 6, flexDirection: 'row', alignItems: 'center' }}
+        >
+          <Ionicons name="create-outline" size={16} color={theme.colors.secondary} />
+          <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.secondary, marginLeft: 3 }}>Compose</Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       {error ? (
         <View style={{ padding: 20, alignItems: 'center' }}>
@@ -594,7 +688,9 @@ const MailClientSection = () => {
               <TouchableOpacity onPress={() => safeSet(setComposeVisible, false)} hitSlop={10} style={{ padding: 6 }}>
                 <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 15 }}>Cancel</Text>
               </TouchableOpacity>
-              <Text style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '800', color: theme.colors.black }}>Reply</Text>
+              <Text style={{ flex: 1, textAlign: 'center', fontSize: 16, fontWeight: '800', color: theme.colors.black }}>
+                {composeMode === 'reply' ? 'Reply' : 'New Email'}
+              </Text>
               <TouchableOpacity onPress={sendReply} disabled={composeSending} hitSlop={10} style={{ padding: 6 }}>
                 {composeSending ? (
                   <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -659,6 +755,21 @@ const MailClientSection = () => {
                 textAlignVertical: 'top',
               }}
             />
+            {composeError ? (
+              <View style={{
+                marginHorizontal: 14,
+                marginBottom: 10,
+                padding: 10,
+                borderRadius: 10,
+                backgroundColor: theme.colors.danger + '12',
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+              }}
+              >
+                <Ionicons name="alert-circle" size={15} color={theme.colors.danger} style={{ marginTop: 1 }} />
+                <Text style={{ color: theme.colors.danger, fontSize: 12, marginLeft: 6, flex: 1 }}>{composeError}</Text>
+              </View>
+            ) : null}
           </View>
         </KeyboardAvoidingView>
       </Modal>
