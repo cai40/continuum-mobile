@@ -153,6 +153,8 @@ const MailClientSection = () => {
 
   const foldersCacheRef = useRef(null);
   const emailsCacheRef = useRef(null);
+  // UIDs the user deleted locally; kept until the bridge stops returning them.
+  const deletedUidsRef = useRef(new Set());
 
   const safeSet = useCallback((setter, value) => {
     if (mountedRef.current) setter(value);
@@ -173,7 +175,8 @@ const MailClientSection = () => {
       const perFolder = data.emails || {};
       const list = perFolder[activeFolder];
       if (Array.isArray(list) && list.length) {
-        const sorted = mergeMailRows(list, []);
+        const sorted = mergeMailRows(list, [])
+          .filter((item) => !deletedUidsRef.current.has(Number(item.uid)));
         emailsCacheRef.current = { ...(emailsCacheRef.current || {}), [activeFolder]: sorted };
         safeSet(setEmails, sorted);
         safeSet(setOffset, sorted.length);
@@ -231,13 +234,16 @@ const MailClientSection = () => {
         offset: start,
       });
       // Merge by UID and keep newest-first date order so a refresh doesn't
-      // reorder existing items (which made the list "jump").
+      // reorder existing items (which made the list "jump"). Exclude UIDs the
+      // user deleted locally so they don't reappear from a stale bridge cache.
       safeSet(setEmails, (prev) => {
         const merged = new Map();
         const current = refresh ? (emailsCacheRef.current?.[folder] || []) : (Array.isArray(prev) ? prev : []);
         for (const item of current) if (item?.uid != null) merged.set(Number(item.uid), item);
         for (const item of rows) if (item?.uid != null) merged.set(Number(item.uid), item);
-        return [...merged.values()].sort(mailRowSorter);
+        return [...merged.values()]
+          .filter((item) => !deletedUidsRef.current.has(Number(item.uid)))
+          .sort(mailRowSorter);
       });
       safeSet(setOffset, start + rows.length);
       safeSet(setHasMore, rows.length >= 50);
@@ -368,6 +374,7 @@ const MailClientSection = () => {
 
   const removeEmailsFromList = useCallback((uidsToRemove, folder = activeFolder) => {
     const uidSet = new Set((uidsToRemove || []).map(Number));
+    for (const uid of uidSet) deletedUidsRef.current.add(uid);
     safeSet(setEmails, (prev) => (Array.isArray(prev) ? prev.filter((item) => !uidSet.has(Number(item.uid))) : prev));
     emailsCacheRef.current = {
       ...(emailsCacheRef.current || {}),
@@ -497,7 +504,8 @@ const MailClientSection = () => {
     safeSet(setSelectedUids, new Set());
     safeSet(setActiveFolder, folder);
     // Show cached emails for the folder instantly, then refresh in the background.
-    const cached = emailsCacheRef.current?.[folder];
+    const cached = (emailsCacheRef.current?.[folder] || [])
+      .filter((item) => !deletedUidsRef.current.has(Number(item.uid)));
     if (Array.isArray(cached) && cached.length) {
       safeSet(setEmails, cached);
       safeSet(setOffset, cached.length);
