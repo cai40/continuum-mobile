@@ -852,9 +852,10 @@ function fetchMessageByUid(imap, uid, fetchOptions) {
   });
 }
 
-// Fetch full email by UID (lightweight: headers + text only, no attachments).
-// Fetches only the parts we render, so big mails with attachments load fast
-// and don't balloon the bridge's memory.
+// Fetch full email by UID. Fetches the complete raw message (BODY[]) so
+// mailparser can extract BOTH the plain-text and HTML parts. The serial
+// queue keeps only one child process alive at a time, so a single full
+// message fetch doesn't balloon the bridge's memory.
 async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
   const imap = await connect();
 
@@ -863,7 +864,7 @@ async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
     await openBox(imap, resolvedMailbox);
 
     const fetchOptions = {
-      bodies: ['HEADER.FIELDS (FROM TO CC SUBJECT DATE)', 'TEXT'],
+      bodies: [''],
       markSeen: false,
     };
 
