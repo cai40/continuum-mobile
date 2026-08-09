@@ -455,7 +455,8 @@ function seqnoRangeString(start, end) {
 
 /**
  * List newest emails by seqno window (no full mailbox UID search).
- * Returns compact rows: { uid, from, subject, date, headerDate, flags, snippet }.
+ * Returns compact rows sorted newest-first by date:
+ * { uid, from, subject, date, headerDate, flags, snippet }.
  */
 async function listEmailsByWindow(mailbox, limit, offset, unreadOnly) {
   const imap = await connect();
@@ -466,6 +467,7 @@ async function listEmailsByWindow(mailbox, limit, offset, unreadOnly) {
     const lim = Math.max(1, Math.min(parseInt(limit, 10) || 20, 200));
     const off = Math.max(0, parseInt(offset, 10) || 0);
 
+    let rows;
     if (unreadOnly) {
       // UNSEEN filter still needs a search, but scoped to the window via seqno.
       const allUids = await searchUids(imap, ['UNSEEN']);
@@ -476,34 +478,43 @@ async function listEmailsByWindow(mailbox, limit, offset, unreadOnly) {
         markSeen: false,
       });
       // fetchByUids returns only the first body part per message (HEADER.FIELDS).
-      const rows = [];
+      rows = [];
       for (const item of messages) {
         rows.push(buildListRow([item], item.attributes));
       }
-      return rows.reverse();
+    } else {
+      // Newest messages live at the highest seqnos. Window: [total-off-limit+1, total-off].
+      const end = total - off;
+      const start = Math.max(1, end - lim + 1);
+      if (start > end) return [];
+
+      const fetchOptions = {
+        bodies: ['HEADER.FIELDS (FROM SUBJECT DATE)', 'TEXT'],
+        markSeen: false,
+      };
+      const partsList = await fetchSeqnoWindow(imap, seqnoRangeString(start, end), fetchOptions);
+
+      // partsList is ordered oldest→newest (seqno ascending).
+      rows = [];
+      for (const parts of partsList) {
+        const attrs = parts[0]?.attributes || null;
+        rows.push(buildListRow(parts, attrs));
+      }
     }
 
-    // Newest messages live at the highest seqnos. Window: [total-off-limit+1, total-off].
-    const end = total - off;
-    const start = Math.max(1, end - lim + 1);
-    if (start > end) return [];
-
-    const fetchOptions = {
-      bodies: ['HEADER.FIELDS (FROM SUBJECT DATE)', 'TEXT'],
-      markSeen: false,
-    };
-    const partsList = await fetchSeqnoWindow(imap, seqnoRangeString(start, end), fetchOptions);
-
-    // partsList is ordered oldest→newest (seqno ascending); reverse for newest-first.
-    const rows = [];
-    for (const parts of partsList) {
-      const attrs = parts[0]?.attributes || null;
-      rows.push(buildListRow(parts, attrs));
-    }
-    return rows.reverse();
+    // Stable sort: newest-first by message date (fall back to internal date).
+    rows.sort((a, b) => rowDateMs(b) - rowDateMs(a) || (Number(b.uid) - Number(a.uid)));
+    return rows;
   } finally {
     imap.end();
   }
+}
+
+function rowDateMs(row) {
+  const times = [row.date, row.headerDate]
+    .map((v) => new Date(v).getTime())
+    .filter((t) => Number.isFinite(t) && t > 0);
+  return times.length ? Math.max(...times) : 0;
 }
 
 function parseHeaderPart(raw) {
