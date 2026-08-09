@@ -1,0 +1,12 @@
+Fix mail client: "not found" on open, add caching for huge inboxes
+
+- Fix /mail/read/:uid route regex so the query string (?folder=INBOX) the app
+  sends no longer falls through to 404 "Not found".
+- Add a fast seqno-window `list` command to imap.js that fetches only
+  HEADER.FIELDS (FROM SUBJECT DATE) + TEXT for the requested window instead of
+  running a full-mailbox SEARCH ALL — huge inboxes (tens of thousands) load
+  quickly and paginate by sequence number.
+- Add TTL caching in mailClient.js for folders (5m), lists (60s), and email
+  bodies (10m); markRead busts the affected caches.
+- Remove the duplicate memory-ingest call in the app (the bridge already
+  ingests on /mail/read) and cache the folder list in the session.

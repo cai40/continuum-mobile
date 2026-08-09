@@ -25,7 +25,6 @@ import {
   fetchMailMessage,
   markMailRead,
   sendMailReply,
-  ingestMailToMemory,
 } from '../services/apiService';
 import { resolveRenderEmailBridgeSecret } from '../utils/openclawBridge';
 
@@ -108,16 +107,23 @@ const MailClientSection = () => {
     return () => { mountedRef.current = false; };
   }, []);
 
+  const foldersCacheRef = useRef(null);
+
   const safeSet = useCallback((setter, value) => {
     if (mountedRef.current) setter(value);
   }, []);
 
   const loadFolders = useCallback(async () => {
     if (!bridgeSecret) return;
+    if (foldersCacheRef.current) {
+      safeSet(setFolders, foldersCacheRef.current);
+      return;
+    }
     try {
       const list = await fetchMailFolders(bridgeSecret);
       const names = Array.isArray(list) ? list.map((f) => f.name).filter(Boolean) : [];
       const merged = [...new Set([...DEFAULT_FOLDERS, ...names])];
+      foldersCacheRef.current = merged;
       safeSet(setFolders, merged);
     } catch (err) {
       console.warn('[mail] folders failed:', err?.message);
@@ -170,6 +176,8 @@ const MailClientSection = () => {
     safeSet(setDetailLoading, true);
     safeSet(setDetailError, null);
     try {
+      // The bridge ingests the opened email into memory on /mail/read, so no
+      // separate ingest round-trip is needed here.
       const { email } = await fetchMailMessage(bridgeSecret, authToken, uid, activeFolder);
       safeSet(setDetail, email);
       safeSet(setInboxUnread, (prev) => {
@@ -177,14 +185,8 @@ const MailClientSection = () => {
         delete next[uid];
         return next;
       });
-      // Load this email into memory (fire-and-forget; the bridge also ingests on open).
-      try {
-        const result = await ingestMailToMemory(bridgeSecret, authToken, { email });
-        safeSet(setMemoryNote, result?.reply || 'Email saved to memory.');
-        setTimeout(() => safeSet(setMemoryNote, null), 5000);
-      } catch (ingestErr) {
-        console.warn('[mail] memory ingest:', ingestErr?.message);
-      }
+      safeSet(setMemoryNote, 'Saved to memory.');
+      setTimeout(() => safeSet(setMemoryNote, null), 5000);
     } catch (err) {
       safeSet(setDetailError, err?.message || 'Could not open email.');
     } finally {
