@@ -12,6 +12,8 @@ import {
   Platform,
   Modal,
   ScrollView,
+  Animated,
+  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -25,6 +27,7 @@ import {
   fetchMailList,
   fetchMailMessage,
   markMailRead,
+  deleteMail,
   sendMailReply,
 } from '../services/apiService';
 import { resolveRenderEmailBridgeSecret } from '../utils/openclawBridge';
@@ -133,6 +136,10 @@ const MailClientSection = () => {
 
   const [memoryNote, setMemoryNote] = useState(null);
   const [inboxUnread, setInboxUnread] = useState({});
+
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedUids, setSelectedUids] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
 
   const mountedRef = useRef(true);
   useEffect(() => {
@@ -260,22 +267,55 @@ const MailClientSection = () => {
     if (didInitRef.current) return;
     didInitRef.current = true;
     restoreCache().then(() => {
+      AsyncStorage.getItem(DETAIL_CACHE_KEY).then((raw) => {
+        if (raw) {
+          try {
+            const cache = JSON.parse(raw);
+            for (const [uid, email] of Object.entries(cache)) {
+              if (email?.uid != null) detailCacheRef.current[email.uid] = email;
+            }
+          } catch {
+            // ignore corrupt cache
+          }
+        }
+      }).catch(() => {});
       loadFolders();
       loadEmails({ refresh: true });
     });
   }, [restoreCache, loadFolders, loadEmails]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const DETAIL_CACHE_KEY = '@continuum_mail_detail_cache_v1';
+  const detailCacheRef = useRef({});
+
   const openEmail = async (uid) => {
     if (!bridgeSecret) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     safeSet(setSelectedUid, uid);
-    safeSet(setDetail, null);
-    safeSet(setDetailLoading, true);
-    safeSet(setDetailError, null);
+    // Show a cached body instantly if we have one (faster perceived open),
+    // then refresh from IMAP in the background.
+    const cachedDetail = detailCacheRef.current[uid];
+    if (cachedDetail) {
+      safeSet(setDetail, cachedDetail);
+      safeSet(setDetailLoading, false);
+      safeSet(setDetailError, null);
+    } else {
+      safeSet(setDetail, null);
+      safeSet(setDetailLoading, true);
+      safeSet(setDetailError, null);
+    }
     try {
       // The bridge ingests the opened email into memory on /mail/read, so no
       // separate ingest round-trip is needed here.
       const { email } = await fetchMailMessage(bridgeSecret, authToken, uid, activeFolder);
+      detailCacheRef.current[uid] = email;
+      try {
+        const raw = await AsyncStorage.getItem(DETAIL_CACHE_KEY);
+        const cache = raw ? JSON.parse(raw) : {};
+        cache[uid] = email;
+        await AsyncStorage.setItem(DETAIL_CACHE_KEY, JSON.stringify(cache).slice(0, 2_000_000));
+      } catch (cacheErr) {
+        console.warn('[mail] detail cache write:', cacheErr?.message);
+      }
       safeSet(setDetail, email);
       safeSet(setInboxUnread, (prev) => {
         const next = { ...prev };
@@ -300,13 +340,88 @@ const MailClientSection = () => {
     }
   };
 
+  const removeEmailsFromList = useCallback((uidsToRemove, folder = activeFolder) => {
+    const uidSet = new Set((uidsToRemove || []).map(Number));
+    safeSet(setEmails, (prev) => (Array.isArray(prev) ? prev.filter((item) => !uidSet.has(Number(item.uid))) : prev));
+    emailsCacheRef.current = {
+      ...(emailsCacheRef.current || {}),
+      [folder]: (emailsCacheRef.current?.[folder] || []).filter((item) => !uidSet.has(Number(item.uid))),
+    };
+    safeSet(setSelectedUids, (prev) => {
+      const next = new Set(prev);
+      for (const uid of uidSet) next.delete(uid);
+      return next;
+    });
+    persistCache();
+  }, [activeFolder, persistCache, safeSet]);
+
+  const deleteEmailsNow = async (uids, folder = activeFolder) => {
+    if (!bridgeSecret || !uids?.length) return;
+    safeSet(setDeleting, true);
+    try {
+      await deleteMail(bridgeSecret, uids, folder);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      removeEmailsFromList(uids, folder);
+      return true;
+    } catch (err) {
+      Alert.alert('Delete failed', err?.message || 'Could not move the email(s) to Trash.');
+      return false;
+    } finally {
+      safeSet(setDeleting, false);
+    }
+  };
+
+  const confirmDelete = (uids, folder = activeFolder) => {
+    const count = (uids || []).length;
+    if (!count) return;
+    Alert.alert(
+      'Delete email',
+      `Move ${count} email(s) to Trash? (Recoverable.)`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteEmailsNow(uids, folder),
+        },
+      ],
+    );
+  };
+
+  const enterSelectMode = (uid) => {
+    safeSet(setSelectMode, true);
+    safeSet(setSelectedUids, new Set([uid]));
+  };
+
+  const toggleSelect = (uid) => {
+    safeSet(setSelectedUids, (prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
+  const exitSelectMode = () => {
+    safeSet(setSelectMode, false);
+    safeSet(setSelectedUids, new Set());
+  };
+
+  const deleteSelected = () => {
+    const uids = [...selectedUids];
+    if (!uids.length) return;
+    confirmDelete(uids, activeFolder);
+  };
+
   const openReply = (email) => {
     const to = extractEmailAddress(email?.from || '');
     safeSet(setComposeMode, 'reply');
     safeSet(setComposeTo, to);
     safeSet(setComposeCc, '');
     safeSet(setComposeSubject, email?.subject && !/^re:/i.test(email.subject) ? `Re: ${email.subject}` : (email?.subject || ''));
-    safeSet(setComposeBody, `\n\n---\nOn ${formatFullDate(email?.date)}, ${email?.from} wrote:\n${String(email?.text || email?.snippet || '').slice(0, 1500)}\n`);
+    // Trim the quoted original so the SMTP payload stays small.
+    const quote = String(email?.text || email?.snippet || '').slice(0, 800);
+    safeSet(setComposeBody, `\n\n---\nOn ${formatFullDate(email?.date)}, ${email?.from} wrote:\n${quote}\n`);
     safeSet(setComposeError, null);
     safeSet(setComposeVisible, true);
   };
@@ -352,6 +467,8 @@ const MailClientSection = () => {
   const switchFolder = (folder) => {
     if (folder === activeFolder) return;
     safeSet(setFolderModalVisible, false);
+    safeSet(setSelectMode, false);
+    safeSet(setSelectedUids, new Set());
     safeSet(setActiveFolder, folder);
     // Show cached emails for the folder instantly, then refresh in the background.
     const cached = emailsCacheRef.current?.[folder];
@@ -371,20 +488,37 @@ const MailClientSection = () => {
 
   const renderEmailRow = ({ item }) => {
     const unread = inboxUnread[item.uid];
-    return (
+    const isSelected = selectMode && selectedUids.has(item.uid);
+    const rowContent = (
       <TouchableOpacity
-        onPress={() => openEmail(item.uid)}
+        onPress={() => {
+          if (selectMode) {
+            toggleSelect(item.uid);
+            return;
+          }
+          openEmail(item.uid);
+        }}
+        onLongPress={() => enterSelectMode(item.uid)}
+        activeOpacity={selectMode ? 1 : 0.6}
         style={{
           flexDirection: 'row',
           alignItems: 'flex-start',
           padding: 14,
           borderBottomWidth: 1,
           borderBottomColor: theme.colors.border,
-          backgroundColor: theme.colors.white,
+          backgroundColor: isSelected ? theme.colors.primary + '12' : theme.colors.white,
         }}
       >
-        <View style={{ width: 10, paddingTop: 6 }}>
-          {unread ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: theme.colors.primary }} /> : null}
+        <View style={{ width: 22, paddingTop: 4 }}>
+          {selectMode ? (
+            <Ionicons
+              name={isSelected ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={isSelected ? theme.colors.primary : theme.colors.gray}
+            />
+          ) : unread ? (
+            <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: theme.colors.primary, marginTop: 3 }} />
+          ) : null}
         </View>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -413,6 +547,17 @@ const MailClientSection = () => {
           </Text>
         </View>
       </TouchableOpacity>
+    );
+
+    if (selectMode) return rowContent;
+
+    return (
+      <SwipeableRow
+        onDelete={() => confirmDelete([item.uid], activeFolder)}
+        disabled={loading || deleting}
+      >
+        {rowContent}
+      </SwipeableRow>
     );
   };
 
@@ -581,6 +726,41 @@ const MailClientSection = () => {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
+      {selectMode ? (
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          minHeight: 46,
+          backgroundColor: theme.colors.white,
+          borderBottomWidth: 1,
+          borderBottomColor: theme.colors.border,
+        }}
+        >
+          <TouchableOpacity onPress={exitSelectMode} hitSlop={10} style={{ padding: 6 }}>
+            <Text style={{ color: theme.colors.primary, fontWeight: '700', fontSize: 15 }}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={{ flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: theme.colors.black }}>
+            {selectedUids.size} selected
+          </Text>
+          <TouchableOpacity
+            onPress={deleteSelected}
+            disabled={deleting || selectedUids.size === 0}
+            hitSlop={10}
+            style={{ padding: 6, flexDirection: 'row', alignItems: 'center' }}
+          >
+            {deleting ? (
+              <ActivityIndicator size="small" color={theme.colors.danger} />
+            ) : (
+              <>
+                <Ionicons name="trash-outline" size={17} color={theme.colors.danger} />
+                <Text style={{ color: theme.colors.danger, fontWeight: '700', fontSize: 15, marginLeft: 4 }}>Delete</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+      ) : (
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -675,6 +855,7 @@ const MailClientSection = () => {
           <Text style={{ fontSize: 12, fontWeight: '700', color: theme.colors.secondary, marginLeft: 3 }}>Compose</Text>
         </TouchableOpacity>
       </ScrollView>
+      )}
 
       {error ? (
         <View style={{ padding: 20, alignItems: 'center' }}>
@@ -689,7 +870,7 @@ const MailClientSection = () => {
         renderItem={renderEmailRow}
         contentContainerStyle={{ paddingBottom: 30 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={() => loadEmails({ refresh: true })} tintColor={theme.colors.primary} />
+          <RefreshControl refreshing={refreshing} onRefresh={() => { exitSelectMode(); loadEmails({ refresh: true }); }} tintColor={theme.colors.primary} />
         }
         onEndReached={() => {
           if (hasMore && !loading && !loadingMore) {
@@ -893,5 +1074,74 @@ const MailClientSection = () => {
 const composeFieldStyle = { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: theme.colors.border };
 const composeLabelStyle = { width: 60, fontSize: 14, color: theme.colors.gray, fontWeight: '600' };
 const composeInputStyle = { flex: 1, fontSize: 14, color: theme.colors.black, paddingVertical: 6 };
+
+const SWIPE_ACTION_WIDTH = 84;
+
+/**
+ * Pure-RN swipe-left-to-reveal-delete row (no native gesture library needed).
+ * Swiping left reveals a red Delete action; tapping it calls onDelete.
+ */
+function SwipeableRow({ children, onDelete, disabled = false }) {
+  const translateX = useRef(new Animated.Value(0)).current;
+  const openRef = useRef(false);
+
+  const settle = (open) => {
+    openRef.current = open;
+    Animated.spring(translateX, {
+      toValue: open ? -SWIPE_ACTION_WIDTH : 0,
+      useNativeDriver: true,
+      bounciness: 0,
+      speed: 24,
+    }).start();
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) =>
+        !disabled && Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy) * 1.4,
+      onPanResponderMove: (_, g) => {
+        const base = openRef.current ? -SWIPE_ACTION_WIDTH : 0;
+        const x = Math.min(0, Math.max(-SWIPE_ACTION_WIDTH - 8, base + g.dx));
+        translateX.setValue(x);
+      },
+      onPanResponderRelease: (_, g) => {
+        const base = openRef.current ? -SWIPE_ACTION_WIDTH : 0;
+        const settledOpen = base + g.dx < -SWIPE_ACTION_WIDTH / 2;
+        settle(settledOpen);
+      },
+      onPanResponderTerminate: () => settle(openRef.current),
+    }),
+  ).current;
+
+  return (
+    <View style={{ backgroundColor: theme.colors.danger, overflow: 'hidden' }}>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => {
+          settle(false);
+          onDelete?.();
+        }}
+        style={{
+          position: 'absolute',
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: SWIPE_ACTION_WIDTH,
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <Ionicons name="trash-outline" size={20} color="white" />
+        <Text style={{ color: 'white', fontSize: 11, fontWeight: '700', marginTop: 4 }}>Delete</Text>
+      </TouchableOpacity>
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={{ transform: [{ translateX }] }}
+      >
+        {children}
+      </Animated.View>
+    </View>
+  );
+}
 
 export default MailClientSection;

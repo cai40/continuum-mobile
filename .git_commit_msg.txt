@@ -1,0 +1,15 @@
+Mail client: swipe/bulk delete, faster open, fix reply send
+
+- Swipe left on any email reveals a Delete action (moves to Yahoo Trash,
+  recoverable), built with pure RN Animated/PanResponder.
+- Long-press enters selection mode with checkboxes and a Delete button in the
+  header for bulk delete.
+- New bridge POST /mail/delete + app deleteMail().
+- Fix reply send failing: the bridge was OOMing on Render (memory limit)
+  when several node child processes (imap + smtp + ingest) ran at once.
+  mailClient now serializes all script calls so only one child runs at a time;
+  smtp.js reads the body via stdin (--body-stdin) so long reply bodies with
+  "-- ..." lines can't be misparsed as flags; reply quotes are trimmed to 800
+  chars.
+- Faster open: email detail bodies are cached (in-memory + AsyncStorage) and
+  shown instantly on open, then refreshed in the background.
