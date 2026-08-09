@@ -123,9 +123,17 @@ const helpers = {
   parseHeaderPart: sandbox.parseHeaderPart,
   buildListRow: sandbox.buildListRow,
   seqnoRangeString: sandbox.seqnoRangeString,
+  rowDateMs: sandbox.rowDateMs,
 };
 
 function run() {
+  // rowDateMs (newest-first sort base)
+  const newest = helpers.rowDateMs({ date: '2026-08-08T12:00:00Z', headerDate: '2026-08-01T00:00:00Z' });
+  const older = helpers.rowDateMs({ date: '2026-01-01T00:00:00Z', headerDate: null });
+  const none = helpers.rowDateMs({});
+  assert.ok(newest > older, 'newest date ranks higher');
+  assert.strictEqual(none, 0, 'missing dates rank last');
+
   // parseHeaderPart
   const h = helpers.parseHeaderPart('From: Min Zhang <njsgas@gmail.com>\r\nSubject: Hi\r\nDate: 2026-08-08T12:00:00Z');
   assert.strictEqual(h.from, 'Min Zhang <njsgas@gmail.com>');

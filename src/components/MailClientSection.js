@@ -77,6 +77,29 @@ function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
+function mailRowTimeMs(row) {
+  const times = [row?.date, row?.headerDate]
+    .map((v) => new Date(v).getTime())
+    .filter((t) => Number.isFinite(t) && t > 0);
+  return times.length ? Math.max(...times) : 0;
+}
+
+/** Newest-first by date; UID tiebreak for stability. */
+function mailRowSorter(a, b) {
+  const byDate = mailRowTimeMs(b) - mailRowTimeMs(a);
+  if (byDate !== 0) return byDate;
+  return (Number(b?.uid) || 0) - (Number(a?.uid) || 0);
+}
+
+/** Merge two row lists by UID, keeping the newest date-sorted order. */
+function mergeMailRows(base, extra) {
+  const merged = new Map();
+  for (const item of [...(Array.isArray(base) ? base : []), ...(Array.isArray(extra) ? extra : [])]) {
+    if (item?.uid != null) merged.set(Number(item.uid), item);
+  }
+  return [...merged.values()].sort(mailRowSorter);
+}
+
 const MailClientSection = () => {
   const { renderEmailEnabled, renderEmailBridgeSecret, session, setActiveTab, setPendingChatMessage } = useAppContext();
   const bridgeSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
@@ -139,10 +162,11 @@ const MailClientSection = () => {
       const perFolder = data.emails || {};
       const list = perFolder[activeFolder];
       if (Array.isArray(list) && list.length) {
-        emailsCacheRef.current = { ...(emailsCacheRef.current || {}), [activeFolder]: list };
-        safeSet(setEmails, list);
-        safeSet(setOffset, list.length);
-        safeSet(setHasMore, list.length >= 50);
+        const sorted = mergeMailRows(list, []);
+        emailsCacheRef.current = { ...(emailsCacheRef.current || {}), [activeFolder]: sorted };
+        safeSet(setEmails, sorted);
+        safeSet(setOffset, sorted.length);
+        safeSet(setHasMore, sorted.length >= 50);
       }
     } catch (err) {
       console.warn('[mail] cache restore failed:', err?.message);
@@ -194,8 +218,15 @@ const MailClientSection = () => {
         limit: 50,
         offset: start,
       });
-      const next = refresh ? rows : (prev) => [...prev, ...rows];
-      safeSet(setEmails, next);
+      // Merge by UID and keep newest-first date order so a refresh doesn't
+      // reorder existing items (which made the list "jump").
+      safeSet(setEmails, (prev) => {
+        const merged = new Map();
+        const current = refresh ? (emailsCacheRef.current?.[folder] || []) : (Array.isArray(prev) ? prev : []);
+        for (const item of current) if (item?.uid != null) merged.set(Number(item.uid), item);
+        for (const item of rows) if (item?.uid != null) merged.set(Number(item.uid), item);
+        return [...merged.values()].sort(mailRowSorter);
+      });
       safeSet(setOffset, start + rows.length);
       safeSet(setHasMore, rows.length >= 50);
       if (rows.length) {
@@ -206,7 +237,7 @@ const MailClientSection = () => {
         safeSet(setInboxUnread, (prev) => ({ ...prev, ...unread }));
         emailsCacheRef.current = {
           ...(emailsCacheRef.current || {}),
-          [folder]: refresh ? rows : [...(emailsCacheRef.current?.[folder] || []), ...rows],
+          [folder]: mergeMailRows(emailsCacheRef.current?.[folder] || [], rows),
         };
         persistCache();
       }
