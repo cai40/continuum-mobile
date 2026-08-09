@@ -205,7 +205,7 @@ async function fetchEmail(uid, folder = 'INBOX') {
   const imap = findImapScript();
   if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
   const args = ['fetch', String(uid), '--mailbox', folder];
-  const result = await runScript(imap, args, { timeoutMs: 120000 });
+  const result = await runScript(imap, args, { timeoutMs: 45000 });
   if (!result || result.uid == null) throw new Error('Email not found.');
   const email = {
     uid: Number(result.uid),
