@@ -1,0 +1,11 @@
+Mail client polish: cached list, compose, single-row header, better send errors
+
+- Persist the last pulled folder list + per-folder email lists to AsyncStorage;
+  the Email tab now shows the cached pull instantly on open (or folder switch),
+  then refreshes in the background instead of blanking first.
+- Add a Compose button (new email) alongside Reply; compose modal shows a clear
+  inline error if send fails. Reply To now only accepts a real email address.
+- Merge the Mail/Cleanup toggle and the folder bar into one compact horizontal
+  row (Mail | Cleanup | INBOX | Sent | More | Compose).
+- Bridge mailClient.runScript now logs child stderr and surfaces the actual
+  SMTP/IMAP error message to the app instead of a generic failure.

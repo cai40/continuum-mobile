@@ -100,12 +100,26 @@ function skillEnv(scriptPath) {
 }
 
 async function runScript(scriptPath, args, { timeoutMs = 120000, maxBuffer = 16 * 1024 * 1024 } = {}) {
-  const { stdout } = await execFileAsync('node', [scriptPath, ...args], {
-    timeout: timeoutMs,
-    maxBuffer,
-    cwd: path.dirname(path.dirname(scriptPath)),
-    env: skillEnv(scriptPath),
-  });
+  let stdout;
+  let stderr = '';
+  try {
+    const result = await execFileAsync('node', [scriptPath, ...args], {
+      timeout: timeoutMs,
+      maxBuffer,
+      cwd: path.dirname(path.dirname(scriptPath)),
+      env: skillEnv(scriptPath),
+    });
+    stdout = result.stdout;
+    stderr = result.stderr || '';
+  } catch (err) {
+    const childErr = (err && (err.stderr || err.stdout)) || '';
+    const detail = String(childErr || err?.message || 'Unknown script error').trim().slice(0, 500);
+    console.error(`[continuum-bridge] ${path.basename(scriptPath)} ${args[0] || ''} failed:`, detail);
+    throw new Error(detail || `Script ${path.basename(scriptPath)} failed.`);
+  }
+  if (stderr && String(stderr).trim()) {
+    console.error(`[continuum-bridge] ${path.basename(scriptPath)} ${args[0] || ''} stderr:`, String(stderr).trim().slice(0, 500));
+  }
   const text = String(stdout || '').trim();
   if (!text) return null;
   try {
