@@ -30,6 +30,13 @@ const SENDER_SEARCH_FROM = {
   'Michelle Wang': 'bingjing6699@gmail.com',
 };
 
+/** Known From needles per sender — only mail matching these is ingested. */
+const SENDER_NEEDLES = {};
+for (const rule of BUILTIN_CLEANUP_FOLDER) {
+  SENDER_NEEDLES[rule.label] = rule.needles;
+}
+SENDER_NEEDLES['Michelle Wang'] = ['michelle wang', 'bingjing6699@gmail.com'];
+
 function familyIngestEnabled() {
   return process.env.EMAIL_FAMILY_INGEST_ENABLED !== 'false';
 }
@@ -50,6 +57,7 @@ async function runFamilyMemoryIngest({ imapScript = null, limit = null, recent =
       const result = await ingestSenderIntoMemory({
         sender,
         searchFrom: SENDER_SEARCH_FROM[sender] || null,
+        needles: SENDER_NEEDLES[sender] || null,
         limit: limit || DEFAULT_INGEST_LIMIT,
         recent: recent || DEFAULT_INGEST_RECENT,
         allNew: true,
@@ -86,6 +94,7 @@ function formatFamilyIngestSummary(results) {
 module.exports = {
   FAMILY_MEMORY_INGEST_SENDERS,
   SENDER_SEARCH_FROM,
+  SENDER_NEEDLES,
   familyIngestEnabled,
   runFamilyMemoryIngest,
   formatFamilyIngestSummary,

@@ -118,6 +118,10 @@ function runImapSearch(from, limit, recent, imapScript = IMAP) {
 async function ingestSenderIntoMemory({
   sender = DEFAULT_SENDER,
   searchFrom = null,
+  // Known From needles for this sender. When provided, fetched messages whose
+  // From does NOT match any needle are skipped — so junk/promos that Yahoo's
+  // loose FROM search surfaces are never ingested into memory.
+  needles = null,
   limit = clampLimit(process.env.EMAIL_INGEST_LIMIT || '50'),
   recent = process.env.EMAIL_INGEST_RECENT || '30d',
   allNew = true,
@@ -132,10 +136,25 @@ async function ingestSenderIntoMemory({
 
   const log = onLog || ((line) => console.log(line));
   log(`Searching Yahoo for FROM "${needle}" limit=${limit} recent=${recent}`);
-  const all = runImapSearch(needle, limit, recent, imapScript);
+  let all = runImapSearch(needle, limit, recent, imapScript);
   if (!Array.isArray(all) || all.length === 0) {
     log('No matching emails found.');
     return { sender, fetched: 0, ingested: 0, uids: [], reply: null };
+  }
+
+  // Only ingest mail whose From matches a known needle for this sender.
+  const familyNeedles = (needles || [])
+    .map((n) => String(n).toLowerCase())
+    .filter((n) => n.length >= 3);
+  if (familyNeedles.length) {
+    const before = all.length;
+    all = all.filter((m) => {
+      const blob = `${m.from?.text || m.from || m.fromAddress || ''}`.toLowerCase();
+      return familyNeedles.some((n) => blob.includes(n));
+    });
+    if (all.length < before) {
+      log(`Filtered out ${before - all.length} non-family email(s) (${all.length} kept).`);
+    }
   }
 
   const batch = allNew
