@@ -758,7 +758,7 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    const mailReadMatch = req.method === 'GET' && req.url?.match(/^\/mail\/read\/(\d+)$/);
+    const mailReadMatch = req.method === 'GET' && req.url?.match(/^\/mail\/read\/(\d+)(?:\?.*)?$/);
     if (mailReadMatch) {
       if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
       try {

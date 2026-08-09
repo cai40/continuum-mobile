@@ -399,6 +399,147 @@ async function searchUidsLogged(imap, criteria, label, timeoutMs = 90000) {
   return uids;
 }
 
+/**
+ * Fetch a seqno window (newest-first pagination) without a full SEARCH ALL.
+ * Only headers + body text are fetched (no attachments/full bodies), which
+ * keeps huge mailboxes (tens of thousands of messages) fast.
+ */
+function fetchSeqnoWindow(imap, seqnos, fetchOptions) {
+  return new Promise((resolve, reject) => {
+    const fetch = imap.seq.fetch(seqnos, fetchOptions);
+    const messages = [];
+
+    fetch.on('message', (msg) => {
+      const parts = [];
+      let attrs = null;
+
+      msg.on('body', (stream, info) => {
+        let buffer = '';
+        stream.on('data', (chunk) => {
+          buffer += chunk.toString('utf8');
+        });
+        stream.once('end', () => {
+          parts.push({ which: info.which, body: buffer });
+        });
+      });
+
+      msg.once('attributes', (a) => {
+        attrs = a;
+        parts.forEach((part) => {
+          part.attributes = a;
+        });
+      });
+
+      msg.once('end', () => {
+        if (parts.length > 0) {
+          parts.forEach((p) => { p.attributes = attrs || p.attributes; });
+          messages.push(parts);
+        }
+      });
+    });
+
+    fetch.once('error', (err) => {
+      reject(err);
+    });
+
+    fetch.once('end', () => {
+      resolve(messages);
+    });
+  });
+}
+
+function seqnoRangeString(start, end) {
+  if (start === end) return String(start);
+  return `${start}:${end}`;
+}
+
+/**
+ * List newest emails by seqno window (no full mailbox UID search).
+ * Returns compact rows: { uid, from, subject, date, headerDate, flags, snippet }.
+ */
+async function listEmailsByWindow(mailbox, limit, offset, unreadOnly) {
+  const imap = await connect();
+  try {
+    const resolvedMailbox = await resolveMailboxName(imap, mailbox);
+    const box = await openBox(imap, resolvedMailbox);
+    const total = box.messages.total;
+    const lim = Math.max(1, Math.min(parseInt(limit, 10) || 20, 200));
+    const off = Math.max(0, parseInt(offset, 10) || 0);
+
+    if (unreadOnly) {
+      // UNSEEN filter still needs a search, but scoped to the window via seqno.
+      const allUids = await searchUids(imap, ['UNSEEN']);
+      const wanted = selectUidsByOffsetLimit(allUids, lim, off);
+      if (wanted.length === 0) return [];
+      const messages = await fetchByUids(imap, wanted, {
+        bodies: ['HEADER.FIELDS (FROM SUBJECT DATE)', 'TEXT'],
+        markSeen: false,
+      });
+      // fetchByUids returns only the first body part per message (HEADER.FIELDS).
+      const rows = [];
+      for (const item of messages) {
+        rows.push(buildListRow([item], item.attributes));
+      }
+      return rows.reverse();
+    }
+
+    // Newest messages live at the highest seqnos. Window: [total-off-limit+1, total-off].
+    const end = total - off;
+    const start = Math.max(1, end - lim + 1);
+    if (start > end) return [];
+
+    const fetchOptions = {
+      bodies: ['HEADER.FIELDS (FROM SUBJECT DATE)', 'TEXT'],
+      markSeen: false,
+    };
+    const partsList = await fetchSeqnoWindow(imap, seqnoRangeString(start, end), fetchOptions);
+
+    // partsList is ordered oldest→newest (seqno ascending); reverse for newest-first.
+    const rows = [];
+    for (const parts of partsList) {
+      const attrs = parts[0]?.attributes || null;
+      rows.push(buildListRow(parts, attrs));
+    }
+    return rows.reverse();
+  } finally {
+    imap.end();
+  }
+}
+
+function parseHeaderPart(raw) {
+  const text = String(raw || '');
+  const get = (name) => {
+    const re = new RegExp(`^${name}:\\s*(.+)$`, 'im');
+    const m = text.match(re);
+    return m ? decodeHeaderValue(m[1]) : '';
+  };
+  return {
+    from: get('From') || 'Unknown',
+    subject: get('Subject') || '(no subject)',
+    date: get('Date') || null,
+  };
+}
+
+function buildListRow(parts, attrs) {
+  const headerPart = (parts || []).find((p) => p?.which && p.which.includes('HEADER.FIELDS'))
+    || (parts || [])[0];
+  const textPart = (parts || []).find((p) => p?.which === 'TEXT');
+  const header = parseHeaderPart(headerPart?.body || '');
+  const textRaw = String(textPart?.body || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return {
+    uid: attrs?.uid != null ? Number(attrs.uid) : null,
+    from: header.from,
+    subject: header.subject,
+    date: attrs?.date || header.date || null,
+    headerDate: header.date || null,
+    flags: attrs?.flags || [],
+    snippet: textRaw.slice(0, 220),
+  };
+}
+
 // Search for messages
 function searchMessages(imap, criteria, fetchOptions) {
   return new Promise((resolve, reject) => {
@@ -2085,6 +2226,18 @@ async function main() {
     let result;
 
     switch (command) {
+      case 'list':
+        if (!options.mailbox) {
+          throw new Error('Mailbox required: node imap.js list --mailbox <folder>');
+        }
+        result = await listEmailsByWindow(
+          options.mailbox,
+          parseInt(options.limit) || 50,
+          parseInt(options.offset) || 0,
+          !!options.unseen,
+        );
+        break;
+
       case 'check':
         result = await checkEmails(
           options.mailbox || DEFAULT_MAILBOX,
@@ -2197,7 +2350,7 @@ async function main() {
 
       default:
         console.error('Unknown command:', command);
-        console.error('Available commands: check, fetch, download, search, mark-read, mark-unread, delete, move, copy, copy-all, list-uids, list-mailboxes, list-accounts');
+        console.error('Available commands: list, check, fetch, download, search, mark-read, mark-unread, delete, move, copy, copy-all, list-uids, list-mailboxes, list-accounts');
         process.exit(1);
     }
 

@@ -16,10 +16,10 @@ const fakeExecFile = (script, args, opts, cb) => {
   let out;
   if (command === 'list-mailboxes') {
     out = JSON.stringify([{ name: 'INBOX' }, { name: 'Min and Kids' }, { name: 'Archive' }]);
-  } else if (command === 'check') {
+  } else if (command === 'list') {
     out = JSON.stringify([
       { uid: 101, from: 'Min Zhang <njsgas@gmail.com>', subject: 'Hi', date: '2026-08-08T12:00:00Z', flags: ['\\Seen'], snippet: 'hello there' },
-      { uid: 102, from: 'Daniel Cai', subject: 'Lunch', date: '2026-08-07T12:00:00Z', flags: [], text: '<p>let\'s do lunch</p>' },
+      { uid: 102, from: 'Daniel Cai', subject: 'Lunch', date: '2026-08-07T12:00:00Z', flags: [], snippet: 'let\'s do lunch' },
     ]);
   } else if (command === 'fetch') {
     out = JSON.stringify({
@@ -84,11 +84,32 @@ async function run() {
   const folders = await mail.listMailboxes();
   assert.strictEqual(folders.map((f) => f.name).join(','), 'INBOX,Min and Kids,Archive');
 
-  // listEmails
+  // listEmails (uses fast `list` command)
   const emails = await mail.listEmails({ folder: 'INBOX', limit: 50, offset: 0 });
   assert.strictEqual(emails.length, 2);
   assert.strictEqual(emails[0].uid, 101);
-  assert.strictEqual(emails[1].snippet, "let's do lunch"); // HTML stripped to text
+  assert.strictEqual(emails[1].snippet, "let's do lunch");
+
+  // Cache: second identical list call must NOT hit the script again.
+  const callsBefore = scriptCalls.filter((c) => c.args[1] === 'list').length;
+  const emails2 = await mail.listEmails({ folder: 'INBOX', limit: 50, offset: 0 });
+  assert.strictEqual(emails2.length, 2, 'cached list returns rows');
+  const callsAfter = scriptCalls.filter((c) => c.args[1] === 'list').length;
+  assert.strictEqual(callsAfter, callsBefore, 'list cache prevents re-fetch');
+
+  // Cache: fetchEmail twice hits script once.
+  const fetchCallsBefore = scriptCalls.filter((c) => c.args[1] === 'fetch').length;
+  await mail.fetchEmail(101, 'INBOX');
+  await mail.fetchEmail(101, 'INBOX');
+  const fetchCallsAfter = scriptCalls.filter((c) => c.args[1] === 'fetch').length;
+  assert.strictEqual(fetchCallsAfter - fetchCallsBefore, 1, 'email cache prevents re-fetch');
+
+  // markRead busts the list cache so a fresh list call re-fetches.
+  await mail.markRead([101], 'INBOX');
+  const callsBeforeBust = scriptCalls.filter((c) => c.args[1] === 'list').length;
+  await mail.listEmails({ folder: 'INBOX', limit: 50, offset: 0 });
+  const callsAfterBust = scriptCalls.filter((c) => c.args[1] === 'list').length;
+  assert.strictEqual(callsAfterBust, callsBeforeBust + 1, 'markRead busts list cache');
 
   // fetchEmail
   const email = await mail.fetchEmail(101, 'INBOX');

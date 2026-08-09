@@ -22,6 +22,45 @@ const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
+// ---- Simple TTL cache -------------------------------------------------
+const cacheStore = new Map();
+const CACHE_TTL = {
+  folders: 5 * 60 * 1000, // 5 min
+  list: 60 * 1000, // 60s
+  email: 10 * 60 * 1000, // 10 min
+};
+const CACHE_MAX_ENTRIES = 300;
+
+function cacheKey(prefix, parts) {
+  return `${prefix}:${(parts || []).map((p) => String(p ?? '')).join('|')}`;
+}
+
+function cacheGet(key) {
+  const entry = cacheStore.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.at > entry.ttl) {
+    cacheStore.delete(key);
+    return undefined;
+  }
+  return entry.value;
+}
+
+function cacheSet(key, value, ttl, { version = null } = {}) {
+  cacheStore.set(key, { value, at: Date.now(), ttl, version });
+  if (cacheStore.size > CACHE_MAX_ENTRIES) {
+    const oldest = [...cacheStore.entries()]
+      .sort((a, b) => a[1].at - b[1].at)
+      .slice(0, cacheStore.size - CACHE_MAX_ENTRIES);
+    for (const [k] of oldest) cacheStore.delete(k);
+  }
+}
+
+function cacheBustPrefix(prefix) {
+  for (const key of cacheStore.keys()) {
+    if (key.startsWith(`${prefix}:`)) cacheStore.delete(key);
+  }
+}
+
 function findImapScript() {
   if (process.env.IMAP_SCRIPT && fs.existsSync(process.env.IMAP_SCRIPT)) {
     return process.env.IMAP_SCRIPT;
@@ -103,28 +142,42 @@ function normalizeEmailRow(row) {
 }
 
 async function listMailboxes() {
+  const key = cacheKey('folders');
+  const cached = cacheGet(key);
+  if (cached) return cached;
   const imap = findImapScript();
   if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
   const result = await runScript(imap, ['list-mailboxes']);
-  return Array.isArray(result) ? result : [];
+  const folders = Array.isArray(result) ? result : [];
+  cacheSet(key, folders, CACHE_TTL.folders);
+  return folders;
 }
 
 async function listEmails({ folder = 'INBOX', limit = 50, offset = 0 } = {}) {
+  const key = cacheKey('list', [folder, limit, offset]);
+  const cached = cacheGet(key);
+  if (cached) return cached;
   const imap = findImapScript();
   if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
-  const args = ['check', '--mailbox', folder, '--limit', String(limit), '--offset', String(offset), '--lite'];
-  const rows = await runScript(imap, args, { timeoutMs: 180000 });
+  // Use the fast seqno-window `list` command (no full-mailbox SEARCH ALL).
+  const args = ['list', '--mailbox', folder, '--limit', String(limit), '--offset', String(offset)];
+  const rows = await runScript(imap, args, { timeoutMs: 120000 });
   if (!Array.isArray(rows)) return [];
-  return rows.map(normalizeEmailRow);
+  const normalized = rows.map(normalizeEmailRow);
+  cacheSet(key, normalized, CACHE_TTL.list);
+  return normalized;
 }
 
 async function fetchEmail(uid, folder = 'INBOX') {
+  const key = cacheKey('email', [folder, uid]);
+  const cached = cacheGet(key);
+  if (cached) return cached;
   const imap = findImapScript();
   if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
   const args = ['fetch', String(uid), '--mailbox', folder];
   const result = await runScript(imap, args, { timeoutMs: 120000 });
   if (!result || result.uid == null) throw new Error('Email not found.');
-  return {
+  const email = {
     uid: Number(result.uid),
     from: result.from || 'Unknown',
     to: result.to || '',
@@ -144,6 +197,8 @@ async function fetchEmail(uid, folder = 'INBOX') {
       }))
       : [],
   };
+  cacheSet(key, email, CACHE_TTL.email);
+  return email;
 }
 
 async function markRead(uids, folder = 'INBOX') {
@@ -152,6 +207,9 @@ async function markRead(uids, folder = 'INBOX') {
   const list = (Array.isArray(uids) ? uids : [uids]).map(String);
   if (!list.length) return { success: true, uids: [] };
   const result = await runScript(imap, ['mark-read', ...list, '--mailbox', folder], { timeoutMs: 120000 });
+  // Invalidate list + email caches for this folder so read state refreshes.
+  cacheBustPrefix('list');
+  for (const uid of list) cacheStore.delete(cacheKey('email', [folder, uid]));
   return result || { success: true, uids: list };
 }
 
