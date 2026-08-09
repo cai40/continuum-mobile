@@ -751,7 +751,8 @@ const server = http.createServer(async (req, res) => {
         const folder = url.searchParams.get('folder') || 'INBOX';
         const limit = Math.min(parseInt(url.searchParams.get('limit'), 10) || 50, 200);
         const offset = Math.max(parseInt(url.searchParams.get('offset'), 10) || 0, 0);
-        const emails = await mailClient.listEmails({ folder, limit, offset });
+        const nocache = url.searchParams.get('nocache') === '1';
+        const emails = await mailClient.listEmails({ folder, limit, offset, nocache });
         return json(res, 200, { success: true, folder, limit, offset, emails });
       } catch (err) {
         return json(res, 500, { success: false, error: err.message || String(err) });

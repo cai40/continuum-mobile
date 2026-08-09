@@ -183,10 +183,12 @@ async function listMailboxes() {
   return folders;
 }
 
-async function listEmails({ folder = 'INBOX', limit = 50, offset = 0 } = {}) {
+async function listEmails({ folder = 'INBOX', limit = 50, offset = 0, nocache = false } = {}) {
   const key = cacheKey('list', [folder, limit, offset]);
-  const cached = cacheGet(key);
-  if (cached) return cached;
+  if (!nocache) {
+    const cached = cacheGet(key);
+    if (cached) return cached;
+  }
   const imap = findImapScript();
   if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
   // Use the fast seqno-window `list` command (no full-mailbox SEARCH ALL).
