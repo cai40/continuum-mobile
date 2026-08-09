@@ -31,6 +31,16 @@ const CACHE_TTL = {
 };
 const CACHE_MAX_ENTRIES = 300;
 
+// Serialize IMAP/SMTP child-process calls so only one heavy child runs at a
+// time. Render's small instances OOM when several node children (imap list +
+// smtp send + ingest) run concurrently — this caps peak memory.
+let scriptQueue = Promise.resolve();
+function enqueueScript(run) {
+  const next = scriptQueue.then(run, run);
+  scriptQueue = next.catch(() => {});
+  return next;
+}
+
 function cacheKey(prefix, parts) {
   return `${prefix}:${(parts || []).map((p) => String(p ?? '')).join('|')}`;
 }
@@ -99,13 +109,19 @@ function skillEnv(scriptPath) {
   return { ...process.env, NODE_PATH: path.join(skillRoot, 'node_modules') };
 }
 
-async function runScript(scriptPath, args, { timeoutMs = 120000, maxBuffer = 16 * 1024 * 1024 } = {}) {
+async function runScript(scriptPath, args, { timeoutMs = 120000, maxBuffer = 16 * 1024 * 1024, input = null } = {}) {
+  // Run through the serial queue to keep only one child process alive at a time.
+  return enqueueScript(() => runScriptNow(scriptPath, args, { timeoutMs, maxBuffer, input }));
+}
+
+async function runScriptNow(scriptPath, args, { timeoutMs = 120000, maxBuffer = 16 * 1024 * 1024, input = null } = {}) {
   let stdout;
   let stderr = '';
   try {
     const result = await execFileAsync('node', [scriptPath, ...args], {
       timeout: timeoutMs,
       maxBuffer,
+      input: input == null ? undefined : String(input),
       cwd: path.dirname(path.dirname(scriptPath)),
       env: skillEnv(scriptPath),
     });
@@ -227,6 +243,19 @@ async function markRead(uids, folder = 'INBOX') {
   return result || { success: true, uids: list };
 }
 
+async function deleteEmails(uids, folder = 'INBOX') {
+  const imap = findImapScript();
+  if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS.');
+  const list = (Array.isArray(uids) ? uids : [uids]).map(String);
+  if (!list.length) return { success: true, uids: [] };
+  // `delete` moves to Yahoo Trash (recoverable), matching the cleanup flow.
+  const result = await runScript(imap, ['delete', ...list, '--mailbox', folder], { timeoutMs: 180000 });
+  // Invalidate list + email caches for this folder so deleted mail disappears.
+  cacheBustPrefix('list');
+  for (const uid of list) cacheStore.delete(cacheKey('email', [folder, uid]));
+  return result || { success: true, uids: list, action: 'moved_to_trash' };
+}
+
 async function sendEmail({ to, cc = null, subject, body } = {}) {
   const imap = findImapScript();
   const smtp = findSmtpScript(imap);
@@ -235,9 +264,11 @@ async function sendEmail({ to, cc = null, subject, body } = {}) {
   }
   if (!to || !subject || !body) throw new Error('To, subject, and body are required.');
 
-  const args = ['send', '--to', to, '--subject', subject, '--body', body];
+  // Pass the body via stdin (--body-stdin) so long reply bodies with lines like
+  // "-- something" can never be misread as CLI flags, and to avoid a giant argv.
+  const args = ['send', '--to', to, '--subject', subject, '--body-stdin'];
   if (cc) args.push('--cc', cc);
-  return runScript(smtp, args, { timeoutMs: 120000 });
+  return runScript(smtp, args, { timeoutMs: 120000, input: body });
 }
 
 /**
@@ -285,6 +316,7 @@ module.exports = {
   listEmails,
   fetchEmail,
   markRead,
+  deleteEmails,
   sendEmail,
   ingestEmailIntoMemory,
   normalizeEmailRow,

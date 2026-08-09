@@ -12,6 +12,15 @@ const os = require('os');
 const fs = require('fs');
 const config = require('./config');
 
+function readStdin() {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    process.stdin.on('data', (c) => chunks.push(c));
+    process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    process.stdin.on('error', reject);
+  });
+}
+
 function validateReadPath(inputPath) {
   let realPath;
   try {
@@ -249,6 +258,10 @@ async function main() {
         } else if (options['html-file']) {
           validateReadPath(options['html-file']);
           options.html = fs.readFileSync(options['html-file'], 'utf8');
+        } else if (options['body-stdin']) {
+          // Read body from stdin — avoids argv-size limits and "--" flag
+          // collisions in long reply bodies.
+          options.text = await readStdin();
         } else if (options.body) {
           options.text = options.body;
         }

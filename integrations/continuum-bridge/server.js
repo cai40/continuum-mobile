@@ -788,6 +788,17 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    if (req.method === 'POST' && req.url === '/mail/delete') {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const result = await mailClient.deleteEmails(body.uids, body.folder || 'INBOX');
+        return json(res, 200, { success: true, ...result });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
     if (req.method === 'POST' && req.url === '/mail/send') {
       if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
       try {
@@ -920,6 +931,7 @@ server.listen(PORT, HOST, () => {
   console.log('  GET  /mail/list           (mail client — list emails)');
   console.log('  GET  /mail/read/:uid      (mail client — open email + memory ingest)');
   console.log('  POST /mail/mark-read      (mail client — mark read)');
+  console.log('  POST /mail/delete         (mail client — move to Trash)');
   console.log('  POST /mail/send           (mail client — reply/send)');
   console.log('  POST /mail/ingest         (mail client — load email into memory)');
   console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');

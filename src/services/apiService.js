@@ -1066,6 +1066,13 @@ export const markMailRead = async (bridgeSecret, uids, folder = 'INBOX') => {
   });
 };
 
+export const deleteMail = async (bridgeSecret, uids, folder = 'INBOX') => {
+  return mailRequest('/mail/delete', bridgeSecret, null, {
+    method: 'POST',
+    body: JSON.stringify({ uids: Array.isArray(uids) ? uids : [uids], folder }),
+  });
+};
+
 export const sendMailReply = async (bridgeSecret, { to, cc, subject, body } = {}) => {
   return mailRequest('/mail/send', bridgeSecret, null, {
     method: 'POST',

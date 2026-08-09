@@ -34,6 +34,8 @@ const fakeExecFile = (script, args, opts, cb) => {
     });
   } else if (command === 'mark-read') {
     out = JSON.stringify({ success: true, uids: args.slice(2, -2) });
+  } else if (command === 'delete') {
+    out = JSON.stringify({ success: true, uids: args.slice(2, -2), action: 'moved_to_trash' });
   } else if (command === 'send') {
     out = JSON.stringify({ success: true, messageId: 'fake-123', to: args[args.indexOf('--to') + 1] });
   } else {
@@ -120,10 +122,22 @@ async function run() {
   const marked = await mail.markRead([101, 102], 'INBOX');
   assert.ok(marked.success);
 
-  // sendEmail
-  const sent = await mail.sendEmail({ to: 'njsgas@gmail.com', subject: 'Re: Hi', body: 'Thanks!' });
+  // sendEmail (body via stdin)
+  const sent = await mail.sendEmail({ to: 'njsgas@gmail.com', subject: 'Re: Hi', body: 'Thanks! -- not a flag' });
   assert.ok(sent.success);
   assert.strictEqual(sent.to, 'njsgas@gmail.com');
+
+  // deleteEmails moves to Trash and busts the list cache.
+  const delCallsBefore = scriptCalls.filter((c) => c.args[1] === 'delete').length;
+  const deleted = await mail.deleteEmails([101, 102], 'INBOX');
+  assert.ok(deleted.success);
+  assert.strictEqual(deleted.action, 'moved_to_trash');
+  const delCallsAfter = scriptCalls.filter((c) => c.args[1] === 'delete').length;
+  assert.strictEqual(delCallsAfter, delCallsBefore + 1, 'delete invoked once');
+  const listCallsBeforeBust = scriptCalls.filter((c) => c.args[1] === 'list').length;
+  await mail.listEmails({ folder: 'INBOX', limit: 50, offset: 0 });
+  const listCallsAfterBust = scriptCalls.filter((c) => c.args[1] === 'list').length;
+  assert.strictEqual(listCallsAfterBust, listCallsBeforeBust + 1, 'delete busts list cache');
 
   console.log('mailClient: all checks passed');
 }
