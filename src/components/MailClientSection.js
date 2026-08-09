@@ -338,7 +338,11 @@ const MailClientSection = () => {
       // with an error just because the background IMAP refresh failed (e.g.
       // the bridge restarted and the UID is momentarily unreachable).
       if (!cachedDetail) {
-        safeSet(setDetailError, err?.message || 'Could not open email.');
+        const msg = String(err?.message || '');
+        const friendly = /not found/i.test(msg)
+          ? 'This email is no longer available in this folder (it may have been moved or deleted). Pull to refresh the list.'
+          : (msg || 'Could not open email.');
+        safeSet(setDetailError, friendly);
       } else {
         console.warn('[mail] background refresh failed, showing cached copy:', err?.message);
       }
