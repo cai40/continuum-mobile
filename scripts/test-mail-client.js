@@ -10,19 +10,18 @@ const srcPath = path.join(__dirname, '../integrations/continuum-bridge/mailClien
 const src = fs.readFileSync(srcPath, 'utf8');
 
 const scriptCalls = [];
-const fakeExecFile = (script, args, opts, cb) => {
-  scriptCalls.push({ script, args, opts });
+function buildFakeOutput(script, args) {
+  scriptCalls.push({ script, args });
   const command = args[1] || '';
-  let out;
   if (command === 'list-mailboxes') {
-    out = JSON.stringify([{ name: 'INBOX' }, { name: 'Min and Kids' }, { name: 'Archive' }]);
+    return JSON.stringify([{ name: 'INBOX' }, { name: 'Min and Kids' }, { name: 'Archive' }]);
   } else if (command === 'list') {
-    out = JSON.stringify([
+    return JSON.stringify([
       { uid: 101, from: 'Min Zhang <njsgas@gmail.com>', subject: 'Hi', date: '2026-08-08T12:00:00Z', flags: ['\\Seen'], snippet: 'hello there' },
       { uid: 102, from: 'Daniel Cai', subject: 'Lunch', date: '2026-08-07T12:00:00Z', flags: [], snippet: 'let\'s do lunch' },
     ]);
   } else if (command === 'fetch') {
-    out = JSON.stringify({
+    return JSON.stringify({
       uid: 101,
       from: 'Min Zhang <njsgas@gmail.com>',
       to: 'me@example.com',
@@ -33,15 +32,16 @@ const fakeExecFile = (script, args, opts, cb) => {
       html: '<p>Hello <b>world</b> body</p>',
     });
   } else if (command === 'mark-read') {
-    out = JSON.stringify({ success: true, uids: args.slice(2, -2) });
+    return JSON.stringify({ success: true, uids: args.slice(2, -2) });
   } else if (command === 'delete') {
-    out = JSON.stringify({ success: true, uids: args.slice(2, -2), action: 'moved_to_trash' });
+    return JSON.stringify({ success: true, uids: args.slice(2, -2), action: 'moved_to_trash' });
   } else if (command === 'send') {
-    out = JSON.stringify({ success: true, messageId: 'fake-123', to: args[args.indexOf('--to') + 1] });
-  } else {
-    out = JSON.stringify([]);
+    return JSON.stringify({ success: true, messageId: 'fake-123', to: args[args.indexOf('--to') + 1] });
   }
-  cb(null, out, '');
+  return JSON.stringify([]);
+}
+const fakeExecFile = (script, args, opts, cb) => {
+  cb(null, buildFakeOutput(script, args), '');
 };
 
 const sandbox = {
@@ -51,6 +51,26 @@ const sandbox = {
     if (name === 'child_process') {
       return {
         execFile: (script, args, opts, cb) => fakeExecFile(script, args, opts, cb),
+        // Minimal spawn stub so sendEmail (--body-stdin) is testable: capture
+        // stdin writes, emit stdout/stderr, then close.
+        spawn: (script, args, opts) => {
+          const child = {
+            stdin: {
+              write: (data) => { child._stdin = String(data); },
+              end: () => {
+                const out = buildFakeOutput(script, args);
+                if (out) child.stdout.emit('data', Buffer.from(out));
+                child.emit('close', 0);
+              },
+            },
+            stdout: { on: (ev, cb2) => { if (ev === 'data') child.stdout._data = cb2; }, emit: (ev, chunk) => { if (ev === 'data' && child.stdout._data) child.stdout._data(chunk); } },
+            stderr: { on: (ev, cb2) => { if (ev === 'data') child.stderr._data = cb2; }, emit: (ev, chunk) => { if (ev === 'data' && child.stderr._data) child.stderr._data(chunk); } },
+            on: (ev, cb2) => { if (ev === 'close') child._close = cb2; },
+            emit: (ev, code) => { if (ev === 'close' && child._close) child._close(code); },
+            kill: () => {},
+          };
+          return child;
+        },
       };
     }
     if (name === 'util') return { promisify: (fn) => (...a) => new Promise((resolve, reject) => {
@@ -60,6 +80,8 @@ const sandbox = {
   },
   console,
   process,
+  setTimeout,
+  clearTimeout,
   __dirname: path.dirname(srcPath),
   __filename: srcPath,
 };
