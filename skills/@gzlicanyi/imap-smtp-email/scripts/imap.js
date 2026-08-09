@@ -829,16 +829,18 @@ async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
     const item = messages[0];
     // With multiple body parts, searchMessages returns the parts array;
     // with a single part it returns the part object. Combine header + text
-    // so simpleParser can parse the full message.
+    // so simpleParser can parse the full message. Attributes live on each
+    // part (not on the array), so read uid/date/flags from the first part.
     const partList = Array.isArray(item) ? item : [item];
+    const attrs = partList[0]?.attributes || null;
     const rawBody = partList.map((p) => p.body || '').join('\r\n');
-    const parsed = await parseEmail(rawBody || item.body);
+    const parsed = await parseEmail(rawBody || partList[0]?.body || '');
 
     return {
-      uid: item.attributes.uid,
+      uid: attrs?.uid != null ? Number(attrs.uid) : Number(uid),
       ...parsed,
-      date: item.attributes.date, // INTERNALDATE
-      flags: item.attributes.flags,
+      date: attrs?.date || null, // INTERNALDATE
+      flags: attrs?.flags || [],
     };
   } finally {
     imap.end();
