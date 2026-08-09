@@ -296,9 +296,11 @@ const MailClientSection = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     safeSet(setSelectedUid, uid);
     // Show a cached body instantly if we have one (faster perceived open),
-    // then refresh from IMAP in the background.
+    // then refresh from IMAP in the background. If the cached copy has no body
+    // at all (old fetch format), wait for the fresh fetch instead.
     const cachedDetail = detailCacheRef.current[uid];
-    if (cachedDetail) {
+    const cacheUsable = cachedDetail && (cachedDetail.html || cachedDetail.text);
+    if (cacheUsable) {
       safeSet(setDetail, cachedDetail);
       safeSet(setDetailLoading, false);
       safeSet(setDetailError, null);
