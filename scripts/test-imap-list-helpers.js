@@ -159,4 +159,39 @@ function run() {
   console.log('imap list helpers: all checks passed');
 }
 
+/**
+ * Regression: fetchEmail must read uid/date/flags from the FIRST PART when
+ * searchMessages returns a parts array (multiple body parts), not from the
+ * array itself — otherwise "Cannot read properties of undefined (reading 'uid')".
+ */
+function fetchEmailAttributes(partList) {
+  const parts = Array.isArray(partList) ? partList : [partList];
+  const attrs = parts[0]?.attributes || null;
+  return {
+    uid: attrs?.uid != null ? Number(attrs.uid) : 0,
+    date: attrs?.date || null,
+    flags: attrs?.flags || [],
+  };
+}
+
+function runAttributes() {
+  // Multi-part case: searchMessages returns an array; attributes on elements.
+  const multiPart = [
+    { body: 'From: A', attributes: { uid: 777, date: new Date('2026-08-08T00:00:00Z'), flags: ['\\Seen'] } },
+    { body: 'TEXT', attributes: { uid: 777, date: new Date('2026-08-08T00:00:00Z'), flags: ['\\Seen'] } },
+  ];
+  const r1 = fetchEmailAttributes(multiPart);
+  assert.strictEqual(r1.uid, 777);
+  assert.ok(r1.flags.includes('\\Seen'));
+  assert.ok(r1.date instanceof Date);
+
+  // Single-part case: searchMessages returns the part object directly.
+  const singlePart = { body: 'From: A', attributes: { uid: 888, date: new Date('2026-08-07T00:00:00Z'), flags: [] } };
+  const r2 = fetchEmailAttributes(singlePart);
+  assert.strictEqual(r2.uid, 888);
+
+  console.log('fetchEmail attributes: all checks passed');
+}
+
 run();
+runAttributes();

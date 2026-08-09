@@ -306,7 +306,11 @@ const MailClientSection = () => {
     try {
       // The bridge ingests the opened email into memory on /mail/read, so no
       // separate ingest round-trip is needed here.
-      const { email } = await fetchMailMessage(bridgeSecret, authToken, uid, activeFolder);
+      const result = await fetchMailMessage(bridgeSecret, authToken, uid, activeFolder);
+      const email = result?.email || null;
+      if (!email) {
+        throw new Error('Email could not be loaded. Try again in a moment.');
+      }
       detailCacheRef.current[uid] = email;
       // Cap the persistent detail cache so it doesn't grow without bound.
       try {
