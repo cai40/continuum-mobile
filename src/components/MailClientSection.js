@@ -14,10 +14,12 @@ import {
   ScrollView,
   Animated,
   PanResponder,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RenderHtml from 'react-native-render-html';
 import { theme } from '../styles/theme';
 import { useAppContext } from '../context/AppContext';
 import CleanupRangePanel from './CleanupRangePanel';
@@ -107,6 +109,8 @@ const MailClientSection = () => {
   const { renderEmailEnabled, renderEmailBridgeSecret, session, setActiveTab, setPendingChatMessage } = useAppContext();
   const bridgeSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
   const authToken = session?.access_token?.trim();
+  const { width: windowWidth } = useWindowDimensions();
+  const detailContentWidth = windowWidth - 32; // matches detail padding (16 each side)
 
   const [mode, setMode] = useState('mail'); // 'mail' | 'cleanup'
   const [folders, setFolders] = useState([]);
@@ -718,9 +722,20 @@ const MailClientSection = () => {
                 ))}
               </View>
             ) : null}
-            <Text style={{ fontSize: 15, color: theme.colors.textPrimary, lineHeight: 22, marginTop: 14 }}>
-              {detail.text || detail.snippet || '(No text body)'}
-            </Text>
+            {detail.html ? (
+              <View style={{ marginTop: 14 }}>
+                <RenderHtml
+                  contentWidth={detailContentWidth}
+                  source={{ html: detail.html }}
+                  defaultTextProps={{ style: { fontSize: 15, color: theme.colors.textPrimary, lineHeight: 22 } }}
+                  baseStyle={{ fontSize: 15, color: theme.colors.textPrimary, lineHeight: 22 }}
+                />
+              </View>
+            ) : (
+              <Text style={{ fontSize: 15, color: theme.colors.textPrimary, lineHeight: 22, marginTop: 14 }}>
+                {detail.text || detail.snippet || '(No text body)'}
+              </Text>
+            )}
           </ScrollView>
 
           <View style={{ padding: 12, borderTopWidth: 1, borderTopColor: theme.colors.border, backgroundColor: theme.colors.white }}>
