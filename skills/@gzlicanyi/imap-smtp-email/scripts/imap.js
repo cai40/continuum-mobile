@@ -804,6 +804,54 @@ async function fetchDateRangeForMailbox(imap, mailboxName, { sinceStr, beforeStr
   });
 }
 
+/**
+ * Fetch a single message by UID with all requested body parts. UID-based
+ * (imap.fetch, not search) — reliable on Yahoo where UID SEARCH can be flaky.
+ * Returns { parts, attributes } or null if the UID is gone.
+ */
+function fetchMessageByUid(imap, uid, fetchOptions) {
+  return new Promise((resolve, reject) => {
+    const fetch = imap.fetch(uid, fetchOptions);
+    let done = false;
+
+    fetch.on('message', (msg) => {
+      const parts = [];
+      let attrs = null;
+
+      msg.on('body', (stream, info) => {
+        let buffer = '';
+        stream.on('data', (chunk) => {
+          buffer += chunk.toString('utf8');
+        });
+        stream.once('end', () => {
+          parts.push({ which: info.which, body: buffer });
+        });
+      });
+
+      msg.once('attributes', (a) => {
+        attrs = a;
+        parts.forEach((part) => { part.attributes = a; });
+      });
+
+      msg.once('end', () => {
+        if (parts.length > 0) {
+          parts.forEach((p) => { p.attributes = attrs || p.attributes; });
+          done = true;
+          resolve({ parts, attributes: attrs || parts[0]?.attributes || null });
+        }
+      });
+    });
+
+    fetch.once('error', (err) => {
+      if (!done) reject(err);
+    });
+
+    fetch.once('end', () => {
+      if (!done) resolve(null);
+    });
+  });
+}
+
 // Fetch full email by UID (lightweight: headers + text only, no attachments).
 // Fetches only the parts we render, so big mails with attachments load fast
 // and don't balloon the bridge's memory.
@@ -814,27 +862,19 @@ async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
     const resolvedMailbox = await resolveMailboxName(imap, mailbox);
     await openBox(imap, resolvedMailbox);
 
-    const searchCriteria = [['UID', uid]];
     const fetchOptions = {
       bodies: ['HEADER.FIELDS (FROM TO CC SUBJECT DATE)', 'TEXT'],
       markSeen: false,
     };
 
-    const messages = await searchMessages(imap, searchCriteria, fetchOptions);
-
-    if (messages.length === 0) {
+    const result = await fetchMessageByUid(imap, uid, fetchOptions);
+    if (!result) {
       throw new Error(`Message UID ${uid} not found`);
     }
 
-    const item = messages[0];
-    // With multiple body parts, searchMessages returns the parts array;
-    // with a single part it returns the part object. Combine header + text
-    // so simpleParser can parse the full message. Attributes live on each
-    // part (not on the array), so read uid/date/flags from the first part.
-    const partList = Array.isArray(item) ? item : [item];
-    const attrs = partList[0]?.attributes || null;
-    const rawBody = partList.map((p) => p.body || '').join('\r\n');
-    const parsed = await parseEmail(rawBody || partList[0]?.body || '');
+    const rawBody = result.parts.map((p) => p.body || '').join('\r\n');
+    const parsed = await parseEmail(rawBody);
+    const attrs = result.attributes;
 
     return {
       uid: attrs?.uid != null ? Number(attrs.uid) : Number(uid),
