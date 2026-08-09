@@ -591,7 +591,8 @@ function searchMessages(imap, criteria, fetchOptions) {
 
         msg.once('end', () => {
           if (parts.length > 0) {
-            messages.push(parts[0]);
+            // Keep every requested body part so callers can join header + text.
+            messages.push(parts.length === 1 ? parts[0] : parts);
           }
         });
       });
@@ -803,7 +804,9 @@ async function fetchDateRangeForMailbox(imap, mailboxName, { sinceStr, beforeStr
   });
 }
 
-// Fetch full email by UID
+// Fetch full email by UID (lightweight: headers + text only, no attachments).
+// Fetches only the parts we render, so big mails with attachments load fast
+// and don't balloon the bridge's memory.
 async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
   const imap = await connect();
 
@@ -813,7 +816,7 @@ async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
 
     const searchCriteria = [['UID', uid]];
     const fetchOptions = {
-      bodies: [''],
+      bodies: ['HEADER.FIELDS (FROM TO CC SUBJECT DATE)', 'TEXT'],
       markSeen: false,
     };
 
@@ -824,7 +827,12 @@ async function fetchEmail(uid, mailbox = DEFAULT_MAILBOX) {
     }
 
     const item = messages[0];
-    const parsed = await parseEmail(item.body);
+    // With multiple body parts, searchMessages returns the parts array;
+    // with a single part it returns the part object. Combine header + text
+    // so simpleParser can parse the full message.
+    const partList = Array.isArray(item) ? item : [item];
+    const rawBody = partList.map((p) => p.body || '').join('\r\n');
+    const parsed = await parseEmail(rawBody || item.body);
 
     return {
       uid: item.attributes.uid,

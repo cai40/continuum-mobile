@@ -308,11 +308,16 @@ const MailClientSection = () => {
       // separate ingest round-trip is needed here.
       const { email } = await fetchMailMessage(bridgeSecret, authToken, uid, activeFolder);
       detailCacheRef.current[uid] = email;
+      // Cap the persistent detail cache so it doesn't grow without bound.
       try {
         const raw = await AsyncStorage.getItem(DETAIL_CACHE_KEY);
         const cache = raw ? JSON.parse(raw) : {};
+        const keys = Object.keys(cache);
+        if (keys.length >= 50) {
+          for (const key of keys.slice(0, keys.length - 49)) delete cache[key];
+        }
         cache[uid] = email;
-        await AsyncStorage.setItem(DETAIL_CACHE_KEY, JSON.stringify(cache).slice(0, 2_000_000));
+        await AsyncStorage.setItem(DETAIL_CACHE_KEY, JSON.stringify(cache).slice(0, 1_000_000));
       } catch (cacheErr) {
         console.warn('[mail] detail cache write:', cacheErr?.message);
       }
@@ -325,7 +330,14 @@ const MailClientSection = () => {
       safeSet(setMemoryNote, 'Saved to memory.');
       setTimeout(() => safeSet(setMemoryNote, null), 5000);
     } catch (err) {
-      safeSet(setDetailError, err?.message || 'Could not open email.');
+      // If we already showed a cached copy, keep it — don't replace the view
+      // with an error just because the background IMAP refresh failed (e.g.
+      // the bridge restarted and the UID is momentarily unreachable).
+      if (!cachedDetail) {
+        safeSet(setDetailError, err?.message || 'Could not open email.');
+      } else {
+        console.warn('[mail] background refresh failed, showing cached copy:', err?.message);
+      }
     } finally {
       safeSet(setDetailLoading, false);
     }
