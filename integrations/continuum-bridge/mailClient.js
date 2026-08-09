@@ -17,7 +17,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
@@ -114,17 +114,69 @@ async function runScript(scriptPath, args, { timeoutMs = 120000, maxBuffer = 16 
   return enqueueScript(() => runScriptNow(scriptPath, args, { timeoutMs, maxBuffer, input }));
 }
 
+function runSpawn(scriptPath, args, { timeoutMs = 120000, maxBuffer = 16 * 1024 * 1024, input = null } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn('node', [scriptPath, ...args], {
+      cwd: path.dirname(path.dirname(scriptPath)),
+      env: skillEnv(scriptPath),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill('SIGKILL'); } catch { /* ignore */ }
+      reject(new Error(`Script timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+      if (stdout.length > maxBuffer) child.kill('SIGKILL');
+    });
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+
+    child.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.on('close', (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0 && stderr.trim()) {
+        reject(Object.assign(new Error(stderr.trim().slice(0, 500)), { stderr, stdout, code }));
+        return;
+      }
+      resolve({ stdout, stderr, code });
+    });
+
+    if (input != null) {
+      child.stdin.write(String(input));
+    }
+    child.stdin.end();
+  });
+}
+
 async function runScriptNow(scriptPath, args, { timeoutMs = 120000, maxBuffer = 16 * 1024 * 1024, input = null } = {}) {
   let stdout;
   let stderr = '';
   try {
-    const result = await execFileAsync('node', [scriptPath, ...args], {
-      timeout: timeoutMs,
-      maxBuffer,
-      input: input == null ? undefined : String(input),
-      cwd: path.dirname(path.dirname(scriptPath)),
-      env: skillEnv(scriptPath),
-    });
+    // Use spawn when piping stdin (body-stdin): execFile's `input` option does
+    // not reliably deliver async stdin and the child hangs until timeout.
+    const result = input != null
+      ? await runSpawn(scriptPath, args, { timeoutMs, maxBuffer, input })
+      : await execFileAsync('node', [scriptPath, ...args], {
+        timeout: timeoutMs,
+        maxBuffer,
+        cwd: path.dirname(path.dirname(scriptPath)),
+        env: skillEnv(scriptPath),
+      });
     stdout = result.stdout;
     stderr = result.stderr || '';
   } catch (err) {
