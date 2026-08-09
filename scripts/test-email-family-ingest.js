@@ -32,8 +32,8 @@ const familyStub = {
   },
   './emailCleanupFolder': {
     BUILTIN_CLEANUP_FOLDER: [
-      { label: 'Min Zhang', folder: 'Min and Kids', copy: true, needles: ['min zhang'] },
-      { label: 'Daniel Cai', folder: 'Min and Kids', copy: true, needles: ['daniel cai'] },
+      { label: 'Min Zhang', folder: 'Min and Kids', copy: true, needles: ['min zhang', 'njsgas@gmail.com'] },
+      { label: 'Daniel Cai', folder: 'Min and Kids', copy: true, needles: ['daniel cai', 'danielcai297@gmail.com'] },
       { label: 'Michael Cai', folder: 'Min and Kids', copy: true, needles: ['michael cai'] },
     ],
   },
@@ -54,6 +54,11 @@ async function run() {
     'bingjing6699@gmail.com',
     'Michelle Wang searches by email',
   );
+
+  // Every family sender has a needles filter (so junk/promos are excluded).
+  assert.ok(Array.isArray(familyIngest.SENDER_NEEDLES['Min Zhang']) && familyIngest.SENDER_NEEDLES['Min Zhang'].length >= 1, 'Min Zhang has needles');
+  assert.ok(familyIngest.SENDER_NEEDLES['Daniel Cai'].includes('danielcai297@gmail.com'), 'Daniel Cai needles include his email');
+  assert.ok(familyIngest.SENDER_NEEDLES['Michelle Wang'].includes('bingjing6699@gmail.com'), 'Michelle needles include her email');
 
   assert.strictEqual(familyIngest.familyIngestEnabled(), true, 'enabled by default');
   process.env.EMAIL_FAMILY_INGEST_ENABLED = 'false';
