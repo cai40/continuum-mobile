@@ -176,16 +176,17 @@ const MailClientSection = () => {
   const persistCache = useCallback(async () => {
     try {
       const perFolder = { ...(emailsCacheRef.current || {}) };
-      if (emails.length) perFolder[activeFolder] = emails.slice(0, 100);
+      const currentList = emailsCacheRef.current?.[activeFolder];
+      if (Array.isArray(currentList) && currentList.length) perFolder[activeFolder] = currentList.slice(0, 100);
       await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({
-        folders: foldersCacheRef.current || folders,
+        folders: foldersCacheRef.current || [],
         emails: perFolder,
         savedAt: Date.now(),
       }));
     } catch (err) {
       console.warn('[mail] cache persist failed:', err?.message);
     }
-  }, [activeFolder, emails, folders]);
+  }, [activeFolder]);
 
   const loadFolders = useCallback(async () => {
     if (!bridgeSecret) return;
@@ -250,8 +251,14 @@ const MailClientSection = () => {
     }
   }, [bridgeSecret, renderEmailEnabled, activeFolder, offset, safeSet, persistCache]);
 
+  const didInitRef = useRef(false);
+
   useEffect(() => {
-    // Show the last pull immediately (from AsyncStorage), then refresh in the background.
+    // Run exactly once: show the last pull immediately (from AsyncStorage),
+    // then refresh in the background. Guarded so dependency churn (offset,
+    // activeFolder, etc.) never re-triggers this and causes a fetch loop.
+    if (didInitRef.current) return;
+    didInitRef.current = true;
     restoreCache().then(() => {
       loadFolders();
       loadEmails({ refresh: true });
