@@ -454,4 +454,6 @@ module.exports = {
   searchWeb,
   formatSearchResults,
   loadBraveApiKey,
+  fetchPageExcerpt,
+  isScrapeableUrl,
 };
