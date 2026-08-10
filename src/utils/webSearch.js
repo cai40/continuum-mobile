@@ -29,6 +29,9 @@ export function wantsWebSearch(message) {
   const text = String(message || '').trim();
   if (!text || EMAIL_BLOCK.test(text)) return false;
 
+  // A pasted URL (e.g. a Zillow listing) should be fetched directly.
+  if (/https?:\/\/[^\s<>"']+/i.test(text)) return true;
+
   if (/\b(search the web|web search|search online|look up online|google)\b/i.test(text)) {
     return true;
   }
@@ -445,6 +448,22 @@ export function formatSearchResults({ provider, results, query }) {
 
 export async function fetchWebSearchContext(message, braveApiKey = '') {
   if (!wantsWebSearch(message)) return null;
+
+  // If the user pasted a URL, fetch it directly instead of searching.
+  const urls = [...new Set(String(message || '').match(/https?:\/\/[^\s<>"']+/gi) || [])]
+    .filter(isScrapeableUrl);
+  if (urls.length) {
+    const url = urls[0];
+    const text = await fetchPageExcerpt(url);
+    if (!text) return `[Web page fetch failed]\nCould not fetch ${url}.`;
+    return [
+      `[Web page fetched — ${url}]`,
+      'Use ONLY the page content below for facts about this link.',
+      '',
+      text,
+    ].join('\n');
+  }
+
   const queries = buildSearchQueries(message);
   const [primary, ...extra] = queries;
   const data = await searchWeb(primary, braveApiKey, extra);
