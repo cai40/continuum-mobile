@@ -1088,6 +1088,17 @@ export const deleteMail = async (bridgeSecret, uids, folder = 'INBOX') => {
   });
 };
 
+export const syncZillowEmails = async (bridgeSecret, { limit, recent, dryRun = false } = {}) => {
+  return mailRequest('/zillow/sync', bridgeSecret, null, {
+    method: 'POST',
+    body: JSON.stringify({ limit, recent, dryRun }),
+  });
+};
+
+export const fetchZillowState = async (bridgeSecret) => {
+  return mailRequest('/zillow/state', bridgeSecret, null);
+};
+
 export const sendMailReply = async (bridgeSecret, { to, cc, subject, body } = {}) => {
   return mailRequest('/mail/send', bridgeSecret, null, {
     method: 'POST',

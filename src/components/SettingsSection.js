@@ -45,6 +45,7 @@ import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
 import GoogleDriveIntegrationSection from "./GoogleDriveIntegrationSection";
+import ZillowIntegrationSection from "./ZillowIntegrationSection";
 import { providerDisplayLabel, normalizeProviderId, deepseekPlatformModel, isDeepseekProvider, verifyProviderRouting } from "../utils/providers";
 
 const SettingsSection = (props) => {
@@ -2243,6 +2244,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         return <OpenClawIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "gdrive":
         return <GoogleDriveIntegrationSection onBack={() => setActiveSubTab(null)} />;
+      case "zillow":
+        return <ZillowIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "diag": return renderDiagnostics();
       case "account": return renderAccountSettings();
       default: return null;
@@ -2327,6 +2330,12 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             icon="logo-google"
             label="Google Drive"
             onPress={() => setActiveSubTab("gdrive")}
+          />
+          <Divider />
+          <MenuRow
+            icon="business-outline"
+            label="Zillow Rentals"
+            onPress={() => setActiveSubTab("zillow")}
           />
           <Divider />
           <MenuRow

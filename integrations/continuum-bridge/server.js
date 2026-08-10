@@ -58,6 +58,7 @@ const {
   saveState,
 } = require('./dailyCleanup');
 const mailClient = require('./mailClient');
+const zillowFeed = require('./zillowFeed');
 const {
   serviceConfigured: memoryServiceRoleConfigured,
   cleanupConfigured: memoryCleanupConfigured,
@@ -832,6 +833,41 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ---- Zillow Rental Manager feed ----
+    if (req.method === 'POST' && req.url === '/zillow/sync') {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const body = JSON.parse((await readBody(req)) || '{}');
+        const result = await zillowFeed.syncZillowEmails({
+          limit: body.limit || undefined,
+          recent: body.recent || undefined,
+          dryRun: !!body.dryRun,
+        });
+        return json(res, 200, { success: true, ...result });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
+    if (req.method === 'GET' && req.url === '/zillow/state') {
+      if (!mailSecretOk()) return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const statePath = process.env.ZILLOW_STATE_DIR
+          || (process.env.RENDER
+            ? path.join('/opt/render/project/src', '.continuum-bridge-data')
+            : path.join(process.env.HOME || '/root', '.config/continuum-openclaw'));
+        let state = { uids: [] };
+        try {
+          state = JSON.parse(fs.readFileSync(path.join(statePath, 'zillow-ingested-uids.json'), 'utf8'));
+        } catch { /* no state yet */ }
+        return json(res, 200, { success: true, ingestedCount: (state.uids || []).length, updated: state.updated || null });
+      } catch (err) {
+        return json(res, 500, { success: false, error: err.message || String(err) });
+      }
+    }
+
     if (req.method === 'GET' && req.url === '/health') {
       const quickHealth = process.env.RENDER === 'true' || process.env.HEALTH_CHECK_QUICK === '1';
       const emailHealth = await getEmailHealth({ quick: quickHealth });
@@ -935,6 +971,8 @@ server.listen(PORT, HOST, () => {
   console.log('  POST /mail/delete         (mail client — move to Trash)');
   console.log('  POST /mail/send           (mail client — reply/send)');
   console.log('  POST /mail/ingest         (mail client — load email into memory)');
+  console.log('  POST /zillow/sync         (Zillow Rental Manager — ingest new emails)');
+  console.log('  GET  /zillow/state        (Zillow Rental Manager — ingest status)');
   console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');
   console.log('  POST /ask          (CLI / skill)');
 });
