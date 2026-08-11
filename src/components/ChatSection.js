@@ -293,6 +293,16 @@ const ChatSection = () => {
     };
   }, []);
 
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates?.height || 0));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+
   const handleStop = async () => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
     if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
@@ -1599,8 +1609,8 @@ const ChatSection = () => {
   return (
     <>
     <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       style={styles.chatArea}
     >
       {isSelectionMode && (
@@ -1641,7 +1651,7 @@ const ChatSection = () => {
         }
         keyExtractor={item => item?.id || Math.random().toString()}
         renderItem={renderChatItem}
-        contentContainerStyle={{ padding: 16, flexGrow: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 16 + (Platform.OS === 'android' ? keyboardHeight : 0), flexGrow: 1 }}
         removeClippedSubviews={Platform.OS === 'android'}
         initialNumToRender={12}
         maxToRenderPerBatch={8}
