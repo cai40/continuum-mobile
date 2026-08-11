@@ -293,10 +293,28 @@ const ChatSection = () => {
     };
   }, []);
 
-  const kavRef = useRef(null);
+  // Measure a native View (not KeyboardAvoidingView — that class ref has no
+  // measureInWindow and throws right after Face ID unlock mounts chat).
+  const kavMeasureRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [kavOffset, setKavOffset] = useState(Platform.OS === 'ios' ? 90 : 0);
   const kavOffsetRef = useRef(kavOffset);
+
+  const measureKavOffset = useCallback(() => {
+    if (Platform.OS !== 'ios') return;
+    const node = kavMeasureRef.current;
+    if (!node || typeof node.measureInWindow !== 'function') return;
+    try {
+      node.measureInWindow((_x, y) => {
+        if (Number.isFinite(y) && y > 0 && Math.abs(y - kavOffsetRef.current) > 1) {
+          kavOffsetRef.current = y;
+          setKavOffset(y);
+        }
+      });
+    } catch (e) {
+      console.warn('KAV measure failed:', e?.message);
+    }
+  }, []);
 
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -308,27 +326,13 @@ const ChatSection = () => {
       show.remove();
       hide.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [measureKavOffset]);
 
   useEffect(() => {
-    if (Platform.OS === 'ios') {
-      const t = setTimeout(measureKavOffset, 300);
-      return () => clearTimeout(t);
-    }
-    return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const measureKavOffset = useCallback(() => {
-    if (Platform.OS !== 'ios' || !kavRef.current) return;
-    kavRef.current.measureInWindow((x, y) => {
-      if (Number.isFinite(y) && y > 0 && Math.abs(y - kavOffsetRef.current) > 1) {
-        kavOffsetRef.current = y;
-        setKavOffset(y);
-      }
-    });
-  }, []);
+    if (Platform.OS !== 'ios') return undefined;
+    const t = setTimeout(measureKavOffset, 300);
+    return () => clearTimeout(t);
+  }, [measureKavOffset]);
 
   const handleStop = async () => {
     if (abortControllerRef.current) abortControllerRef.current.abort();
@@ -1635,14 +1639,17 @@ const ChatSection = () => {
 
   return (
     <>
-    <KeyboardAvoidingView 
-      ref={kavRef}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={kavOffset}
+    <View
+      ref={kavMeasureRef}
       style={styles.chatArea}
       onLayout={() => {
         if (Platform.OS === 'ios') measureKavOffset();
       }}
+    >
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={kavOffset}
+      style={{ flex: 1 }}
     >
       {isSelectionMode && (
       <View style={styles.providerBar}>
@@ -1831,6 +1838,7 @@ const ChatSection = () => {
         </View>
       </View>
     </KeyboardAvoidingView>
+    </View>
     <GoogleDrivePickerModal
       visible={drivePickerVisible}
       onClose={() => setDrivePickerVisible(false)}
