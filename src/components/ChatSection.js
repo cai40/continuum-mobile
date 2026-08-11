@@ -15,10 +15,10 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, openClawChatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream } from '../services/apiService';
+import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
-import { resolveBridgeBaseUrl, resolveBridgeSecret, resolveRenderEmailBridgeSecret, isHttpsBridgeUrl, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/openclawBridge';
-import { resolveEmailFetchPayload } from '../utils/openclawEmailOptions';
+import { resolveRenderEmailBridgeSecret, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/emailBridge';
+import { resolveEmailFetchPayload } from '../utils/emailOptions';
 import {
   DOCUMENT_MIME_TYPES,
   MAX_DOCUMENT_ATTACHMENTS,
@@ -129,15 +129,11 @@ const ChatSection = () => {
     syncRemoteHistory,
     isSyncingHistory,
     isFeatureAvailable,
-    openclawChatEnabled,
-    openclawVpsIp,
-    openclawBridgeHttpsUrl,
-    openclawBridgeSecret,
     renderEmailBridgeSecret,
-    openclawEmailLimit,
-    openclawEmailRecent,
-    openclawEmailDeleteEnabled,
-    openclawEmailAutoTrashJunk,
+    emailLimit,
+    emailRecent,
+    emailDeleteEnabled,
+    emailAutoTrashJunk,
     renderEmailEnabled,
     dailyMessageCount,
     incrementDailyCount,
@@ -793,26 +789,13 @@ const ChatSection = () => {
         return;
       }
 
-      const bridgeSecret = resolveBridgeSecret(openclawBridgeSecret);
       const renderEmailSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
-      const bridgeUrl = resolveBridgeBaseUrl({
-        httpsUrl: openclawBridgeHttpsUrl,
-        vpsIp: openclawVpsIp,
-        defaultVpsIp: "135.181.155.197",
-      });
       const useRenderEmail = renderEmailEnabled && isEmailBridgeQuery;
-      const useVpsBridge =
-        !useRenderEmail &&
-        openclawChatEnabled &&
-        bridgeUrl &&
-        isHttpsBridgeUrl(bridgeUrl) &&
-        !activeAttachments.length &&
-        !isVoiceMode;
 
-      if (isEmailBridgeQuery && !renderEmailEnabled && !useVpsBridge) {
+      if (isEmailBridgeQuery && !renderEmailEnabled) {
         Alert.alert(
-          "Yahoo email needs a mail bridge",
-          "Setup → OpenClaw Gateway:\n• Turn ON Render cloud email (no VPS), or\n• Turn ON Route chat through OpenClaw + HTTPS bridge URL.",
+          "Yahoo email needs the mail bridge",
+          "Setup → Email & Bridge: turn ON Render cloud email.",
         );
         return;
       }
@@ -820,12 +803,11 @@ const ChatSection = () => {
       if (useRenderEmail && !renderEmailSecret) {
         Alert.alert(
           "Render email secret required",
-          "Setup → OpenClaw Gateway → Render email bridge secret.\nPaste BRIDGE_SECRET from your continuum-email-bridge service on Render.",
+          "Setup → Email & Bridge → Render email bridge secret.\nPaste BRIDGE_SECRET from your continuum-email-bridge service on Render.",
         );
         return;
       }
 
-      const useOpenClawBridge = useVpsBridge;
       const hasImageAttachments = activeAttachments.some((f) => f.type?.startsWith('image/'));
       // Prefer direct DeepSeek for text chat. Image uploads need Continuum multipart.
       const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery && !hasImageAttachments;
@@ -1031,7 +1013,7 @@ const ChatSection = () => {
       const clientTime = new Date().toLocaleString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
       let isHandled = false;
-      let bridgeAttempted = (useOpenClawBridge || useRenderEmail) && !preferDirectDeepseek;
+      let bridgeAttempted = useRenderEmail && !preferDirectDeepseek;
       let renderFallbackUsed = false;
       let lastServedModel = preferDirectDeepseek ? deepseekPlatformModel(resolvedProvider) : null;
 
@@ -1205,7 +1187,7 @@ const ChatSection = () => {
 
       if (preferDirectDeepseek) {
         startDirectDeepseekStream();
-      } else if (useRenderEmail || useOpenClawBridge) {
+      } else if (useRenderEmail) {
         const useEnrichedBridgeMessage = !isEmailConfirm
           && (memoryRecallContext || isRecallEvidenceFetch || isAnyRecallTurn);
         const emailSourceMessage = isEmailConfirm
@@ -1219,8 +1201,8 @@ const ChatSection = () => {
         const emailFetchIntentMessage = finalInput;
         const emailFetch = isEmailBridgeQuery
           ? resolveEmailFetchPayload({
-              limit: isRecallEvidenceFetch ? 200 : openclawEmailLimit,
-              recent: openclawEmailRecent,
+              limit: isRecallEvidenceFetch ? 200 : emailLimit,
+              recent: emailRecent,
               message: emailFetchIntentMessage,
             })
           : {};
@@ -1243,29 +1225,26 @@ const ChatSection = () => {
           lon: location?.coords?.longitude?.toString(),
           client_time: clientTime,
           ...emailFetch,
-          email_delete_enabled: openclawEmailDeleteEnabled,
-          email_auto_trash_junk: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled,
+          email_delete_enabled: emailDeleteEnabled,
+          email_auto_trash_junk: emailAutoTrashJunk && emailDeleteEnabled,
         };
 
         const useBackgroundEmailJob =
-          (useRenderEmail || useOpenClawBridge)
+          useRenderEmail
           && shouldRunEmailInBackground(emailFetchIntentMessage)
           && !isEmailConfirm
           && !isEmailFollowUpOnly
           && !isRecallEvidenceFetch;
 
         if (useBackgroundEmailJob) {
-          const jobBaseUrl = useRenderEmail
-            ? undefined
-            : bridgeUrl.replace(/\/$/, '');
-          const jobSecret = useRenderEmail ? renderEmailSecret : bridgeSecret;
+          const jobSecret = renderEmailSecret;
           const jobPayload = buildEmailJobPayload({
             message: emailFetchIntentMessage,
             provider: resolvedProvider,
             persona: payload.persona,
             emailFetch,
-            emailDeleteEnabled: openclawEmailDeleteEnabled,
-            emailAutoTrashJunk: openclawEmailAutoTrashJunk && openclawEmailDeleteEnabled,
+            emailDeleteEnabled,
+            emailAutoTrashJunk: emailAutoTrashJunk && emailDeleteEnabled,
             keys: { geminiKey, groqKey, apiKey: activeKey },
             location,
             clientTime,
@@ -1273,24 +1252,14 @@ const ChatSection = () => {
 
           const startEmailStream = () => {
             setStreamingContent('Connecting to email bridge…');
-            const xhr = useRenderEmail
-              ? renderEmailChatStream(
-                  renderEmailSecret,
-                  payload,
-                  onStreamUpdate,
-                  finishSuccess,
-                  finishError,
-                  activeToken,
-                )
-              : openClawChatStream(
-                  bridgeUrl,
-                  bridgeSecret,
-                  payload,
-                  onStreamUpdate,
-                  finishSuccess,
-                  finishError,
-                  activeToken,
-                );
+            const xhr = renderEmailChatStream(
+              renderEmailSecret,
+              payload,
+              onStreamUpdate,
+              finishSuccess,
+              finishError,
+              activeToken,
+            );
             abortControllerRef.current = { abort: () => xhr.abort() };
           };
 
@@ -1302,11 +1271,11 @@ const ChatSection = () => {
           if (backgroundJobRef.current?.cancel) backgroundJobRef.current.cancel();
           backgroundJobRef.current = null;
           try {
-            await stopActiveEmailJob(jobSecret, activeToken, jobBaseUrl);
+            await stopActiveEmailJob(jobSecret, activeToken);
           } catch {
             await clearPendingEmailJob();
           }
-          submitBackgroundEmailJob(jobSecret, jobPayload, activeToken, jobBaseUrl)
+          submitBackgroundEmailJob(jobSecret, jobPayload, activeToken)
             .then(async (created) => {
               if (jobGeneration !== emailJobGenerationRef.current) return;
               const jobMeta = {
@@ -1321,7 +1290,6 @@ const ChatSection = () => {
                 bridgeSecret: jobSecret,
                 jobId: created.job_id,
                 authToken: activeToken,
-                baseUrl: jobBaseUrl,
                 jobMeta,
                 onProgress: (detail) => appendJobProgress(setStreamingContent, detail),
               });
@@ -1340,7 +1308,7 @@ const ChatSection = () => {
                   poller.cancel();
                   backgroundJobRef.current = null;
                   try {
-                    await cancelBackgroundEmailJob(jobSecret, created.job_id, activeToken, jobBaseUrl);
+                    await cancelBackgroundEmailJob(jobSecret, created.job_id, activeToken);
                   } catch {
                     // job may already be gone
                   }
@@ -1372,24 +1340,14 @@ const ChatSection = () => {
           return;
         }
 
-        const xhr = useRenderEmail
-          ? renderEmailChatStream(
-              renderEmailSecret,
-              payload,
-              onStreamUpdate,
-              finishSuccess,
-              finishError,
-              activeToken,
-            )
-          : openClawChatStream(
-              bridgeUrl,
-              bridgeSecret,
-              payload,
-              onStreamUpdate,
-              finishSuccess,
-              finishError,
-              activeToken,
-            );
+        const xhr = renderEmailChatStream(
+          renderEmailSecret,
+          payload,
+          onStreamUpdate,
+          finishSuccess,
+          finishError,
+          activeToken,
+        );
         abortControllerRef.current = { abort: () => xhr.abort() };
       } else {
         startRenderStream();

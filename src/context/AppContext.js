@@ -17,8 +17,8 @@ import {
   pulseFetch,
   fetchSystemVersion
 } from "../services/apiService";
-import { API_URL, DEFAULT_OPENCLAW_EMAIL_LIMIT, DEFAULT_OPENCLAW_EMAIL_RECENT } from "../constants/Config";
-import { clampEmailLimit, normalizeEmailRecent } from "../utils/openclawEmailOptions";
+import { API_URL, DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT } from "../constants/Config";
+import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
 import { sanitizeUserVisibleContent } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
 
@@ -79,15 +79,11 @@ export const AppProvider = ({ children }) => {
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
   const [sttLang, setSttLang] = useState("en-US");
-  const [openclawVpsIp, setOpenclawVpsIp] = useState("135.181.155.197");
-  const [openclawBridgeHttpsUrl, setOpenclawBridgeHttpsUrl] = useState("");
-  const [openclawBridgeSecret, setOpenclawBridgeSecret] = useState("");
   const [renderEmailBridgeSecret, setRenderEmailBridgeSecret] = useState("");
-  const [openclawChatEnabled, setOpenclawChatEnabled] = useState(false);
-  const [openclawEmailLimit, setOpenclawEmailLimit] = useState(String(DEFAULT_OPENCLAW_EMAIL_LIMIT));
-  const [openclawEmailRecent, setOpenclawEmailRecent] = useState(DEFAULT_OPENCLAW_EMAIL_RECENT);
-  const [openclawEmailDeleteEnabled, setOpenclawEmailDeleteEnabled] = useState(false);
-  const [openclawEmailAutoTrashJunk, setOpenclawEmailAutoTrashJunk] = useState(false);
+  const [emailLimit, setEmailLimit] = useState(String(DEFAULT_EMAIL_LIMIT));
+  const [emailRecent, setEmailRecent] = useState(DEFAULT_EMAIL_RECENT);
+  const [emailDeleteEnabled, setEmailDeleteEnabled] = useState(false);
+  const [emailAutoTrashJunk, setEmailAutoTrashJunk] = useState(false);
   const [renderEmailEnabled, setRenderEmailEnabled] = useState(true);
 
   const [messages, setMessages] = useState([]);
@@ -265,16 +261,16 @@ export const AppProvider = ({ children }) => {
           CHAT_HISTORY_CLEARED_AT_KEY,
           "@persona",
           "@stt_lang",
-          "@openclaw_vps_ip",
-          "@openclaw_bridge_https_url",
-          "@openclaw_bridge_secret",
           "@render_email_bridge_secret",
-          "@openclaw_chat_enabled",
+          "@render_email_enabled",
+          "@email_limit",
+          "@email_recent",
+          "@email_delete_enabled",
+          "@email_auto_trash_junk",
           "@openclaw_email_limit",
           "@openclaw_email_recent",
           "@openclaw_email_delete_enabled",
           "@openclaw_email_auto_trash_junk",
-          "@render_email_enabled",
         ]);
 
         let clearedAtMs = 0;
@@ -283,6 +279,16 @@ export const AppProvider = ({ children }) => {
           const ms = new Date(clearedAtEntry[1]).getTime();
           if (Number.isFinite(ms)) clearedAtMs = ms;
         }
+
+        const valueFor = (name) => keys.find(([k]) => k === name)?.[1] || null;
+        const emailLimitSaved = valueFor("@email_limit") || valueFor("@openclaw_email_limit");
+        const emailRecentSaved = valueFor("@email_recent") || valueFor("@openclaw_email_recent");
+        const emailDeleteSaved = valueFor("@email_delete_enabled") || valueFor("@openclaw_email_delete_enabled");
+        const emailJunkSaved = valueFor("@email_auto_trash_junk") || valueFor("@openclaw_email_auto_trash_junk");
+        if (emailLimitSaved) setEmailLimit(emailLimitSaved);
+        if (emailRecentSaved) setEmailRecent(emailRecentSaved);
+        if (emailDeleteSaved) setEmailDeleteEnabled(emailDeleteSaved === "true");
+        if (emailJunkSaved) setEmailAutoTrashJunk(emailJunkSaved === "true");
 
         keys.forEach(([key, value]) => {
           if (!value) return;
@@ -297,15 +303,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@persona") setPersona(value);
           if (key === "@stt_lang") setSttLang(value);
-          if (key === "@openclaw_vps_ip") setOpenclawVpsIp(value);
-          if (key === "@openclaw_bridge_https_url") setOpenclawBridgeHttpsUrl(value);
-          if (key === "@openclaw_bridge_secret") setOpenclawBridgeSecret(value);
           if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
-          if (key === "@openclaw_chat_enabled") setOpenclawChatEnabled(value === "true");
-          if (key === "@openclaw_email_limit") setOpenclawEmailLimit(value);
-          if (key === "@openclaw_email_recent") setOpenclawEmailRecent(value);
-          if (key === "@openclaw_email_delete_enabled") setOpenclawEmailDeleteEnabled(value === "true");
-          if (key === "@openclaw_email_auto_trash_junk") setOpenclawEmailAutoTrashJunk(value === "true");
           if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
@@ -448,24 +446,20 @@ export const AppProvider = ({ children }) => {
     }
   }, [brainStats]);
 
-  const saveOpenClawSettings = async () => {
+  const saveEmailSettings = async () => {
     try {
-      const limit = String(clampEmailLimit(openclawEmailLimit));
-      const recent = normalizeEmailRecent(openclawEmailRecent);
+      const limit = String(clampEmailLimit(emailLimit));
+      const recent = normalizeEmailRecent(emailRecent);
       await AsyncStorage.multiSet([
-        ["@openclaw_vps_ip", openclawVpsIp.trim()],
-        ["@openclaw_bridge_https_url", openclawBridgeHttpsUrl.trim()],
-        ["@openclaw_bridge_secret", openclawBridgeSecret.trim()],
         ["@render_email_bridge_secret", renderEmailBridgeSecret.trim()],
-        ["@openclaw_chat_enabled", openclawChatEnabled ? "true" : "false"],
-        ["@openclaw_email_limit", limit],
-        ["@openclaw_email_recent", recent],
-        ["@openclaw_email_delete_enabled", openclawEmailDeleteEnabled ? "true" : "false"],
-        ["@openclaw_email_auto_trash_junk", openclawEmailAutoTrashJunk ? "true" : "false"],
+        ["@email_limit", limit],
+        ["@email_recent", recent],
+        ["@email_delete_enabled", emailDeleteEnabled ? "true" : "false"],
+        ["@email_auto_trash_junk", emailAutoTrashJunk ? "true" : "false"],
         ["@render_email_enabled", renderEmailEnabled ? "true" : "false"],
       ]);
     } catch (e) {
-      console.warn("OpenClaw settings save failed:", e);
+      console.warn("Email settings save failed:", e);
     }
   };
 
@@ -667,27 +661,19 @@ export const AppProvider = ({ children }) => {
         setPersona,
         sttLang,
         setSttLang,
-        openclawVpsIp,
-        setOpenclawVpsIp,
-        openclawBridgeHttpsUrl,
-        setOpenclawBridgeHttpsUrl,
-        openclawBridgeSecret,
-        setOpenclawBridgeSecret,
         renderEmailBridgeSecret,
         setRenderEmailBridgeSecret,
-        openclawChatEnabled,
-        setOpenclawChatEnabled,
-        openclawEmailLimit,
-        setOpenclawEmailLimit,
-        openclawEmailRecent,
-        setOpenclawEmailRecent,
-        openclawEmailDeleteEnabled,
-        setOpenclawEmailDeleteEnabled,
-        openclawEmailAutoTrashJunk,
-        setOpenclawEmailAutoTrashJunk,
+        emailLimit,
+        setEmailLimit,
+        emailRecent,
+        setEmailRecent,
+        emailDeleteEnabled,
+        setEmailDeleteEnabled,
+        emailAutoTrashJunk,
+        setEmailAutoTrashJunk,
         renderEmailEnabled,
         setRenderEmailEnabled,
-        saveOpenClawSettings,
+        saveEmailSettings,
         messages,
         setMessages,
         dailyMessageCount,

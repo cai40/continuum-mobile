@@ -775,7 +775,7 @@ export const deepseekChatStream = (
 };
 
 /**
- * Chat via OpenClaw VPS bridge: Continuum memory + Yahoo email skills.
+ * Stream chat via the Continuum email bridge (Render): memory + Yahoo email skills.
  */
 function sanitizeBridgeErrorMessage(raw, status) {
   const text = String(raw || "").trim();
@@ -835,7 +835,7 @@ function parseBridgeHttpError(responseText, status) {
   return msg;
 }
 
-export const openClawChatStream = (
+export const emailBridgeChatStream = (
   bridgeBaseUrl,
   bridgeSecret,
   payload,
@@ -871,7 +871,7 @@ export const openClawChatStream = (
     const responseText = xhr.responseText || "";
     const trimmed = responseText.trim();
     if (!trimmed) {
-      finish(fullText ? null : (lastStreamError || "Empty response from OpenClaw bridge."));
+      finish(fullText ? null : (lastStreamError || "Empty response from email bridge."));
       return;
     }
     if (trimmed.startsWith("{") && !trimmed.includes("event:")) {
@@ -948,7 +948,7 @@ export const openClawChatStream = (
               userTranscript = json.text;
             } else if (currentEvent === "error") {
               lastStreamError = friendlyBridgeError(
-                json.detail || json.message || "OpenClaw bridge error",
+                json.detail || json.message || "Email bridge error",
                 xhr.status,
               );
               finish(lastStreamError);
@@ -963,10 +963,10 @@ export const openClawChatStream = (
 
   xhr.onerror = () => finish(timeoutMs >= 600000
     ? "Email bridge timed out after 10 minutes. Try a smaller batch (limit 500) or summary-only fetch."
-    : "Cannot reach OpenClaw bridge.");
+    : "Cannot reach the email bridge.");
   xhr.ontimeout = () => finish(timeoutMs >= 600000
     ? "Email fetch timed out (10 min). Large inbox scans take time — retry with limit 50000 or wait and try again."
-    : "OpenClaw bridge timed out.");
+    : "Email bridge timed out.");
 
   xhr.send(safeJsonStringify(payload));
 
@@ -981,7 +981,7 @@ export const renderEmailChatStream = (
   onError,
   authToken = null,
 ) =>
-  openClawChatStream(
+  emailBridgeChatStream(
     RENDER_EMAIL_BRIDGE_URL,
     bridgeSecret,
     payload,
@@ -993,7 +993,7 @@ export const renderEmailChatStream = (
   );
 
 export const testRenderEmailHealth = async (bridgeSecret) =>
-  testOpenClawBridge(RENDER_EMAIL_BRIDGE_URL, bridgeSecret);
+  testBridgeHealth(RENDER_EMAIL_BRIDGE_URL, bridgeSecret);
 
 export const fetchDailyCleanupLatest = async (bridgeSecret) => {
   const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}/daily-cleanup/latest`, {
@@ -1012,7 +1012,7 @@ export const runDailyCleanupNow = async (bridgeSecret) => {
   return res.json();
 };
 
-export const testOpenClawBridge = async (bridgeBaseUrl, bridgeSecret) => {
+export const testBridgeHealth = async (bridgeBaseUrl, bridgeSecret) => {
   const res = await fetch(`${bridgeBaseUrl.replace(/\/$/, "")}/health`, {
     headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
   });

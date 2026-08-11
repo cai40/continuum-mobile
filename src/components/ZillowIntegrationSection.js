@@ -14,7 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { theme } from '../styles/theme';
 import { useAppContext } from '../context/AppContext';
 import { syncZillowEmails, fetchZillowState } from '../services/apiService';
-import { resolveRenderEmailBridgeSecret } from '../utils/openclawBridge';
+import { resolveRenderEmailBridgeSecret } from '../utils/emailBridge';
 
 const STORAGE_KEY = '@continuum_zillow_properties_v1';
 
@@ -106,7 +106,7 @@ const ZillowIntegrationSection = ({ onBack }) => {
 
   const runSync = async (dryRun = false) => {
     if (!bridgeSecret) {
-      Alert.alert('Bridge not configured', 'Set your Render email bridge secret in Setup → OpenClaw Gateway first.');
+      Alert.alert('Bridge not configured', 'Set your Render email bridge secret in Setup → Email & Bridge first.');
       return;
     }
     setSyncing(true);

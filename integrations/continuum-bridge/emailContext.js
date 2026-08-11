@@ -1096,7 +1096,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
       return {
         matched: true,
         context: null,
-        error: 'Move-to-Trash is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow move to Trash", Save, then try again.',
+        error: 'Move-to-Trash is disabled in the app. Setup → Email & Bridge → turn on "Allow move to Trash", Save, then try again.',
         fetchOptions: null,
         deleteResult: null,
         moveResult: null,
@@ -1182,7 +1182,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     return {
       matched: true,
       context: null,
-      error: 'Move-to-Trash is disabled in the app. Setup → OpenClaw Gateway → turn on "Allow move to Trash", Save, then try again.',
+      error: 'Move-to-Trash is disabled in the app. Setup → Email & Bridge → turn on "Allow move to Trash", Save, then try again.',
       fetchOptions: null,
       deleteResult: null,
       moveResult: null,

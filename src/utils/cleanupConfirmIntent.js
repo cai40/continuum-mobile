@@ -1,4 +1,4 @@
-import { findPriorEmailUserMessage, isEmailConfirmMessage } from './openclawBridge';
+import { findPriorEmailUserMessage, isEmailConfirmMessage } from './emailBridge';
 import { findPriorPhotoUserMessage, isPhotoConfirmMessage } from './photoCleanupChat';
 
 function matchesAny(text, patterns) {

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import { RENDER_EMAIL_BRIDGE_URL } from '../constants/Config';
-import { resolveEmailFetchPayload } from './openclawEmailOptions';
+import { resolveEmailFetchPayload } from './emailOptions';
 import { isComposeEmailRequest } from './emailComposeIntent';
 
 const PENDING_JOB_KEY = '@continuum_pending_email_job';

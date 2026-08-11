@@ -43,7 +43,7 @@ import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumC
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError } from "../utils/photoCleanupCancel";
 import PhotoCleanupPreviewPanel from "./PhotoCleanupPreviewPanel";
 import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
-import OpenClawIntegrationSection from "./OpenClawIntegrationSection";
+import EmailIntegrationSection from "./EmailIntegrationSection";
 import GoogleDriveIntegrationSection from "./GoogleDriveIntegrationSection";
 import ZillowIntegrationSection from "./ZillowIntegrationSection";
 import { providerDisplayLabel, normalizeProviderId, deepseekPlatformModel, isDeepseekProvider, verifyProviderRouting } from "../utils/providers";
@@ -98,7 +98,7 @@ const SettingsSection = (props) => {
   const onUpgrade = props.onUpgrade;
 
   // Navigation State
-  const [activeSubTab, setActiveSubTab] = useState(null); // null, 'api', 'voice', 'persona', 'data', 'openclaw', 'gdrive', 'diag', 'account'
+  const [activeSubTab, setActiveSubTab] = useState(null); // null, 'api', 'voice', 'persona', 'data', 'emailbridge', 'gdrive', 'diag', 'account'
 
   // Visibility States
   const [showGroq, setShowGroq] = useState(false);
@@ -2240,8 +2240,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       case "voice": return renderVoiceSettings();
       case "persona": return renderPersonaSettings();
       case "data": return renderDataSettings();
-      case "openclaw":
-        return <OpenClawIntegrationSection onBack={() => setActiveSubTab(null)} />;
+      case "emailbridge":
+        return <EmailIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "gdrive":
         return <GoogleDriveIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "zillow":
@@ -2321,9 +2321,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           />
           <Divider />
           <MenuRow
-            icon="link-outline"
-            label="OpenClaw Gateway"
-            onPress={() => setActiveSubTab("openclaw")}
+            icon="mail-outline"
+            label="Email & Bridge"
+            onPress={() => setActiveSubTab("emailbridge")}
           />
           <Divider />
           <MenuRow

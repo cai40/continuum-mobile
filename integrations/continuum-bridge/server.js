@@ -2,9 +2,9 @@
 'use strict';
 
 /**
- * Continuum ↔ OpenClaw bridge
- * - POST /chat/stream  ← Continuum mobile app (Continuum memory + OpenClaw email)
- * - POST /ask          ← CLI / OpenClaw skill
+ * Continuum email bridge
+ * - POST /chat/stream  ← Continuum mobile app (Continuum memory + Yahoo email)
+ * - POST /ask          ← CLI / skill
  * - GET  /health
  */
 
@@ -563,7 +563,7 @@ async function handleChatStream(req, res, config) {
 
   if (webContext) {
     message = [
-      'IMPORTANT: Live web search results are provided below (OpenClaw VPS bridge).',
+      'IMPORTANT: Live web search results are provided below (Continuum email bridge).',
       'Use these results for current scores, news, weather, and live facts.',
       'Do NOT say you lack internet access or cannot search the web when this block is present.',
       'Cite source titles/URLs when summarizing. If results are insufficient, say what is missing.',
@@ -585,7 +585,7 @@ async function handleChatStream(req, res, config) {
       && (wantsEmailSummaryOnly(message) || /SUMMARY MODE:/i.test(emailContext))
       && !cleanupRequested;
     message = [
-      'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
+      'IMPORTANT: Live Yahoo inbox data is provided below (Continuum email bridge).',
       summaryOnly
         ? 'SUMMARY MODE: Your ENTIRE reply must be ONLY the text inside [PREFILLED SUMMARY]…[/PREFILLED SUMMARY] — copy verbatim. Do NOT invent "6728 headers", "1000 UID window", or Jan–Jun scan spans. Do NOT rephrase counts.'
         : cleanupRequested
@@ -877,7 +877,7 @@ const server = http.createServer(async (req, res) => {
         bridge_version: bridgeVersion.version,
         features: bridgeVersion.features,
         continuum_api: config.apiUrl,
-        openclaw: true,
+        email_bridge: true,
         email: emailHealth,
         memory_cleanup: {
           configured: memoryCleanupConfigured(),
@@ -973,6 +973,6 @@ server.listen(PORT, HOST, () => {
   console.log('  POST /mail/ingest         (mail client — load email into memory)');
   console.log('  POST /zillow/sync         (Zillow Rental Manager — ingest new emails)');
   console.log('  GET  /zillow/state        (Zillow Rental Manager — ingest status)');
-  console.log('  POST /chat/stream  (Continuum app + OpenClaw email)');
+  console.log('  POST /chat/stream  (Continuum app + Yahoo email)');
   console.log('  POST /ask          (CLI / skill)');
 });

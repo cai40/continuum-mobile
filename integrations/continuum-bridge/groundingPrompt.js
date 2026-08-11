@@ -29,7 +29,7 @@ const EMAIL_LIVE_INBOX_MEMORY_APPEND = [
 
 const EMAIL_LIVE_INBOX_DELETE_APPEND = [
   EMAIL_LIVE_INBOX_APPEND,
-  'The OpenClaw bridge MOVES Yahoo mail to Trash via IMAP (not permanent deletion) when the user asks — you do NOT run commands.',
+  'The Continuum email bridge MOVES Yahoo mail to Trash via IMAP (not permanent deletion) when the user asks — you do NOT run commands.',
   'ALWAYS say "move to Trash" or "trashed" — NEVER say "delete", "deletion", "permanently remove", or "erase" unless [Email permanently deleted] appears (it never does for normal cleanup).',
   'NEVER tell the user to run terminal, bash, shell, VPS, or CLI commands for email.',
   'NEVER invent fake commands like "delete uid ..." in code blocks.',
@@ -43,7 +43,7 @@ const EMAIL_LIVE_INBOX_DELETE_APPEND = [
 
 const EMAIL_LIVE_INBOX_MOVE_APPEND = [
   EMAIL_LIVE_INBOX_APPEND,
-  'The OpenClaw VPS bridge moves Yahoo mail to folders via IMAP when the user asks — you do NOT run commands.',
+  'The Continuum email bridge moves Yahoo mail to folders via IMAP when the user asks — you do NOT run commands.',
   'NEVER tell the user to run terminal, bash, shell, VPS, or CLI commands for email.',
   'If [Permission required] appears below, do NOT say emails were moved — ask the user to reply "yes proceed" or raise the limit.',
   'If [Email move executed] appears below, confirm exactly which UIDs were moved and the destination folder name from that block only.',
@@ -52,7 +52,7 @@ const EMAIL_LIVE_INBOX_MOVE_APPEND = [
 
 const EMAIL_LIVE_INBOX_COPY_APPEND = [
   EMAIL_LIVE_INBOX_APPEND,
-  'The OpenClaw VPS bridge COPIES Yahoo mail between folders via IMAP when the user asks — you do NOT run commands.',
+  'The Continuum email bridge COPIES Yahoo mail between folders via IMAP when the user asks — you do NOT run commands.',
   'COPY leaves originals in the source folder; only duplicates appear in the destination (usually INBOX).',
   'NEVER tell the user to run terminal, bash, shell, VPS, or CLI commands for email.',
   'If [Permission required] appears below, do NOT say emails were copied — ask the user to reply "yes proceed" or raise the limit.',
@@ -61,7 +61,7 @@ const EMAIL_LIVE_INBOX_COPY_APPEND = [
 ].join(' ');
 
 const WEB_SEARCH_APPEND = [
-  'WEB SEARCH: Live web results were fetched on the OpenClaw VPS bridge for this turn.',
+  'WEB SEARCH: Live web results were fetched on the Continuum email bridge for this turn.',
   'Use ONLY the [Web search] block for current events, scores, news, and weather.',
   'Do NOT claim you lack internet, cannot search the web, or recommend ESPN/BBC/social media when that block is present.',
   'Answer directly from the search results and KEY HEADLINES. If headlines mention a score or winner, state it.',

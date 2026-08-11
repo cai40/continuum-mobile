@@ -221,7 +221,7 @@ function formatEmailCleanupPreviewNextSteps({ dateRangeLabel = null, cleanupCoun
     '',
     '**Or apply from the Email tab:**',
     '',
-    '1. Open **Setup** → **OpenClaw Gateway** → turn **ON** “Allow move to Trash” → **Save**.',
+    '1. Open **Setup** → **Email & Bridge** → turn **ON** “Allow move to Trash” → **Save**.',
     `2. **Email** tab → choose ${period} → tap **Apply cleanup**.`,
     `3. Full chat command if needed: \`${chatApply}\``,
     '4. Keep the app open until the reply shows **Done** (large months may take 1–2 minutes).',

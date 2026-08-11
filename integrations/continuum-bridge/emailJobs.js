@@ -364,7 +364,7 @@ async function runEmailJob(jobId, { userAuth, config, onStatus }) {
     }
 
     message = [
-      'IMPORTANT: Live Yahoo inbox data is provided below (user-authorized via OpenClaw VPS).',
+      'IMPORTANT: Live Yahoo inbox data is provided below (Continuum email bridge).',
       summaryOnly || cleanupRequested
         ? 'CLEANUP MODE: Your ENTIRE reply must be ONLY the text inside [PREFILLED SUMMARY]…[/PREFILLED SUMMARY] — copy verbatim.'
         : 'Summarize ONLY the emails explicitly listed below with their UIDs.',

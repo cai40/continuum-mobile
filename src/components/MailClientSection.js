@@ -32,7 +32,7 @@ import {
   deleteMail,
   sendMailReply,
 } from '../services/apiService';
-import { resolveRenderEmailBridgeSecret } from '../utils/openclawBridge';
+import { resolveRenderEmailBridgeSecret } from '../utils/emailBridge';
 
 const DEFAULT_FOLDERS = ['INBOX', 'Min and Kids', 'Archive', 'Sent', 'Trash'];
 /** Folders pinned to the home folder bar. The rest are hidden behind "More". */
@@ -221,7 +221,7 @@ const MailClientSection = () => {
 
   const loadEmails = useCallback(async ({ folder = activeFolder, refresh = false } = {}) => {
     if (!bridgeSecret || !renderEmailEnabled) {
-      safeSet(setError, 'Email bridge is not configured. Open Setup → OpenClaw Gateway and set your bridge secret.');
+      safeSet(setError, 'Email bridge is not configured. Open Setup → Email & Bridge and set your bridge secret.');
       return;
     }
     if (refresh) safeSet(setRefreshing, true); else safeSet(setLoading, true);
@@ -602,7 +602,7 @@ const MailClientSection = () => {
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: theme.colors.background }}>
         <Ionicons name="mail-outline" size={44} color={theme.colors.gray} />
         <Text style={{ color: theme.colors.darkGray, textAlign: 'center', marginTop: 12, lineHeight: 20 }}>
-          Email bridge is not enabled. Open Setup → OpenClaw Gateway, turn on Render cloud email, and set your bridge secret.
+          Email bridge is not enabled. Open Setup → Email & Bridge, turn on Render cloud email, and set your bridge secret.
         </Text>
       </View>
     );

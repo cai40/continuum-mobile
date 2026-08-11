@@ -1,13 +1,13 @@
 import {
-  DEFAULT_OPENCLAW_EMAIL_LIMIT,
-  DEFAULT_OPENCLAW_EMAIL_RECENT,
-  MAX_OPENCLAW_EMAIL_LIMIT,
+  DEFAULT_EMAIL_LIMIT,
+  DEFAULT_EMAIL_RECENT,
+  MAX_EMAIL_LIMIT,
 } from '../constants/Config';
 
 export function clampEmailLimit(value) {
   const n = parseInt(String(value || '').trim(), 10);
-  if (Number.isNaN(n)) return DEFAULT_OPENCLAW_EMAIL_LIMIT;
-  return Math.min(MAX_OPENCLAW_EMAIL_LIMIT, Math.max(1, n));
+  if (Number.isNaN(n)) return DEFAULT_EMAIL_LIMIT;
+  return Math.min(MAX_EMAIL_LIMIT, Math.max(1, n));
 }
 
 export function clampEmailOffset(value) {
@@ -140,7 +140,7 @@ export function normalizeEmailRecent(value) {
   if (v === '24h' || v === '1d') return '24h';
   if (v === '7d' || v === 'week') return '7d';
   if (v === '30d' || v === 'month') return '30d';
-  return DEFAULT_OPENCLAW_EMAIL_RECENT;
+  return DEFAULT_EMAIL_RECENT;
 }
 
 export function parseEmailRangeFromMessage(message) {
