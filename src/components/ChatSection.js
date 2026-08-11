@@ -293,14 +293,41 @@ const ChatSection = () => {
     };
   }, []);
 
+  const kavRef = useRef(null);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [kavOffset, setKavOffset] = useState(Platform.OS === 'ios' ? 90 : 0);
+  const kavOffsetRef = useRef(kavOffset);
+
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboardHeight(e.endCoordinates?.height || 0));
+    const show = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates?.height || 0);
+      measureKavOffset();
+    });
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardHeight(0));
     return () => {
       show.remove();
       hide.remove();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      const t = setTimeout(measureKavOffset, 300);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const measureKavOffset = useCallback(() => {
+    if (Platform.OS !== 'ios' || !kavRef.current) return;
+    kavRef.current.measureInWindow((x, y) => {
+      if (Number.isFinite(y) && y > 0 && Math.abs(y - kavOffsetRef.current) > 1) {
+        kavOffsetRef.current = y;
+        setKavOffset(y);
+      }
+    });
   }, []);
 
   const handleStop = async () => {
@@ -1609,9 +1636,13 @@ const ChatSection = () => {
   return (
     <>
     <KeyboardAvoidingView 
+      ref={kavRef}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+      keyboardVerticalOffset={kavOffset}
       style={styles.chatArea}
+      onLayout={() => {
+        if (Platform.OS === 'ios') measureKavOffset();
+      }}
     >
       {isSelectionMode && (
       <View style={styles.providerBar}>
