@@ -924,7 +924,12 @@ const ChatSection = () => {
         await validateAttachmentSizes(activeAttachments);
       }
 
-      const recallHistoryBase = sanitizeRecallHistory(messages.slice(0, -1));
+      // `messages` (closure) does not include the current question yet — it is
+      // added to state via setMessages below. So the full array is already the
+      // prior conversation and must be sent in full; slicing off the last item
+      // would drop the previous assistant reply, making the model re-answer the
+      // prior question alongside the current one.
+      const recallHistoryBase = sanitizeRecallHistory(messages);
       const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
         ? trimChatHistoryForEmailRecall(recallHistoryBase, 8, 380 * 1024, finalInput)
         : trimChatHistoryForUpload(recallHistoryBase);
