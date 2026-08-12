@@ -123,6 +123,7 @@ const ChatSection = () => {
     provider, groqKey, geminiKey, openaiKey, openrouterKey, deepseekKey,
     autoModelRouting,
     setActiveResolvedProvider,
+    braveSearchKey,
     persona,
     sttLang,
     activeTab,
@@ -909,7 +910,7 @@ const ChatSection = () => {
             webSearchContext = (await fetchLocalWeather(location.coords.latitude, location.coords.longitude)) || '';
           }
           if (!webSearchContext) {
-            webSearchContext = (await fetchWebSearchContext(finalInput, null)) || '';
+            webSearchContext = (await fetchWebSearchContext(finalInput, (braveSearchKey || '').trim() || null)) || '';
           }
         } catch (e) {
           console.warn('[webSearch]', e?.message || e);
@@ -1107,7 +1108,7 @@ const ChatSection = () => {
             }
             if (!ctx) {
               const qs = buildSearchQueries(finalInput);
-              const data = await searchWeb(qs[0] || finalInput, null, qs.slice(1));
+              const data = await searchWeb(qs[0] || finalInput, (braveSearchKey || '').trim() || null, qs.slice(1));
               if (data?.results?.length) ctx = formatSearchResults(data);
             }
             if (!ctx) {

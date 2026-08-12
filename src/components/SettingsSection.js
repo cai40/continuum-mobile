@@ -65,6 +65,8 @@ const SettingsSection = (props) => {
     setOpenrouterKey,
     deepseekKey,
     setDeepseekKey,
+    braveSearchKey,
+    setBraveSearchKey,
     selectedVoice,
     setSelectedVoice,
     saveKeys,
@@ -109,6 +111,7 @@ const SettingsSection = (props) => {
   const [showOpenAI, setShowOpenAI] = useState(false);
   const [showOpenRouter, setShowOpenRouter] = useState(false);
   const [showDeepseek, setShowDeepseek] = useState(false);
+  const [showBrave, setShowBrave] = useState(false);
 
   // Memory Sub-Tab States
   const [isSyncing, setIsSyncing] = useState(false);
@@ -1162,6 +1165,14 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           setValue={setDeepseekKey}
           show={showDeepseek}
           setShow={setShowDeepseek}
+        />
+        <Divider />
+        <KeyInputRow
+          label="Brave Search (web search)"
+          value={braveSearchKey}
+          setValue={setBraveSearchKey}
+          show={showBrave}
+          setShow={setShowBrave}
         />
         <Divider />
         <KeyInputRow

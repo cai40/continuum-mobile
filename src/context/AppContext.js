@@ -78,6 +78,7 @@ export const AppProvider = ({ children }) => {
   const [openaiKey, setOpenaiKey] = useState("");
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [deepseekKey, setDeepseekKey] = useState("");
+  const [braveSearchKey, setBraveSearchKey] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("en-US-AvaNeural");
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
@@ -259,6 +260,7 @@ export const AppProvider = ({ children }) => {
           "@openai_key",
           "@openrouter_key",
           "@deepseek_key",
+          "@brave_search_key",
           "@provider",
           "@auto_model_routing",
           "@selected_voice",
@@ -302,6 +304,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@openai_key") setOpenaiKey(value);
           if (key === "@openrouter_key") setOpenrouterKey(value);
           if (key === "@deepseek_key") setDeepseekKey(value);
+          if (key === "@brave_search_key") setBraveSearchKey(value);
           if (key === "@provider") {
             setProviderState(normalizeProviderId(value));
           }
@@ -497,6 +500,7 @@ export const AppProvider = ({ children }) => {
         ["@openai_key", openaiKey.trim()],
         ["@openrouter_key", openrouterKey.trim()],
         ["@deepseek_key", deepseekKey.trim()],
+        ["@brave_search_key", braveSearchKey.trim()],
         ["@selected_voice", selectedVoice],
         ["@provider", activeProvider],
         ["@auto_model_routing", autoModelRouting ? "true" : "false"],
@@ -673,6 +677,8 @@ export const AppProvider = ({ children }) => {
         setOpenrouterKey,
         deepseekKey,
         setDeepseekKey,
+        braveSearchKey,
+        setBraveSearchKey,
         selectedVoice,
         setSelectedVoice,
         persona,
