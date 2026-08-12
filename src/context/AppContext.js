@@ -69,6 +69,7 @@ export const AppProvider = ({ children }) => {
     setServerStatus('healthy');
   };
   const [provider, setProviderState] = useState("deepseek_v4_flash");
+  const [autoModelRouting, setAutoModelRoutingState] = useState(true);
   const [groqKey, setGroqKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -256,6 +257,7 @@ export const AppProvider = ({ children }) => {
           "@openrouter_key",
           "@deepseek_key",
           "@provider",
+          "@auto_model_routing",
           "@selected_voice",
           "@chat_history",
           CHAT_HISTORY_CLEARED_AT_KEY,
@@ -300,6 +302,7 @@ export const AppProvider = ({ children }) => {
           if (key === "@provider") {
             setProviderState(normalizeProviderId(value));
           }
+          if (key === "@auto_model_routing") setAutoModelRoutingState(value !== "false");
           if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@persona") setPersona(value);
           if (key === "@stt_lang") setSttLang(value);
@@ -463,6 +466,13 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const setAutoModelRouting = (value) => {
+    setAutoModelRoutingState(value);
+    AsyncStorage.setItem("@auto_model_routing", value ? "true" : "false").catch((e) => {
+      console.warn("Auto model routing persist failed:", e);
+    });
+  };
+
   const setProvider = (nextProvider) => {
     const normalized = normalizeProviderId(nextProvider);
     setProviderState(normalized);
@@ -486,6 +496,7 @@ export const AppProvider = ({ children }) => {
         ["@deepseek_key", deepseekKey.trim()],
         ["@selected_voice", selectedVoice],
         ["@provider", activeProvider],
+        ["@auto_model_routing", autoModelRouting ? "true" : "false"],
         ["@persona", persona],
         ["@stt_lang", sttLang],
       ];
@@ -645,6 +656,8 @@ export const AppProvider = ({ children }) => {
         setActiveTab,
         provider,
         setProvider,
+        autoModelRouting,
+        setAutoModelRouting,
         groqKey,
         setGroqKey,
         geminiKey,

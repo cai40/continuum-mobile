@@ -10,6 +10,7 @@ import {
   FlatList,
   RefreshControl,
   Modal,
+  Switch,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -52,6 +53,8 @@ const SettingsSection = (props) => {
   const {
     provider,
     setProvider,
+    autoModelRouting,
+    setAutoModelRouting,
     groqKey,
     setGroqKey,
     geminiKey,
@@ -895,6 +898,23 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       {renderHeader("Intelligence Keys")}
 
       <Text style={categoryTitleStyle}>ACTIVE BRAIN PROVIDER</Text>
+      <View style={[styles.groupedCard, { padding: 16, marginBottom: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+        <View style={{ flex: 1, paddingRight: 12 }}>
+          <Text style={{ fontSize: 14, fontWeight: "700", color: theme.colors.black }}>
+            Auto Mode
+          </Text>
+          <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 16 }}>
+            ON: text uses DeepSeek V4 Flash, photos use Gemini automatically (overrides the selection below). OFF: always use the selected provider.
+          </Text>
+        </View>
+        <Switch
+          value={autoModelRouting}
+          onValueChange={(value) => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setAutoModelRouting(value);
+          }}
+        />
+      </View>
       <View style={{ gap: 10, marginBottom: 24 }}>
         {/* Row 1: Global Standards */}
         <View style={{ flexDirection: "row", gap: 10 }}>

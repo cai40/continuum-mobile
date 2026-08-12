@@ -121,6 +121,7 @@ const ChatSection = () => {
   const {
     messages, setMessages,
     provider, groqKey, geminiKey, openaiKey, openrouterKey, deepseekKey,
+    autoModelRouting,
     persona,
     sttLang,
     activeTab,
@@ -758,17 +759,18 @@ const ChatSection = () => {
         'openrouter', 'or_free', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
       ];
       // Automatic model routing: images / multimodal input → Gemini;
-      // pure text → DeepSeek V4 Flash. Falls back to the selected provider
-      // when the auto-model's key is missing or for specialized (email) flows.
+      // pure text → DeepSeek V4 Flash. Only active when "Auto Mode" is on in
+      // Setup → Intelligence & API Keys; otherwise the selected provider wins.
+      const autoModeOn = autoModelRouting;
       const hasImageAttachments = activeAttachments.some((f) => f.type?.startsWith('image/'));
       const selectedProvider = normalizeProviderId(provider);
       const geminiPlatformKey = (geminiKey || '').trim();
       const deepseekPlatformKey = (deepseekKey || '').trim();
       const hasValidDeepseekKey = !!deepseekPlatformKey && !isOpenRouterKey(deepseekPlatformKey);
       let resolvedProvider;
-      if (hasImageAttachments && geminiPlatformKey) {
+      if (autoModeOn && hasImageAttachments && geminiPlatformKey) {
         resolvedProvider = 'gemini';
-      } else if (!isEmailBridgeQuery && !hasImageAttachments && hasValidDeepseekKey) {
+      } else if (autoModeOn && !isEmailBridgeQuery && !hasImageAttachments && hasValidDeepseekKey) {
         resolvedProvider = 'deepseek_v4_flash';
       } else {
         resolvedProvider = selectedProvider;
