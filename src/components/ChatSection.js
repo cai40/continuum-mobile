@@ -757,12 +757,25 @@ const ChatSection = () => {
       const openrouterProviders = [
         'openrouter', 'or_free', 'qwen', 'gpt4o_mini', 'kimi_k2.6', 'minimax',
       ];
-      const resolvedProvider = normalizeProviderId(provider);
+      // Automatic model routing: images / multimodal input → Gemini;
+      // pure text → DeepSeek V4 Flash. Falls back to the selected provider
+      // when the auto-model's key is missing or for specialized (email) flows.
+      const hasImageAttachments = activeAttachments.some((f) => f.type?.startsWith('image/'));
+      const selectedProvider = normalizeProviderId(provider);
+      const geminiPlatformKey = (geminiKey || '').trim();
       const deepseekPlatformKey = (deepseekKey || '').trim();
+      const hasValidDeepseekKey = !!deepseekPlatformKey && !isOpenRouterKey(deepseekPlatformKey);
+      let resolvedProvider;
+      if (hasImageAttachments && geminiPlatformKey) {
+        resolvedProvider = 'gemini';
+      } else if (!isEmailBridgeQuery && !hasImageAttachments && hasValidDeepseekKey) {
+        resolvedProvider = 'deepseek_v4_flash';
+      } else {
+        resolvedProvider = selectedProvider;
+      }
       const useDirectDeepseek =
         isDeepseekProvider(resolvedProvider)
-        && !!deepseekPlatformKey
-        && !isOpenRouterKey(deepseekPlatformKey);
+        && hasValidDeepseekKey;
       const activeKey =
         resolvedProvider === 'groq' ? groqKey :
         (resolvedProvider === 'gemini' ? geminiKey :
@@ -808,10 +821,8 @@ const ChatSection = () => {
         return;
       }
 
-      const hasImageAttachments = activeAttachments.some((f) => f.type?.startsWith('image/'));
       // Prefer direct DeepSeek for text chat. Image uploads need Continuum multipart.
       const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery && !hasImageAttachments;
-
       const isModelIdentityQuestion = /\b(what|which)\b[\s\S]{0,40}\b(model|llm|ai|version)\b/i.test(finalInput)
         || /\b(are you|you are|you're)\b[\s\S]{0,20}\b(deepseek|gpt|gemini|claude|v3|v4)\b/i.test(finalInput)
         || /\bmodel\s+(are you|is this|do you use|am i talking)\b/i.test(finalInput);
@@ -997,6 +1008,7 @@ const ChatSection = () => {
       // cannot override injected attachment text or live search results.
       formData.append('history', safeJsonStringify(documentTextInjected || webSearchContext ? [] : historyForUpload));
       if (activeKey) formData.append('api_key', activeKey.trim());
+      if (resolvedProvider === 'gemini' && geminiPlatformKey) formData.append('gemini_key', geminiPlatformKey);
       // Hands-free speech uses on-device TTS with markdown stripped so "*" is never spoken.
       // (Server Azure synthesis reads raw markdown markers aloud.)
       if (activeAttachments.length && !isFromVoice) {
