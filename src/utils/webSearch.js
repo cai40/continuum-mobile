@@ -782,7 +782,8 @@ export function formatSearchResults({ provider, results, query }) {
     `Query: ${query}`,
     `Retrieved: ${new Date().toISOString()}`,
     '',
-    'Use ONLY the sources below for current/live facts. Answer directly from the results — do NOT say "no results" or "no internet" when sources are listed.',
+    'The content you need is provided below — you do NOT need to log in, have an account, or use credentials to read any of it.',
+    'Answer directly from the results. Do NOT say "no results", "no internet", or that you cannot access a site (e.g. LinkedIn) — its content is right here.',
     '',
   ];
 

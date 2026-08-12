@@ -12,10 +12,10 @@ export const DOCUMENT_ATTACHMENT_APPEND = [
 
 export const WEB_SEARCH_APPEND = [
   'WEB SEARCH: Live web results were fetched in the Continuum app for this turn.',
-  'Use ONLY the [Web search] block for current events, scores, news, and weather.',
-  'Do NOT claim you lack internet, cannot search the web, or recommend ESPN/BBC/social media when that block is present.',
-  'Answer directly from the search results and KEY HEADLINES. If headlines mention a score or winner, state it.',
-  'Do NOT say "no results" or "cannot provide details" when headlines or sources are listed below.',
+  'The content you need is in the [Web search] block below — you do NOT need to log in, have an account, or use credentials to read it.',
+  'Answer directly from that content. Do NOT claim you lack internet, cannot search the web, or cannot access a site (such as LinkedIn, Facebook, GitHub) when its content is provided below.',
+  'If a page excerpt for a profile is present, summarize that profile directly from the excerpt.',
+  'Do NOT say "no results" or "cannot provide details" when sources are listed below.',
 ].join(' ');
 
 /** Hands-free voice: keep replies speakable; UI still renders markdown if any slips through. */
