@@ -10,6 +10,9 @@ function stripHtml(html) {
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'")
     .replace(/&#039;/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
@@ -315,6 +318,82 @@ async function searchDuckDuckGoInstant(query) {
   return { provider: 'duckduckgo', results, query };
 }
 
+/** DuckDuckGo HTML search — full general web results (no API key). */
+function decodeDuckDuckGoUrl(href) {
+  const raw = String(href || '').trim();
+  if (!raw) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  const m = raw.match(/[?&]uddg=([^&]+)/i);
+  if (m) {
+    try {
+      return decodeURIComponent(m[1]);
+    } catch (e) {
+      return '';
+    }
+  }
+  if (raw.startsWith('//')) return `https:${raw}`;
+  return raw;
+}
+
+function parseDuckDuckGoHtml(html) {
+  const results = [];
+  const blocks = String(html || '').split(/class="result results_links/);
+  for (const block of blocks.slice(1)) {
+    const aMatch = block.match(/class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!aMatch) continue;
+    const url = decodeDuckDuckGoUrl(aMatch[1]);
+    const title = stripHtml(aMatch[2]).replace(/\s+/g, ' ').trim();
+    // Skip paid/ads results — their redirect URLs are useless click-trackers.
+    if (!url || !title || /duckduckgo\.com\/y\.js/i.test(url) || /ad_domain=/i.test(url)) continue;
+    const snippetMatch = block.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i);
+    const snippet = snippetMatch
+      ? stripHtml(snippetMatch[1]).replace(/\s+/g, ' ').trim().slice(0, 400)
+      : '';
+    results.push({ title, url, snippet, source: 'duckduckgo' });
+    if (results.length >= 8) break;
+  }
+  return results;
+}
+
+async function searchDuckDuckGoHtml(query) {
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    return { provider: 'duckduckgo', results: parseDuckDuckGoHtml(html), query };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Merge several result sources into one list, deduped by URL. */
+function mergeSearchSources(sources, query) {
+  const seen = new Set();
+  const results = [];
+  for (const src of sources) {
+    for (const row of src?.results || []) {
+      const key = String(row?.url || '').toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      results.push(row);
+      if (results.length >= 10) break;
+    }
+    if (results.length >= 10) break;
+  }
+  const provider = (sources.map((s) => s?.provider).filter(Boolean).join('+')) || 'web';
+  return { provider, results, query };
+}
+
 async function searchBrave(query, apiKey) {
   const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=6`;
   const data = await fetchJson(url, {
@@ -361,6 +440,7 @@ function isScrapeableUrl(url) {
   if (!u.startsWith('http')) return false;
   if (/news\.google\.com/.test(u)) return false;
   if (/duckduckgo\.com/.test(u)) return false;
+  if (/duckduckgo\.com\/y\.js/.test(u)) return false;
   return true;
 }
 
@@ -449,7 +529,7 @@ async function searchWebOnce(query, braveApiKey = '') {
   }
 
   // Weather is best served by DuckDuckGo's instant-answer card (current
-  // conditions for a city), so prefer it over Google News RSS for these.
+  // conditions for a city), so prefer it over broad search for these.
   if (isWeatherQuery(query)) {
     try {
       const ddg = await searchDuckDuckGoInstant(query);
@@ -457,13 +537,31 @@ async function searchWebOnce(query, braveApiKey = '') {
     } catch (err) {
       console.warn('[webSearch] DuckDuckGo failed:', err.message);
     }
-  } else if (isLiveQuery(query)) {
+  }
+
+  // Broad general web search via DuckDuckGo HTML. For live/news queries, also
+  // pull Google News RSS and merge, so the model gets both headlines and
+  // general web pages (prices, docs, official sites, etc.).
+  const sources = [];
+  try {
+    const html = await searchDuckDuckGoHtml(query);
+    if (html.results.length > 0) sources.push(html);
+  } catch (err) {
+    console.warn('[webSearch] DuckDuckGo HTML failed:', err.message);
+  }
+
+  if (isLiveQuery(query)) {
     try {
       const news = await searchGoogleNewsRss(query);
-      if (news.results.length > 0) return enrichResultsWithPageText(news);
+      if (news.results.length > 0) sources.push(news);
     } catch (err) {
       console.warn('[webSearch] Google News RSS failed:', err.message);
     }
+  }
+
+  if (sources.length) {
+    const merged = mergeSearchSources(sources, query);
+    if (merged.results.length > 0) return enrichResultsWithPageText(merged);
   }
 
   try {
@@ -491,7 +589,7 @@ export function formatSearchResults({ provider, results, query }) {
     `Query: ${query}`,
     `Retrieved: ${new Date().toISOString()}`,
     '',
-    'Use ONLY the sources below for current/live facts. Answer directly from headlines — do NOT say "no results" when headlines are listed.',
+    'Use ONLY the sources below for current/live facts. Answer directly from the results — do NOT say "no results" or "no internet" when sources are listed.',
     '',
   ];
 
