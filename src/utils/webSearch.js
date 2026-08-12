@@ -123,7 +123,21 @@ export function wantsWebSearch(message) {
 
 export function buildSearchQuery(message) {
   let q = String(message || '').trim();
-  q = q.replace(/^(please\s+)?(search the web for|web search for|search for|look up|lookup|google)\s+/i, '');
+
+  // Strip conversational filler: "search the web for", "can you search",
+  // "try to find", etc.
+  q = q.replace(/^(please\s+)?(can|could|would|will)\s+you\s+(try\s+to\s+)?/i, '');
+  q = q.replace(/^(please\s+)?(search the web for|web search for|search for|look up|lookup|google|search online for|find)\s+/i, '');
+  q = q.replace(/^search\s+my\s+name\s+(?:is\s+)?/i, '');
+  q = q.replace(/^my\s+name\s+(?:is\s+)?/i, '');
+  q = q.replace(/^find\s+my\s+(?:name\s+)?/i, '');
+
+  // "search <term> on <site>" — keep the term, site is handled by
+  // buildSearchQueries (site: operator). Drop common trailing site words
+  // so the raw query stays clean.
+  q = q.replace(/\s+on\s+(linkedin|facebook|instagram|twitter|x|github|youtube|google|amazon|reddit|tiktok|weibo)\s*$/i, '');
+  q = q.replace(/\s+(on|at|via)\s+(linkedin|facebook|instagram|twitter|x|github|youtube|google|amazon|reddit|tiktok|weibo)\s*$/i, '');
+
   q = q.replace(/\?+$/, '').trim();
   if (!q) q = String(message || '').trim();
 
@@ -143,6 +157,34 @@ export function buildSearchQuery(message) {
   return q;
 }
 
+const SITE_DOMAINS = {
+  linkedin: 'linkedin.com',
+  facebook: 'facebook.com',
+  instagram: 'instagram.com',
+  twitter: 'twitter.com',
+  x: 'twitter.com',
+  github: 'github.com',
+  youtube: 'youtube.com',
+  google: 'google.com',
+  amazon: 'amazon.com',
+  reddit: 'reddit.com',
+  tiktok: 'tiktok.com',
+  weibo: 'weibo.com',
+};
+
+/** When the user says "search <name> on linkedin", build a site-scoped query. */
+export function buildSiteScopedQuery(message) {
+  const text = String(message || '').trim();
+  const m = text.match(/\bon\s+(linkedin|facebook|instagram|twitter|x|github|youtube|google|amazon|reddit|tiktok|weibo)\b/i);
+  if (!m) return null;
+  const domain = SITE_DOMAINS[m[1].toLowerCase()];
+  if (!domain) return null;
+  const base = buildSearchQuery(text);
+  if (!base) return null;
+  // Names are more precise quoted and site-scoped.
+  return `"${base}" site:${domain}`;
+}
+
 const MONTHS = {
   january: '01', february: '02', march: '03', april: '04',
   may: '05', june: '06', july: '07', august: '08',
@@ -150,8 +192,10 @@ const MONTHS = {
 };
 
 export function buildSearchQueries(message) {
-  const queries = [buildSearchQuery(message)];
   const text = String(message || '');
+  // Site-scoped ("search my name on linkedin") becomes the lead query.
+  const siteQuery = buildSiteScopedQuery(text);
+  const queries = siteQuery ? [siteQuery, buildSearchQuery(text)] : [buildSearchQuery(text)];
 
   const dateLong = text.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2}),?\s+(20\d{2})\b/i);
   if (dateLong) {
