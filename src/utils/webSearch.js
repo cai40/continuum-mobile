@@ -48,6 +48,21 @@ export function wantsWebSearch(message) {
   // A pasted URL (e.g. a Zillow listing) should be fetched directly.
   if (/https?:\/\/[^\s<>"']+/i.test(text)) return true;
 
+  // Any explicit "search ..." request is a web search: "search my name on
+  // linkedin", "search for iphone 17 price", "search it". EMAIL_BLOCK above
+  // already excludes email searches ("search my emails").
+  if (/\b(search|searches|searching|searched|searching for)\b/i.test(text)) {
+    return true;
+  }
+
+  // Opening / reading a profile on a named site is a web request:
+  // "open my linkedin profile", "find my github", "what does my linkedin say".
+  const siteMention = /\b(linkedin|facebook|instagram|twitter|x|github|youtube|reddit|tiktok|weibo)\b/i;
+  const profileIntent = /\b(search|find|look up|lookup|open|read|show|see|view|get|profile|page|my name|my profile|say|says|about|mention)\b/i;
+  if (siteMention.test(text) && (profileIntent.test(text) || /\b(what|how|is|are|does|do|show|tell)\b/i.test(text))) {
+    return true;
+  }
+
   if (/\b(search the web|web search|search online|look up online|google)\b/i.test(text)) {
     return true;
   }
