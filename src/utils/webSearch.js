@@ -36,11 +36,21 @@ export function wantsWebSearch(message) {
     return true;
   }
 
+  // Weather / current conditions are always live — no question mark or
+  // sports topic required: "how is weather now", "weather in new york",
+  // "is it raining outside", "forecast tomorrow".
+  if (/\b(weather|forecast|temperature|rain(?:y|ing)?|snow(?:y|ing)?|sunny|cloudy|windy|humid|storm)\b/i.test(text)) {
+    return true;
+  }
+
   const topic = /\b(soccer|football|nba|nfl|mlb|nhl|premier league|world cup|euro|olympics|tennis|formula 1|f1|norway|la liga|champions league|national team)\b/i;
   const live = /\b(latest|current|today|tonight|last night|yesterday|last week|this week|this weekend|live|score|scores|result|results|standings|who won|who beat|match|matches|game|games|weather|news|price|election)\b/i;
   const sportsOutcome = /\b(win|won|lose|lost|beat|beats|beating|played|playing|defeat|defeated)\b/i;
 
   if (live.test(text) && (topic.test(text) || /\?\s*$/.test(text))) return true;
+
+  // "who won the game last night", "what's the score", "did X win"
+  if (/\b(who won|what('s| is) (the )?score|what was the score|did\s+\w+\s+(win|beat))\b/i.test(text) && live.test(text)) return true;
 
   if (topic.test(text) && sportsOutcome.test(text)) return true;
 
@@ -81,6 +91,10 @@ export function buildSearchQuery(message) {
 
   if (/\b(latest|current|today|score|result|match|news|standing|yesterday|win|won|lose|lost)\b/i.test(q) && !/\b20\d{2}\b/.test(q)) {
     q += ` ${new Date().getFullYear()}`;
+  }
+  // Weather doesn't need the current year appended (it also hurts results).
+  if (/\bweather|forecast\b/i.test(q)) {
+    q = q.replace(/\s+\d{4}$/, '').trim();
   }
   return q;
 }
@@ -140,7 +154,11 @@ function extractHeadlineHints(results) {
 }
 
 function isLiveQuery(query) {
-  return /\b(latest|current|today|tonight|last night|yesterday|last week|this week|live|score|scores|result|results|standings|news|weather|match|matches|who won|who beat|win|won|lose|lost|beat)\b/i.test(query);
+  return /\b(latest|current|today|tonight|last night|yesterday|last week|this week|live|score|scores|result|results|standings|news|weather|match|matches|who won|who beat|win|won|lose|lost|beat|now)\b/i.test(query);
+}
+
+function isWeatherQuery(query) {
+  return /\b(weather|forecast|temperature|rain|snow|sunny|cloudy)\b/i.test(query);
 }
 
 async function fetchJson(url, headers = {}) {
@@ -387,7 +405,16 @@ async function searchWebOnce(query, braveApiKey = '') {
     }
   }
 
-  if (isLiveQuery(query)) {
+  // Weather is best served by DuckDuckGo's instant-answer card (current
+  // conditions for a city), so prefer it over Google News RSS for these.
+  if (isWeatherQuery(query)) {
+    try {
+      const ddg = await searchDuckDuckGoInstant(query);
+      if (ddg.results.length > 0) return enrichResultsWithPageText(ddg);
+    } catch (err) {
+      console.warn('[webSearch] DuckDuckGo failed:', err.message);
+    }
+  } else if (isLiveQuery(query)) {
     try {
       const news = await searchGoogleNewsRss(query);
       if (news.results.length > 0) return enrichResultsWithPageText(news);
