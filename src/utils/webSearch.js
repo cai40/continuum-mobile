@@ -864,6 +864,24 @@ export async function fetchWebSearchContext(message, braveApiKey = '') {
   }
 }
 
+/**
+ * Agent behavior: when an error is unknown, search the web for what it means
+ * and return a readable summary. Returns null if nothing useful is found.
+ */
+export async function lookUpErrorOnline(errorText, braveApiKey = '') {
+  let q = String(errorText || '').trim().replace(/["'\n\r]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!q) return null;
+  if (q.length > 120) q = q.slice(0, 120);
+  try {
+    const data = await searchWeb(q, braveApiKey, []);
+    if (!data?.results?.length) return null;
+    return formatSearchResults(data);
+  } catch (err) {
+    console.warn('[webSearch] error lookup failed:', err?.message || err);
+    return null;
+  }
+}
+
 async function fetchWebSearchContextUnsafe(message, braveApiKey = '') {
   if (!wantsWebSearch(message)) return null;
 

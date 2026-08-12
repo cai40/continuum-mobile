@@ -30,7 +30,8 @@ import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
-import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim } from '../utils/webSearch';
+import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline } from '../utils/webSearch';
+import { diagnoseChatError, rawErrorMessage } from '../utils/chatErrorDiagnosis';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import {
   normalizeProviderId,
@@ -1053,6 +1054,7 @@ const ChatSection = () => {
       let bridgeAttempted = useRenderEmail && !preferDirectDeepseek;
       let renderFallbackUsed = false;
       let webSearchRetried = false;
+      let errorRetryCount = 0;
       let lastServedModel = preferDirectDeepseek ? deepseekPlatformModel(resolvedProvider) : null;
 
       const typingSafetyTimer = setTimeout(() => {
@@ -1265,7 +1267,49 @@ const ChatSection = () => {
         clearTypingSafety();
         setIsTyping(false);
         setStreamingContent('');
-        Alert.alert("Chat Error", friendlyChatError(err));
+
+        // ── Agent self-diagnosis ─────────────────────────────────────────
+        // Classify the failure. Transient errors (network/quota/bridge)
+        // auto-retry once with the selected stream. Everything else gets a
+        // plain-language explanation + concrete fix. Unknown errors are
+        // looked up online and the findings are posted back into chat.
+        const diag = diagnoseChatError(err, {
+          provider: resolvedProvider,
+          emailQuery: isEmailBridgeQuery,
+        });
+
+        if (diag.retryable && errorRetryCount < 1 && !isEmailBridgeQuery) {
+          errorRetryCount += 1;
+          setStreamingContent(`${diag.title} — retrying…`);
+          setTimeout(() => {
+            setStreamingContent('');
+            if (preferDirectDeepseek) startDirectDeepseekStream();
+            else startRenderStream();
+          }, diag.retryDelayMs || 2500);
+          return;
+        }
+
+        Alert.alert(diag.title, `${diag.message}\n\n${diag.tip || ''}`);
+
+        if (diag.kind === 'unknown') {
+          setStreamingContent('Looking this error up online…');
+          Promise.race([
+            lookUpErrorOnline(rawErrorMessage(err), (braveSearchKey || '').trim() || null),
+            new Promise((resolve) => setTimeout(() => resolve(null), 12000)),
+          ]).then((ctx) => {
+            setStreamingContent('');
+            if (ctx && ctx.includes('results')) {
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: (Date.now() + 1).toString(),
+                  role: 'assistant',
+                  content: `I couldn't resolve that from the error alone, so I searched the web for it. Here's what I found:\n\n${ctx}`,
+                },
+              ]);
+            }
+          }).catch(() => setStreamingContent(''));
+        }
       };
 
       const onStreamUpdate = (event, json) => {
