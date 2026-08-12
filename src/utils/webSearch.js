@@ -206,6 +206,90 @@ export function buildSiteScopedQuery(message) {
   return `"${base}" site:${domain}`;
 }
 
+/**
+ * For "read <name> on linkedin", construct likely public profile URLs and try
+ * them directly — more reliable than search (search engines can be slow,
+ * rate-limited, or only return LinkedIn's directory page).
+ */
+export function buildProfileCandidateUrls(message) {
+  const text = String(message || '').trim();
+  const siteMatch = text.match(/\bon\s+(linkedin|github|twitter|x)\b/i);
+  if (!siteMatch) return [];
+  const site = siteMatch[1].toLowerCase();
+  const name = buildSearchQuery(text).trim();
+  if (!name) return [];
+
+  const slug = name
+    .toLowerCase()
+    .replace(/\b(?:mr|ms|dr|max|john)\b/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  // Split into first/last for common handle forms (e.g. yongyaocai, yongyao-cai).
+  const parts = slug.split('-').filter(Boolean);
+  const joined = parts.join('');
+  const withDash = parts.join('-');
+
+  const urls = [];
+  if (site === 'linkedin') {
+    const candidates = [slug, joined, withDash, `${parts[0] || ''}${parts[1] || ''}`, `${parts[0] || ''}-${parts.slice(1).join('')}`];
+    for (const c of [...new Set(candidates.filter(Boolean))]) {
+      urls.push(`https://www.linkedin.com/in/${encodeURIComponent(c)}`);
+    }
+  } else if (site === 'github') {
+    urls.push(`https://github.com/${encodeURIComponent(slug)}`);
+    urls.push(`https://github.com/${encodeURIComponent(joined)}`);
+  } else if (site === 'twitter' || site === 'x') {
+    const handle = text.match(/@([A-Za-z0-9_]{1,15})/) ? text.match(/@([A-Za-z0-9_]{1,15})/)[1] : slug;
+    urls.push(`https://twitter.com/${encodeURIComponent(handle)}`);
+    urls.push(`https://x.com/${encodeURIComponent(handle)}`);
+  }
+
+  return [...new Set(urls)];
+}
+
+/**
+ * Try to fetch a social profile directly (LinkedIn/GitHub/Twitter) before
+ * falling back to general web search. Returns a context block or null.
+ */
+let lastProfileContext = null;
+
+export function getCachedProfileContext() {
+  return lastProfileContext;
+}
+
+/** "can you see my profile", "what does my profile say", "is my profile there" */
+export function isProfileFollowUp(message) {
+  const text = String(message || '').trim();
+  return /\b(profile|linkedin|github|page)\b/i.test(text)
+    && /\b(can|could|do|does|did|what|see|read|view|look|find|show|open|access|say|says|still|now)\b/i.test(text)
+    && !/\bon\s+(linkedin|github|twitter|x|facebook|instagram)\b/i.test(text);
+}
+
+export async function fetchProfileDirectly(message, braveApiKey = '') {
+  const urls = buildProfileCandidateUrls(message);
+  for (const url of urls) {
+    try {
+      const excerpt = await fetchPageExcerpt(url);
+      if (excerpt && excerpt.length > 60) {
+        const ctx = [
+          `[Web page fetched — ${url}]`,
+          'Use ONLY the page content below for facts about this profile.',
+          'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
+          '',
+          excerpt,
+        ].join('\n');
+        lastProfileContext = ctx;
+        return ctx;
+      }
+    } catch (err) {
+      console.warn('[webSearch] direct profile fetch failed:', url, err?.message || err);
+    }
+  }
+  return null;
+}
+
 const MONTHS = {
   january: '01', february: '02', march: '03', april: '04',
   may: '05', june: '06', july: '07', august: '08',
@@ -898,6 +982,13 @@ async function fetchWebSearchContextUnsafe(message, braveApiKey = '') {
       '',
       text,
     ].join('\n');
+  }
+
+  // "read <name> on linkedin/github/twitter" → try direct profile URLs first
+  // (search engines often only surface LinkedIn's directory page).
+  if (/on\s+(linkedin|github|twitter|x)\b/i.test(String(message || ''))) {
+    const direct = await fetchProfileDirectly(message, braveApiKey);
+    if (direct) return direct;
   }
 
   const queries = buildSearchQueries(message);

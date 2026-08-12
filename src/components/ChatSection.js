@@ -30,7 +30,7 @@ import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
-import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline } from '../utils/webSearch';
+import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline, isProfileFollowUp, getCachedProfileContext } from '../utils/webSearch';
 import { diagnoseChatError, rawErrorMessage } from '../utils/chatErrorDiagnosis';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import {
@@ -902,6 +902,12 @@ const ChatSection = () => {
       }
 
       let webSearchContext = '';
+      // "can you see my profile" after an earlier lookup: reuse the profile we
+      // already fetched (search gate doesn't fire for follow-ups).
+      if (!isWebSearchQuery && isProfileFollowUp(finalInput)) {
+        const cached = getCachedProfileContext();
+        if (cached) webSearchContext = cached;
+      }
       if (isWebSearchQuery) {
         setStreamingContent('Searching the web…');
         try {
