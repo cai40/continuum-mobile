@@ -912,8 +912,15 @@ const ChatSection = () => {
           if (!webSearchContext) {
             webSearchContext = (await fetchWebSearchContext(finalInput, (braveSearchKey || '').trim() || null)) || '';
           }
+          // Cap the injected context so a huge scrape can't bloat the prompt.
+          if (webSearchContext && webSearchContext.length > 12000) {
+            webSearchContext = webSearchContext.slice(0, 12000);
+          }
         } catch (e) {
           console.warn('[webSearch]', e?.message || e);
+        }
+        if (!webSearchContext) {
+          setStreamingContent('');
         }
       }
 

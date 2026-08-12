@@ -143,12 +143,15 @@ export function buildSearchQuery(message) {
   let q = String(message || '').trim();
 
   // Strip conversational filler: "search the web for", "can you search",
-  // "try to find", etc.
+  // "try to find", "read my name", "open my profile", etc.
   q = q.replace(/^(please\s+)?(can|could|would|will)\s+you\s+(try\s+to\s+)?/i, '');
   q = q.replace(/^(please\s+)?(search the web for|web search for|search for|look up|lookup|google|search online for|find)\s+/i, '');
   q = q.replace(/^search\s+my\s+name\s+(?:is\s+)?/i, '');
   q = q.replace(/^my\s+name\s+(?:is\s+)?/i, '');
   q = q.replace(/^find\s+my\s+(?:name\s+)?/i, '');
+  // "read my name", "show my name", "open my profile", "tell me about ..."
+  q = q.replace(/^(read|open|show|get|view|see|find|tell\s+me\s+about|what\s+does|what\s+is|what'?s)\s+(my\s+)?(name|profile|page)\s+(?:is\s+)?/i, '');
+  q = q.replace(/^(read|open|show|get|view)\s+/i, '');
 
   // "search <term> on <site>" — keep the term, site is handled by
   // buildSearchQueries (site: operator). Drop common trailing site words
@@ -669,6 +672,12 @@ function hasProfileResult(results) {
     /(linkedin\.com\/in\/|facebook\.com\/[^/\s]+\/?$|instagram\.com\/[^/\s]+\/?$|twitter\.com\/[A-Za-z0-9_]+\/?$|x\.com\/[A-Za-z0-9_]+\/?$|github\.com\/[A-Za-z0-9_-]+)$/i.test(r.url || ''));
 }
 
+/** LinkedIn directory pages are dead-ends — prefer real /in/ profiles. */
+function isDeadEndResultSet(results) {
+  return Array.isArray(results) && results.length > 0
+    && results.every((r) => /linkedin\.com\/pub\//i.test(r.url || ''));
+}
+
 export async function searchWeb(query, braveApiKey = '', extraQueries = []) {
   const allQueries = [...new Set([query, ...extraQueries].map((q) => String(q || '').trim()).filter(Boolean))];
   let best = null;
@@ -676,7 +685,10 @@ export async function searchWeb(query, braveApiKey = '', extraQueries = []) {
   for (const q of allQueries) {
     const data = await searchWebOnce(q, braveApiKey);
     if (!data.results?.length) continue;
-    if (!best || (hasActionableResults(data.results) && !hasActionableResults(best.results))) {
+    const isDeadEnd = isDeadEndResultSet(data.results);
+    if (isDeadEnd) continue;
+    const bestIsDeadEnd = best && isDeadEndResultSet(best.results);
+    if (!best || (!bestIsDeadEnd && hasActionableResults(data.results) && !hasActionableResults(best.results))) {
       best = { ...data, query: q };
     }
     if (hasActionableResults(data.results)) return { ...data, query: q };
@@ -841,6 +853,17 @@ export async function fetchLocalWeather(lat, lon) {
 }
 
 export async function fetchWebSearchContext(message, braveApiKey = '') {
+  try {
+    return await fetchWebSearchContextUnsafe(message, braveApiKey);
+  } catch (err) {
+    // Never let a web-search failure crash the chat flow — treat it as
+    // "no context" so the model answers normally.
+    console.warn('[webSearch] context build failed:', err?.message || err);
+    return null;
+  }
+}
+
+async function fetchWebSearchContextUnsafe(message, braveApiKey = '') {
   if (!wantsWebSearch(message)) return null;
 
   // If the user pasted a URL, fetch it directly instead of searching.
