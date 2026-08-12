@@ -25,6 +25,14 @@ function decodeXmlEntities(text) {
     .replace(/&apos;/g, "'");
 }
 
+/** True when an assistant reply claims it has no internet / cannot search. */
+export function isNoInternetClaim(reply) {
+  const text = String(reply || '');
+  return /\b(no|without|don'?t have|do not have|cannot|can'?t|lack|no longer have)\b[\s\S]{0,40}\b(internet|web|online|network)\b/i.test(text)
+    || /\b(no|without|don'?t have|do not have|cannot|can'?t)\b[\s\S]{0,40}\b(access|connection|browse|search)\b[\s\S]{0,30}\b(internet|web|online)\b/i.test(text)
+    || /\b(no live (data|info|information|updates)|offline (mode|data)|cannot search the web|can'?t search the web|no web search|no internet access|no internet connection)\b/i.test(text);
+}
+
 export function wantsWebSearch(message) {
   const text = String(message || '').trim();
   if (!text || EMAIL_BLOCK.test(text)) return false;
@@ -43,8 +51,8 @@ export function wantsWebSearch(message) {
     return true;
   }
 
-  const topic = /\b(soccer|football|nba|nfl|mlb|nhl|premier league|world cup|euro|olympics|tennis|formula 1|f1|norway|la liga|champions league|national team)\b/i;
-  const live = /\b(latest|current|today|tonight|last night|yesterday|last week|this week|this weekend|live|score|scores|result|results|standings|who won|who beat|match|matches|game|games|weather|news|price|election)\b/i;
+  const topic = /\b(soccer|football|nba|nfl|mlb|nhl|premier league|world cup|euro|olympics|tennis|formula 1|f1|norway|la liga|champions league|national team|bitcoin|crypto|stock|stocks|market|etf)\b/i;
+  const live = /\b(latest|current|today|tonight|last night|yesterday|last week|this week|this weekend|live|score|scores|result|results|standings|who won|who beat|match|matches|game|games|weather|news|price|prices|election|rate|rates|exchange|opening|closing|hours)\b/i;
   const sportsOutcome = /\b(win|won|lose|lost|beat|beats|beating|played|playing|defeat|defeated)\b/i;
 
   if (live.test(text) && (topic.test(text) || /\?\s*$/.test(text))) return true;
@@ -73,6 +81,28 @@ export function wantsWebSearch(message) {
   if (/\b(find out|look up|lookup)\b/i.test(text) && !/\b(email|memory|continuum|inbox)\b/i.test(text)) {
     return true;
   }
+
+  // General "needs the internet" net: any question that asks about a current
+  // state, an event, a place, a person's latest status, prices, or dates that
+  // isn't clearly answerable offline. The no-internet-claim fallback in chat
+  // catches anything this misses.
+  const isQuestion = /\b(what|when|where|who|which|why|how|is|are|was|were|will|would|can|could|should|did|does|do)\b/i.test(text);
+  const timeSensitive = /\b(today|tonight|now|right now|current|latest|recent|yesterday|last night|this week|this weekend|upcoming|live|news|breaking|price|prices|cost|stock|market|rate|exchange|election|score|result|winner|schedule|time|date|202\d|updating|new|changed|happening|happens|going on)\b/i;
+  const offlineOnly = /^(hi|hello|hey|thanks|thank you|good (morning|afternoon|evening)|how are you|how'?s it going|what'?s up|how was your day)\b/i.test(text)
+    || /\b(my name|my email|my password|my birthday|how old am i|what is love|meaning of life|2\+2|math|translate)\b/i.test(text)
+    || /\b(who are you|what are you|what can you do|which model are you|what model are you)\b/i.test(text)
+    || /\b(what time is it|what'?s the time|what day is it|what'?s today'?s date|what'?s the date)\b/i.test(text);
+
+  // Calendar / scheduling questions need current info: "when is the next
+  // solar eclipse", "what time does the store close", "when does it release".
+  if (/\bwhen\s+(is|does|will|was|are)\b/i.test(text)
+    && /\b(next|open|close|start|end|release|launch|air|premiere|eclipse|holiday|event|game|match)\b/i.test(text)) {
+    return true;
+  }
+
+  if (isQuestion && timeSensitive.test(text) && !offlineOnly) return true;
+
+  if (timeSensitive.test(text) && /\b(latest|current|today|tonight|now|news|price)\b/i.test(text) && !offlineOnly) return true;
 
   return false;
 }
@@ -471,6 +501,51 @@ export function formatSearchResults({ provider, results, query }) {
   });
 
   return lines.join('\n').trim();
+}
+
+const WEATHER_CODE_LABELS = {
+  0: 'Clear sky', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast',
+  45: 'Foggy', 48: 'Icy fog',
+  51: 'Light drizzle', 53: 'Drizzle', 55: 'Heavy drizzle',
+  61: 'Light rain', 63: 'Rain', 65: 'Heavy rain',
+  71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow grains',
+  80: 'Light showers', 81: 'Showers', 82: 'Heavy showers',
+  85: 'Snow showers', 86: 'Heavy snow showers',
+  95: 'Thunderstorm', 96: 'Thunderstorm with hail', 99: 'Severe thunderstorm',
+};
+
+/**
+ * Live current weather for the user's coordinates via Open-Meteo (no key).
+ * Returns null if location is unavailable or the API fails, so the caller
+ * falls back to a normal web search.
+ */
+export async function fetchLocalWeather(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const url = 'https://api.open-meteo.com/v1/forecast'
+    + `?latitude=${lat}&longitude=${lon}`
+    + '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m'
+    + '&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=auto';
+  try {
+    const data = await fetchJson(url);
+    const c = data?.current;
+    if (!c || c.temperature_2m == null) return null;
+    const label = WEATHER_CODE_LABELS[c.weather_code] || 'Unknown conditions';
+    return [
+      '[Local weather — live]',
+      `Location: ${lat.toFixed(3)}, ${lon.toFixed(3)}`,
+      `Conditions: ${label}`,
+      `Temperature: ${Math.round(c.temperature_2m)}°F (feels like ${Math.round(c.apparent_temperature ?? c.temperature_2m)}°F)`,
+      `Humidity: ${c.relative_humidity_2m ?? 'n/a'}%`,
+      `Wind: ${c.wind_speed_10m ?? 'n/a'} mph`,
+      c.precipitation ? `Precipitation: ${c.precipitation} mm` : 'Precipitation: none',
+      `Updated: ${new Date().toISOString()}`,
+      '',
+      'Answer the user\'s weather question from these live conditions.',
+    ].join('\n');
+  } catch (err) {
+    console.warn('[webSearch] weather API failed:', err.message);
+    return null;
+  }
 }
 
 export async function fetchWebSearchContext(message, braveApiKey = '') {

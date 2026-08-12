@@ -30,7 +30,7 @@ import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
-import { wantsWebSearch, fetchWebSearchContext } from '../utils/webSearch';
+import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim } from '../utils/webSearch';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import {
   normalizeProviderId,
@@ -903,7 +903,13 @@ const ChatSection = () => {
       if (isWebSearchQuery) {
         setStreamingContent('Searching the web…');
         try {
-          webSearchContext = (await fetchWebSearchContext(finalInput, null)) || '';
+          const isWeatherQ = /\b(weather|forecast|temperature|raining|snow|sunny|cloudy|hot|cold|humidity|wind)\b/i.test(finalInput);
+          if (isWeatherQ && location?.coords) {
+            webSearchContext = (await fetchLocalWeather(location.coords.latitude, location.coords.longitude)) || '';
+          }
+          if (!webSearchContext) {
+            webSearchContext = (await fetchWebSearchContext(finalInput, null)) || '';
+          }
         } catch (e) {
           console.warn('[webSearch]', e?.message || e);
         }
@@ -914,7 +920,7 @@ const ChatSection = () => {
         && (isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput));
       const liveEmailFetchScheduled = isEmailBridgeQuery && !isEmailFollowUpOnly;
 
-      const formData = new FormData();
+      let formData = new FormData();
       let chatMessage = isRecallEvidenceFetch
         ? buildTargetedRecallFetchMessage(finalInput, resolveRecallMonthRange(finalInput, priorMessages))
         : finalInput;
@@ -1004,7 +1010,7 @@ const ChatSection = () => {
         ].join(' ') : []),
       ];
 
-      const historyForDeepseek = (
+      let historyForDeepseek = (
         documentTextInjected || webSearchContext || isModelIdentityQuestion
       ) ? [] : historyForUpload;
 
@@ -1037,6 +1043,7 @@ const ChatSection = () => {
       let isHandled = false;
       let bridgeAttempted = useRenderEmail && !preferDirectDeepseek;
       let renderFallbackUsed = false;
+      let webSearchRetried = false;
       let lastServedModel = preferDirectDeepseek ? deepseekPlatformModel(resolvedProvider) : null;
 
       const typingSafetyTimer = setTimeout(() => {
@@ -1045,6 +1052,30 @@ const ChatSection = () => {
       }, isEmailBridgeQuery ? 600000 : (isWebSearchQuery ? 180000 : 130000));
 
       const clearTypingSafety = () => clearTimeout(typingSafetyTimer);
+
+      // Rebuild the render-stream payload with a fresh web context (used when
+      // the model claims it has no internet and we auto-search + retry once).
+      const rebuildFormData = (messageText) => {
+        const fd = new FormData();
+        fd.append('message', messageText);
+        fd.append('provider', resolvedProvider);
+        if (useDirectDeepseek) fd.append('model', deepseekPlatformModel(resolvedProvider));
+        fd.append('persona', appendGroundingPersona(persona, [...personaExtras, WEB_SEARCH_APPEND]));
+        fd.append('history', safeJsonStringify([]));
+        if (activeKey) fd.append('api_key', activeKey.trim());
+        if (resolvedProvider === 'gemini' && geminiPlatformKey) fd.append('gemini_key', geminiPlatformKey);
+        if (activeAttachments.length && !isFromVoice) {
+          for (const file of activeAttachments) {
+            fd.append('file', { uri: file.uri, name: file.name, type: file.type });
+          }
+        }
+        if (location) {
+          fd.append('lat', location.coords.latitude.toString());
+          fd.append('lon', location.coords.longitude.toString());
+        }
+        fd.append('client_time', clientTime);
+        return fd;
+      };
 
       const finishSuccess = (finalText, voiceTranscript, meta = null) => {
         if (meta?.servedModel) lastServedModel = meta.servedModel;
@@ -1057,6 +1088,49 @@ const ChatSection = () => {
           finishError(hint);
           return;
         }
+
+        // Auto web search fallback: if the model answered "no internet" for a
+        // plain-text question and we haven't searched this turn, search once
+        // and re-ask with live results injected. Nothing is shown to the user
+        // until this resolves.
+        if (!webSearchContext && !webSearchRetried && isNoInternetClaim(finalText)
+          && !isEmailBridgeQuery && !activeAttachments.length && !isAnyRecallTurn && !isWebSearchQuery) {
+          webSearchRetried = true;
+          setStreamingContent('Checking the web for that…');
+          const isWeatherQ = /\b(weather|forecast|temperature|raining|snow|sunny|cloudy|hot|cold|humidity|wind)\b/i.test(finalInput);
+          (async () => {
+            let ctx = null;
+            if (isWeatherQ && location?.coords) {
+              ctx = await fetchLocalWeather(location.coords.latitude, location.coords.longitude);
+            }
+            if (!ctx) {
+              const qs = buildSearchQueries(finalInput);
+              const data = await searchWeb(qs[0] || finalInput, null, qs.slice(1));
+              if (data?.results?.length) ctx = formatSearchResults(data);
+            }
+            if (!ctx) {
+              setIsTyping(false);
+              setStreamingContent('');
+              finishSuccess(finalText, voiceTranscript, meta);
+              return;
+            }
+            webSearchContext = ctx;
+            const newMsg = `${ctx}\n\n${chatMessage}`;
+            chatMessage = newMsg;
+            formData = rebuildFormData(newMsg);
+            historyForDeepseek = [];
+            isHandled = false;
+            setStreamingContent('');
+            if (preferDirectDeepseek) startDirectDeepseekStream();
+            else startRenderStream();
+          })().catch(() => {
+            setIsTyping(false);
+            setStreamingContent('');
+            finishSuccess(finalText, voiceTranscript, meta);
+          });
+          return;
+        }
+
         if (isHandled) {
           clearTypingSafety();
           setIsTyping(false);
@@ -1132,7 +1206,7 @@ const ChatSection = () => {
           {
             apiKey: deepseekPlatformKey,
             model: dsModel,
-            system: appendGroundingPersona(persona, personaExtras),
+            system: appendGroundingPersona(persona, webSearchContext ? [...personaExtras, WEB_SEARCH_APPEND] : personaExtras),
             history: historyForDeepseek,
             message: chatMessage,
           },
