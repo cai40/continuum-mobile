@@ -1,7 +1,10 @@
 const EMAIL_BLOCK = /\b(emails?|inbox|yahoo|mail|imap|smtp|uid\b|clean\s*up|clean\b.*\b(emails?|inbox|mail)\b|\bfetch\b.*\b(emails?|mail|inbox)\b|move\s+all\s+emails|from\s+\d{1,2}[\/\-]\d{1,2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:\d{4}\s+)?emails?)\b/i;
 const SEARCH_TIMEOUT_MS = 20000;
 const PAGE_SCRAPE_MAX_CHARS = 2500;
-const USER_AGENT = 'Mozilla/5.0 (compatible; ContinuumApp/1.0; +https://github.com/cai40/continuum-mobile)';
+// Real browser UA — sites like LinkedIn, Facebook, and many news sites serve
+// a login/bot wall to the previous "ContinuumApp/1.0" bot UA and hide the
+// public content they show to normal visitors.
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 function stripHtml(html) {
   return String(html || '')
@@ -485,7 +488,84 @@ function isScrapeableUrl(url) {
   if (/news\.google\.com/.test(u)) return false;
   if (/duckduckgo\.com/.test(u)) return false;
   if (/duckduckgo\.com\/y\.js/.test(u)) return false;
+  // LinkedIn directory pages always return 999 and contain no profile data.
+  if (/linkedin\.com\/pub\//.test(u)) return false;
   return true;
+}
+
+function decodeBasicEntities(s) {
+  return String(s || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&#39;/g, "'");
+}
+
+/**
+ * LinkedIn public profiles hide About/Experience behind JS, but with a real
+ * browser UA the page ships og:title/og:description plus a JSON-LD Person
+ * block (name, location, employer, languages, followers) and the member's
+ * articles/publications. Extract those server-rendered fields.
+ */
+async function fetchLinkedInProfileExcerpt(url) {
+  const html = await fetchText(url);
+  const lines = [];
+
+  const grab = (re) => {
+    const m = html.match(re);
+    return m ? decodeBasicEntities(m[1]).trim() : '';
+  };
+
+  const title = grab(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)
+    || grab(/<title>([\s\S]*?)<\/title>/i);
+  const desc = grab(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i)
+    || grab(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i);
+  if (title) lines.push(`Profile: ${title}`);
+  if (desc) lines.push(desc);
+
+  const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/i);
+  if (ld) {
+    try {
+      const graph = JSON.parse(ld[1]);
+      const items = Array.isArray(graph['@graph']) ? graph['@graph'] : [];
+      const person = items.find((i) => i['@type'] === 'Person');
+      if (person) {
+        const notMasked = (s) => String(s || '').trim() && !/[*]/.test(s);
+        if (notMasked(person.name)) lines.push(`Name: ${person.name}`);
+        const titles = (Array.isArray(person.jobTitle) ? person.jobTitle : [])
+          .map((t) => String(t || '').trim()).filter(notMasked);
+        if (titles.length) lines.push(`Job titles: ${titles.join(', ')}`);
+        const orgs = (Array.isArray(person.worksFor) ? person.worksFor : [])
+          .map((w) => w?.name).filter(notMasked);
+        if (orgs.length) lines.push(`Experience at: ${orgs.join(', ')}`);
+        const loc = person.address?.addressLocality || person.address?.addressCountry;
+        if (loc) lines.push(`Location: ${loc}`);
+        const langs = (Array.isArray(person.knowsLanguage) ? person.knowsLanguage : [])
+          .map((l) => l?.name).filter(Boolean);
+        if (langs.length) lines.push(`Languages: ${langs.join(', ')}`);
+        const follows = person.interactionStatistic?.userInteractionCount;
+        if (follows != null) lines.push(`Followers: ${follows}`);
+        if (notMasked(person.description)) lines.push(`About: ${person.description}`);
+      }
+
+      const posts = items.filter((i) => i['@type'] === 'Article' || i['@type'] === 'PublicationIssue');
+      if (posts.length) {
+        lines.push(`Posts & publications (${posts.length}):`);
+        posts.slice(0, 5).forEach((a) => {
+          const t = a.name || a.headline || '';
+          const d = String(a.description || '').trim();
+          if (d) lines.push(`- ${t}: ${d.slice(0, 240)}`);
+          else lines.push(`- ${t}`);
+        });
+      }
+    } catch (e) {
+      console.warn('[webSearch] linkedin ld+json parse failed:', e.message);
+    }
+  }
+
+  return lines.length ? lines.join('\n').slice(0, PAGE_SCRAPE_MAX_CHARS) : '';
 }
 
 async function fetchPageExcerpt(url) {
@@ -493,6 +573,17 @@ async function fetchPageExcerpt(url) {
   if (!isScrapeableUrl(target)) return '';
 
   try {
+    // LinkedIn needs a dedicated extractor — its public profile data ships in
+    // og tags + JSON-LD, not the visible DOM.
+    if (/linkedin\.com\/(in|pub)\//i.test(target)) {
+      try {
+        const li = await fetchLinkedInProfileExcerpt(target);
+        if (li) return li;
+      } catch (err) {
+        console.warn('[webSearch] linkedin fetch failed:', target, err.message);
+      }
+    }
+
     const html = await fetchText(target);
     const metaDesc =
       html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
@@ -522,15 +613,28 @@ async function enrichResultsWithPageText(data, maxPages = 1) {
   const results = [...data.results];
   let scraped = false;
 
+  // When someone searches a person, the LinkedIn profile is the page they
+  // want read — scrape it first even if it isn't the top result.
+  const linkedInProfile = results.find((r) => /linkedin\.com\/in\//i.test(r.url || ''));
+
+  const rowsToScrape = [];
+  if (linkedInProfile) rowsToScrape.push(linkedInProfile);
+  for (const row of results) {
+    if (rowsToScrape.length >= maxPages) break;
+    if (row === linkedInProfile) continue;
+    rowsToScrape.push(row);
+  }
+
   let scrapedCount = 0;
-  for (let i = 0; i < results.length && scrapedCount < maxPages; i++) {
-    const row = results[i];
+  for (const row of rowsToScrape) {
+    if (scrapedCount >= maxPages) break;
     if (row.pageExcerpt || !isScrapeableUrl(row.url)) continue;
     const excerpt = await fetchPageExcerpt(row.url);
     if (!excerpt || excerpt.length < 80) continue;
     scraped = true;
     scrapedCount += 1;
-    results[i] = {
+    const idx = results.indexOf(row);
+    results[idx] = {
       ...row,
       pageExcerpt: excerpt,
       snippet: stripHtml(row.snippet || excerpt.slice(0, 400)),
@@ -544,6 +648,12 @@ async function enrichResultsWithPageText(data, maxPages = 1) {
   };
 }
 
+/** A result set "finds the person" when it contains a real social profile page. */
+function hasProfileResult(results) {
+  return Array.isArray(results) && results.some((r) =>
+    /(linkedin\.com\/in\/|facebook\.com\/[^/\s]+\/?$|instagram\.com\/[^/\s]+\/?$|twitter\.com\/[A-Za-z0-9_]+\/?$|x\.com\/[A-Za-z0-9_]+\/?$|github\.com\/[A-Za-z0-9_-]+)$/i.test(r.url || ''));
+}
+
 export async function searchWeb(query, braveApiKey = '', extraQueries = []) {
   const allQueries = [...new Set([query, ...extraQueries].map((q) => String(q || '').trim()).filter(Boolean))];
   let best = null;
@@ -555,6 +665,9 @@ export async function searchWeb(query, braveApiKey = '', extraQueries = []) {
       best = { ...data, query: q };
     }
     if (hasActionableResults(data.results)) return { ...data, query: q };
+    // When searching for a person/site, a result set with the real profile
+    // page beats a set with only directory/aggregator pages.
+    if (hasProfileResult(data.results)) return { ...data, query: q };
   }
 
   if (best) return best;
