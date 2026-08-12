@@ -16,7 +16,7 @@ import HeaderBadge from './src/components/shared/HeaderBadge';
 import { styles, theme } from './src/styles/theme';
 import * as Sentry from '@sentry/react-native';
 import { SENTRY_DSN, BUILD_ID } from './src/constants/Config';
-import { providerDisplayLabel, providerBadgeColor } from './src/utils/providers';
+import { providerDisplayLabel, providerBadgeColor, isOpenRouterKey, normalizeProviderId } from './src/utils/providers';
 
 // Initialize Sentry for Phase 3 Production Observability
 if (SENTRY_DSN) {
@@ -36,6 +36,10 @@ const AppShell = () => {
     isBiometricAuthenticated,
     activeTab, setActiveTab, 
     provider, 
+    autoModelRouting,
+    deepseekKey,
+    geminiKey,
+    activeResolvedProvider,
     serverStatus,
     isInitializing,
     sttLang,
@@ -88,8 +92,19 @@ const AppShell = () => {
     settings: 'Setup',
   }[activeTab] || 'Continuum';
 
-  const providerLabel = providerDisplayLabel(provider);
-  const providerColor = providerBadgeColor(provider, theme.colors);
+  // Header badge reflects the model actually in use: the last one a chat
+  // reply resolved to, or the auto-mode default before any message.
+  const defaultAutoProvider = (() => {
+    if (!autoModelRouting) return provider;
+    const dsKey = (deepseekKey || '').trim();
+    const gmKey = (geminiKey || '').trim();
+    if (dsKey && !isOpenRouterKey(dsKey)) return 'deepseek_v4_flash';
+    if (gmKey) return 'gemini';
+    return provider;
+  })();
+  const badgeProvider = activeResolvedProvider || normalizeProviderId(defaultAutoProvider);
+  const providerLabel = providerDisplayLabel(badgeProvider);
+  const providerColor = providerBadgeColor(badgeProvider, theme.colors);
 
   const cycleSttLang = () => {
     try {

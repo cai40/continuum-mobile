@@ -70,6 +70,9 @@ export const AppProvider = ({ children }) => {
   };
   const [provider, setProviderState] = useState("deepseek_v4_flash");
   const [autoModelRouting, setAutoModelRoutingState] = useState(true);
+  // Last model actually used for a chat reply (auto-routing may differ from
+  // the selected provider). Lets the header badge show the real model.
+  const [activeResolvedProvider, setActiveResolvedProvider] = useState(null);
   const [groqKey, setGroqKey] = useState("");
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
@@ -658,6 +661,8 @@ export const AppProvider = ({ children }) => {
         setProvider,
         autoModelRouting,
         setAutoModelRouting,
+        activeResolvedProvider,
+        setActiveResolvedProvider,
         groqKey,
         setGroqKey,
         geminiKey,

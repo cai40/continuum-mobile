@@ -122,6 +122,7 @@ const ChatSection = () => {
     messages, setMessages,
     provider, groqKey, geminiKey, openaiKey, openrouterKey, deepseekKey,
     autoModelRouting,
+    setActiveResolvedProvider,
     persona,
     sttLang,
     activeTab,
@@ -778,6 +779,8 @@ const ChatSection = () => {
       const useDirectDeepseek =
         isDeepseekProvider(resolvedProvider)
         && hasValidDeepseekKey;
+      // Let the header badge show the model that will actually answer.
+      setActiveResolvedProvider(resolvedProvider);
       const activeKey =
         resolvedProvider === 'groq' ? groqKey :
         (resolvedProvider === 'gemini' ? geminiKey :
