@@ -925,6 +925,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setProvider(p);
               }}
+              disabled={autoModelRouting}
               style={{
                 flex: 1,
                 backgroundColor:
@@ -935,6 +936,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 borderWidth: 1,
                 borderColor:
                   provider === p ? theme.colors.primary : theme.colors.border,
+                opacity: autoModelRouting ? 0.4 : 1,
               }}
             >
               <Text
@@ -960,6 +962,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setProvider(p);
               }}
+              disabled={autoModelRouting}
               style={{
                 flex: 1,
                 backgroundColor:
@@ -970,6 +973,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 borderWidth: 1,
                 borderColor:
                   provider === p ? theme.colors.secondary : theme.colors.border,
+                opacity: autoModelRouting ? 0.4 : 1,
               }}
             >
               <Text
@@ -995,6 +999,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setProvider(p);
               }}
+              disabled={autoModelRouting}
               style={{
                 flex: 1,
                 backgroundColor:
@@ -1005,6 +1010,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 borderWidth: 1,
                 borderColor:
                   provider === p ? '#6C5CE7' : theme.colors.border,
+                opacity: autoModelRouting ? 0.4 : 1,
               }}
             >
               <Text
@@ -1030,6 +1036,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setProvider(p);
               }}
+              disabled={autoModelRouting}
               style={{
                 flex: 1,
                 backgroundColor:
@@ -1040,6 +1047,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 borderWidth: 1,
                 borderColor:
                   provider === p ? '#00B894' : theme.colors.border,
+                opacity: autoModelRouting ? 0.4 : 1,
               }}
             >
               <Text
@@ -1056,29 +1064,34 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           ))}
         </View>
         <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 16, marginTop: 4 }}>
-          Active Continuum provider:{" "}
-          <Text style={{ fontWeight: "800", color: theme.colors.black }}>
-            {normalizeProviderId(provider)}
-          </Text>
-          {" "}({providerDisplayLabel(provider)})
-          {"\n"}
-          {isDeepseekProvider(provider) ? (
-            <>
-              DeepSeek API model (api.deepseek.com):{" "}
-              <Text style={{ fontWeight: "800", color: theme.colors.black }}>
-                {deepseekPlatformModel(provider)}
-              </Text>
-              {"\n\n"}
-              DeepSeek buttons call{" "}
-              <Text style={{ fontWeight: "800", color: theme.colors.black }}>api.deepseek.com</Text>
-              {" "}directly — not OpenRouter.
-              {"\n"}Paste a key from{" "}
-              <Text style={{ fontWeight: "800", color: theme.colors.black }}>platform.deepseek.com</Text>
-              {" "}in the DeepSeek box (not an sk-or-… OpenRouter key).
-              {"\n"}Tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text> — header turns green.
-            </>
+          {autoModelRouting ? (
+            <>Auto Mode ON — text uses DeepSeek V4 Flash, photos use Gemini. Manual buttons are disabled. Toggle Auto Mode off above to pick a provider manually.</>
           ) : (
-            <>Select a DeepSeek model to use the DeepSeek platform API.</>
+            <>Active Continuum provider:{" "}
+            <Text style={{ fontWeight: "800", color: theme.colors.black }}>
+              {normalizeProviderId(provider)}
+            </Text>
+            {" "}({providerDisplayLabel(provider)})
+            {"\n"}
+            {isDeepseekProvider(provider) ? (
+              <>
+                DeepSeek API model (api.deepseek.com):{" "}
+                <Text style={{ fontWeight: "800", color: theme.colors.black }}>
+                  {deepseekPlatformModel(provider)}
+                </Text>
+                {"\n\n"}
+                DeepSeek buttons call{" "}
+                <Text style={{ fontWeight: "800", color: theme.colors.black }}>api.deepseek.com</Text>
+                {" "}directly — not OpenRouter.
+                {"\n"}Paste a key from{" "}
+                <Text style={{ fontWeight: "800", color: theme.colors.black }}>platform.deepseek.com</Text>
+                {" "}in the DeepSeek box (not an sk-or-… OpenRouter key).
+                {"\n"}Tap <Text style={{ fontWeight: "800", color: theme.colors.black }}>DS V4 FLASH</Text> — header turns green.
+              </>
+            ) : (
+              <>Select a DeepSeek model to use the DeepSeek platform API.</>
+            )}
+            </>
           )}
         </Text>
         <TouchableOpacity
