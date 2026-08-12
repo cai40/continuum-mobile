@@ -903,7 +903,8 @@ const ChatSection = () => {
       if (isWebSearchQuery) {
         setStreamingContent('Searching the web…');
         try {
-          const isWeatherQ = /\b(weather|forecast|temperature|raining|snow|sunny|cloudy|hot|cold|humidity|wind)\b/i.test(finalInput);
+          const isWeatherQ = /\b(weather|forecast|temperature|raining|snow|sunny|cloudy|hot|cold|humidity|wind)\b/i.test(finalInput)
+            || /(天气|气温|会不会下雨|会不会下雪|下雨|下雪|降雨|降雪|温度)/.test(finalInput);
           if (isWeatherQ && location?.coords) {
             webSearchContext = (await fetchLocalWeather(location.coords.latitude, location.coords.longitude)) || '';
           }
@@ -1097,7 +1098,8 @@ const ChatSection = () => {
           && !isEmailBridgeQuery && !activeAttachments.length && !isAnyRecallTurn && !isWebSearchQuery) {
           webSearchRetried = true;
           setStreamingContent('Checking the web for that…');
-          const isWeatherQ = /\b(weather|forecast|temperature|raining|snow|sunny|cloudy|hot|cold|humidity|wind)\b/i.test(finalInput);
+          const isWeatherQ = /\b(weather|forecast|temperature|raining|snow|sunny|cloudy|hot|cold|humidity|wind)\b/i.test(finalInput)
+            || /(天气|气温|会不会下雨|会不会下雪|下雨|下雪|降雨|降雪|温度)/.test(finalInput);
           (async () => {
             let ctx = null;
             if (isWeatherQ && location?.coords) {

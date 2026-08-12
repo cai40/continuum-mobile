@@ -30,7 +30,9 @@ export function isNoInternetClaim(reply) {
   const text = String(reply || '');
   return /\b(no|without|don'?t have|do not have|cannot|can'?t|lack|no longer have)\b[\s\S]{0,40}\b(internet|web|online|network)\b/i.test(text)
     || /\b(no|without|don'?t have|do not have|cannot|can'?t)\b[\s\S]{0,40}\b(access|connection|browse|search)\b[\s\S]{0,30}\b(internet|web|online)\b/i.test(text)
-    || /\b(no live (data|info|information|updates)|offline (mode|data)|cannot search the web|can'?t search the web|no web search|no internet access|no internet connection)\b/i.test(text);
+    || /\b(no live (data|info|information|updates)|offline (mode|data)|cannot search the web|can'?t search the web|no web search|no internet access|no internet connection)\b/i.test(text)
+    || /(没有|无|不能|无法|没办)[^。！？\n]{0,12}(互联网|网络|上网|联网|在线|实时数据|实时信息|实时资讯)/i.test(text)
+    || /(无法访问互联网|无法联网|不能上网|没有网络|没有互联网|离线模式|无法实时)/i.test(text);
 }
 
 export function wantsWebSearch(message) {
@@ -98,6 +100,15 @@ export function wantsWebSearch(message) {
   if (/\bwhen\s+(is|does|will|was|are)\b/i.test(text)
     && /\b(next|open|close|start|end|release|launch|air|premiere|eclipse|holiday|event|game|match)\b/i.test(text)) {
     return true;
+  }
+
+  // Chinese (and other CJK) live/current intents. CJK has no ASCII word
+  // boundaries, so match literal keywords: 今天有什么新闻 (what news today),
+  // 今天天气 (today's weather), 股票/汇率/比分, etc.
+  if (/[\u4e00-\u9fff]/.test(text)) {
+    const cnLive = /(今天|明天|现在|目前|最新|最近|近期|刚刚|昨晚|昨天晚上|昨天|今晚|本周|这周|新闻|热点|要闻|天气|气温|会不会下雨|会不会下雪|下雪|下雨|股票|股市|大盘|股价|金价|油价|价格|房价|汇率|利率|比分|比赛|赛果|战报|结果|选举|总统|发生了什么|有什么新闻|多少钱|涨了|跌了|谁赢了|谁赢)/;
+    const cnOffline = /(你好|您好|谢谢|感谢|你是谁|你能做什么|你会什么|我的名字|我叫|我的生日|我几岁|我爱你|现在几点|几点了|今天几号|今天是几号|翻译|算术|数学|帮我算|讲个笑话)/;
+    if (cnLive.test(text) && !cnOffline.test(text)) return true;
   }
 
   if (isQuestion && timeSensitive.test(text) && !offlineOnly) return true;
@@ -184,11 +195,13 @@ function extractHeadlineHints(results) {
 }
 
 function isLiveQuery(query) {
-  return /\b(latest|current|today|tonight|last night|yesterday|last week|this week|live|score|scores|result|results|standings|news|weather|match|matches|who won|who beat|win|won|lose|lost|beat|now)\b/i.test(query);
+  return /\b(latest|current|today|tonight|last night|yesterday|last week|this week|live|score|scores|result|results|standings|news|weather|match|matches|who won|who beat|win|won|lose|lost|beat|now)\b/i.test(query)
+    || /(新闻|天气|气温|比分|比赛|结果|股票|股市|汇率|利率|价格|选举|今天|最新|最近|发生了什么|谁赢了|热点|资讯)/.test(query);
 }
 
 function isWeatherQuery(query) {
-  return /\b(weather|forecast|temperature|rain|snow|sunny|cloudy)\b/i.test(query);
+  return /\b(weather|forecast|temperature|rain|snow|sunny|cloudy)\b/i.test(query)
+    || /(天气|气温|会不会下雨|下雪|下雨|温度|降雨)/.test(query);
 }
 
 async function fetchJson(url, headers = {}) {
