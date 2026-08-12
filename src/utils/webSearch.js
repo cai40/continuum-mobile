@@ -539,18 +539,12 @@ async function searchWebOnce(query, braveApiKey = '') {
     }
   }
 
-  // Broad general web search via DuckDuckGo HTML. For live/news queries, also
-  // pull Google News RSS and merge, so the model gets both headlines and
-  // general web pages (prices, docs, official sites, etc.).
+  // Broad general web search via DuckDuckGo HTML. For live/news queries,
+  // Google News RSS is tried first and its headlines lead the merged list,
+  // with general web pages (prices, docs, official sites) following.
+  const isLive = isLiveQuery(query);
   const sources = [];
-  try {
-    const html = await searchDuckDuckGoHtml(query);
-    if (html.results.length > 0) sources.push(html);
-  } catch (err) {
-    console.warn('[webSearch] DuckDuckGo HTML failed:', err.message);
-  }
-
-  if (isLiveQuery(query)) {
+  if (isLive) {
     try {
       const news = await searchGoogleNewsRss(query);
       if (news.results.length > 0) sources.push(news);
@@ -558,10 +552,25 @@ async function searchWebOnce(query, braveApiKey = '') {
       console.warn('[webSearch] Google News RSS failed:', err.message);
     }
   }
+  try {
+    const html = await searchDuckDuckGoHtml(query);
+    if (html.results.length > 0) sources.push(html);
+  } catch (err) {
+    console.warn('[webSearch] DuckDuckGo HTML failed:', err.message);
+  }
 
   if (sources.length) {
     const merged = mergeSearchSources(sources, query);
     if (merged.results.length > 0) return enrichResultsWithPageText(merged);
+  }
+
+  if (isLive) {
+    try {
+      const news = await searchGoogleNewsRss(query);
+      if (news.results.length > 0) return enrichResultsWithPageText(news);
+    } catch (err) {
+      console.warn('[webSearch] Google News RSS failed:', err.message);
+    }
   }
 
   try {
