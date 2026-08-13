@@ -211,17 +211,39 @@ export function buildSiteScopedQuery(message) {
  * them directly — more reliable than search (search engines can be slow,
  * rate-limited, or only return LinkedIn's directory page).
  */
+
+/** Pull the person's name out of a profile request ("read yongyao cai on linkedin"). */
+export function extractProfileName(message) {
+  let text = String(message || '').trim();
+  if (!text) return '';
+  // Strip the site word + "on"/"at".
+  text = text
+    .replace(/\s+(?:on|at|via)\s+(linkedin|github|twitter|x|facebook|instagram)\b.*$/i, '')
+    .trim();
+  // Strip leading intent verbs + optional "my name is" / "my profile".
+  text = text
+    .replace(/^(?:please\s+)?(?:can|could|would|will|do|did)\s+you\s+/i, '')
+    .replace(/^(?:search|look up|lookup|read|open|show|get|view|see|find|check|pull up|tell me about|what does|what is|what'?s)\s+/i, '')
+    .replace(/^(?:my\s+)?(?:name|profile|page)\s+(?:is\s+)?/i, '')
+    .replace(/^(?:my\s+)?name\s+/i, '')
+    .replace(/^for\s+/i, '')
+    .trim();
+  // Remove leftover generic words that aren't part of a name.
+  text = text.replace(/\b(?:please|now|first|up|for\s+me|online)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  return text;
+}
+
 export function buildProfileCandidateUrls(message) {
   const text = String(message || '').trim();
   const siteMatch = text.match(/\bon\s+(linkedin|github|twitter|x)\b/i);
   if (!siteMatch) return [];
   const site = siteMatch[1].toLowerCase();
-  const name = buildSearchQuery(text).trim();
-  if (!name) return [];
+  const name = extractProfileName(text).trim();
+  if (!name || name.split(/\s+/).length > 4) return [];
 
   const slug = name
     .toLowerCase()
-    .replace(/\b(?:mr|ms|dr|max|john)\b/g, '')
+    .replace(/\b(?:mr|ms|dr)\b\.?/g, '')
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-+|-+$/g, '');
@@ -989,6 +1011,34 @@ async function fetchWebSearchContextUnsafe(message, braveApiKey = '') {
   if (/on\s+(linkedin|github|twitter|x)\b/i.test(String(message || ''))) {
     const direct = await fetchProfileDirectly(message, braveApiKey);
     if (direct) return direct;
+    // Direct fetch failed — do a targeted search and pull the actual profile
+    // page out of the results if one exists.
+    const name = extractProfileName(message);
+    const profileSearch = await searchWeb(`"${name}" ${/linkedin/i.test(message) ? 'site:linkedin.com/in' : ''}`.trim(), braveApiKey, []);
+    const profileRow = (profileSearch?.results || []).find((r) => /linkedin\.com\/in\/|github\.com\/|twitter\.com\/|x\.com\//i.test(r.url || ''));
+    if (profileRow && profileRow.url) {
+      try {
+        const excerpt = await fetchPageExcerpt(profileRow.url);
+        if (excerpt && excerpt.length > 60) {
+          const ctx = [
+            `[Web page fetched — ${profileRow.url}]`,
+            'Use ONLY the page content below for facts about this profile.',
+            'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
+            '',
+            excerpt,
+          ].join('\n');
+          lastProfileContext = ctx;
+          return ctx;
+        }
+      } catch (err) {
+        console.warn('[webSearch] profile row fetch failed:', profileRow.url, err?.message || err);
+      }
+    }
+    return [
+      `[Could not retrieve the profile]`,
+      `The app could not load the ${name ? `"${name}" ` : ''}profile from LinkedIn (the site blocks automated requests).`,
+      'Ask the user to paste their public profile URL (linkedin.com/in/...) and the app will read it directly.',
+    ].join('\n');
   }
 
   const queries = buildSearchQueries(message);
