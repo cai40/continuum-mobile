@@ -6,6 +6,16 @@ const PAGE_SCRAPE_MAX_CHARS = 2500;
 // public content they show to normal visitors.
 const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
+// Imported lazily via function reference to avoid a heavy module graph in the
+// web-search path; used only for server-side profile fetches.
+let fetchBridgeExcerptImpl = null;
+function bridgeExcerptFetcher() {
+  return fetchBridgeExcerptImpl;
+}
+export function setBridgeExcerptFetcher(fn) {
+  fetchBridgeExcerptImpl = fn;
+}
+
 function stripHtml(html) {
   return String(html || '')
     .replace(/<[^>]+>/g, ' ')
@@ -289,8 +299,36 @@ export function isProfileFollowUp(message) {
     && !/\bon\s+(linkedin|github|twitter|x|facebook|instagram)\b/i.test(text);
 }
 
-export async function fetchProfileDirectly(message, braveApiKey = '') {
+export async function fetchProfileDirectly(message, braveApiKey = '', bridgeSecret = '') {
   const urls = buildProfileCandidateUrls(message);
+  // Prefer server-side fetch via the Render bridge — social profile pages
+  // (LinkedIn ~800KB) can OOM the phone if processed on-device.
+  if (bridgeSecret) {
+    const fetcher = bridgeExcerptFetcher();
+    if (fetcher) {
+      for (const url of urls) {
+        try {
+          const excerpt = await fetcher(bridgeSecret, url);
+          if (excerpt && excerpt.length > 60) {
+            const ctx = [
+              `[Web page fetched — ${url}]`,
+              'Use ONLY the page content below for facts about this profile.',
+              'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
+              '',
+              excerpt,
+            ].join('\n');
+            lastProfileContext = ctx;
+            return ctx;
+          }
+        } catch (err) {
+          console.warn('[webSearch] bridge profile fetch failed:', url, err?.message || err);
+        }
+      }
+      return null;
+    }
+  }
+
+  // Fallback: fetch on-device (smaller pages only).
   for (const url of urls) {
     try {
       const excerpt = await fetchPageExcerpt(url);
@@ -959,9 +997,9 @@ export async function fetchLocalWeather(lat, lon) {
   }
 }
 
-export async function fetchWebSearchContext(message, braveApiKey = '') {
+export async function fetchWebSearchContext(message, braveApiKey = '', bridgeSecret = '') {
   try {
-    return await fetchWebSearchContextUnsafe(message, braveApiKey);
+    return await fetchWebSearchContextUnsafe(message, braveApiKey, bridgeSecret);
   } catch (err) {
     // Never let a web-search failure crash the chat flow — treat it as
     // "no context" so the model answers normally.
@@ -988,7 +1026,7 @@ export async function lookUpErrorOnline(errorText, braveApiKey = '') {
   }
 }
 
-async function fetchWebSearchContextUnsafe(message, braveApiKey = '') {
+async function fetchWebSearchContextUnsafe(message, braveApiKey = '', bridgeSecret = '') {
   if (!wantsWebSearch(message)) return null;
 
   // If the user pasted a URL, fetch it directly instead of searching.
@@ -1009,7 +1047,7 @@ async function fetchWebSearchContextUnsafe(message, braveApiKey = '') {
   // "read <name> on linkedin/github/twitter" → try direct profile URLs first
   // (search engines often only surface LinkedIn's directory page).
   if (/on\s+(linkedin|github|twitter|x)\b/i.test(String(message || ''))) {
-    const direct = await fetchProfileDirectly(message, braveApiKey);
+    const direct = await fetchProfileDirectly(message, braveApiKey, bridgeSecret);
     if (direct) return direct;
     // Direct fetch failed — do a targeted search and pull the actual profile
     // page out of the results if one exists.

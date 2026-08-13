@@ -29,6 +29,7 @@ const {
 } = require('../../shared/emailRecallEvidence');
 const { slimHistoryForEmailRecall } = require('./emailRecallHistory');
 const { fetchWebContext } = require('./webContext');
+const { handleFetchExcerpt } = require('./fetchExcerpt');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage, shouldBypassEmailSummaryMode } = require('./emailSender');
 const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
@@ -944,6 +945,15 @@ const server = http.createServer(async (req, res) => {
       return await handleChatStream(req, res, config);
     }
 
+    // Server-side page excerpt fetch (social profiles are too heavy to
+    // process on-device — the phone can OOM on LinkedIn's ~800KB pages).
+    if (req.method === 'GET' && req.url?.startsWith('/fetch-excerpt')) {
+      if (!verifyBridgeSecret(req, config)) {
+        return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      }
+      return await handleFetchExcerpt(req, res);
+    }
+
     return json(res, 404, { success: false, error: 'Not found' });
   } catch (err) {
     return json(res, 500, { success: false, error: err.message });
@@ -973,6 +983,7 @@ server.listen(PORT, HOST, () => {
   console.log('  POST /mail/ingest         (mail client — load email into memory)');
   console.log('  POST /zillow/sync         (Zillow Rental Manager — ingest new emails)');
   console.log('  GET  /zillow/state        (Zillow Rental Manager — ingest status)');
+  console.log('  GET  /fetch-excerpt    (server-side page/profile excerpt fetch)');
   console.log('  POST /chat/stream  (Continuum app + Yahoo email)');
   console.log('  POST /ask          (CLI / skill)');
 });

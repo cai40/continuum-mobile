@@ -1063,6 +1063,16 @@ export const fetchMailFolders = async (bridgeSecret) => {
   return data.folders || [];
 };
 
+/**
+ * Fetch a page excerpt server-side (via the Render bridge). Used for social
+ * profiles whose full pages are too heavy to process on-device (OOM crash).
+ */
+export const fetchBridgeExcerpt = async (bridgeSecret, url) => {
+  const data = await mailRequest(`/fetch-excerpt?url=${encodeURIComponent(url)}`, bridgeSecret, null);
+  if (!data?.success) throw new Error(data?.error || 'Could not fetch page');
+  return data.excerpt || '';
+};
+
 export const fetchMailList = async (bridgeSecret, { folder = 'INBOX', limit = 50, offset = 0, nocache = false } = {}) => {
   const q = `folder=${encodeURIComponent(folder)}&limit=${limit}&offset=${offset}${nocache ? '&nocache=1' : ''}`;
   const data = await mailRequest(`/mail/list?${q}`, bridgeSecret, null);

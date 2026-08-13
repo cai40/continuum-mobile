@@ -15,7 +15,7 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream } from '../services/apiService';
+import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveRenderEmailBridgeSecret, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/emailBridge';
 import { resolveEmailFetchPayload } from '../utils/emailOptions';
@@ -30,7 +30,7 @@ import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
-import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline, isProfileFollowUp, getCachedProfileContext } from '../utils/webSearch';
+import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline, isProfileFollowUp, getCachedProfileContext, setBridgeExcerptFetcher } from '../utils/webSearch';
 import { diagnoseChatError, rawErrorMessage } from '../utils/chatErrorDiagnosis';
 import { buildMessageWithAttachments } from '../utils/documentTextExtract';
 import {
@@ -117,6 +117,10 @@ const FULL_FOLDER_PERSONA_APPEND = [
   'Quote the MAILBOX SCAN Date filter / Matched / Emails loaded lines verbatim — expect 2022 through today and hundreds of emails.',
   'Build SENDER PERSONA and ATTITUDE TIMELINE from the full fetched span, not from memory alone.',
 ].join(' ');
+
+// Register the server-side excerpt fetcher so profile lookups run on the
+// Render bridge (LinkedIn's ~800KB pages OOM the phone if fetched on-device).
+setBridgeExcerptFetcher((bridgeSecret, url) => fetchBridgeExcerpt(bridgeSecret, url));
 
 const ChatSection = () => {
   const {
@@ -917,7 +921,7 @@ const ChatSection = () => {
             webSearchContext = (await fetchLocalWeather(location.coords.latitude, location.coords.longitude)) || '';
           }
           if (!webSearchContext) {
-            webSearchContext = (await fetchWebSearchContext(finalInput, (braveSearchKey || '').trim() || null)) || '';
+            webSearchContext = (await fetchWebSearchContext(finalInput, (braveSearchKey || '').trim() || null, renderEmailSecret || null)) || '';
           }
           // Cap the injected context so a huge scrape can't bloat the prompt.
           if (webSearchContext && webSearchContext.length > 12000) {
