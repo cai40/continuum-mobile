@@ -1055,21 +1055,36 @@ async function fetchWebSearchContextUnsafe(message, braveApiKey = '', bridgeSecr
     const profileSearch = await searchWeb(`"${name}" ${/linkedin/i.test(message) ? 'site:linkedin.com/in' : ''}`.trim(), braveApiKey, []);
     const profileRow = (profileSearch?.results || []).find((r) => /linkedin\.com\/in\/|github\.com\/|twitter\.com\/|x\.com\//i.test(r.url || ''));
     if (profileRow && profileRow.url) {
-      try {
-        const excerpt = await fetchPageExcerpt(profileRow.url);
-        if (excerpt && excerpt.length > 60) {
-          const ctx = [
-            `[Web page fetched — ${profileRow.url}]`,
-            'Use ONLY the page content below for facts about this profile.',
-            'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
-            '',
-            excerpt,
-          ].join('\n');
-          lastProfileContext = ctx;
-          return ctx;
+      // Fetch the profile page via the bridge when possible — the on-device
+      // fetch of large social pages can OOM the app.
+      let excerpt = null;
+      if (bridgeSecret) {
+        const fetcher = bridgeExcerptFetcher();
+        if (fetcher) {
+          try {
+            excerpt = await fetcher(bridgeSecret, profileRow.url);
+          } catch (err) {
+            console.warn('[webSearch] bridge profile row fetch failed:', profileRow.url, err?.message || err);
+          }
         }
-      } catch (err) {
-        console.warn('[webSearch] profile row fetch failed:', profileRow.url, err?.message || err);
+      }
+      if (!excerpt) {
+        try {
+          excerpt = await fetchPageExcerpt(profileRow.url);
+        } catch (err) {
+          console.warn('[webSearch] profile row fetch failed:', profileRow.url, err?.message || err);
+        }
+      }
+      if (excerpt && excerpt.length > 60) {
+        const ctx = [
+          `[Web page fetched — ${profileRow.url}]`,
+          'Use ONLY the page content below for facts about this profile.',
+          'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
+          '',
+          excerpt,
+        ].join('\n');
+        lastProfileContext = ctx;
+        return ctx;
       }
     }
     return [
