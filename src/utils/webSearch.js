@@ -299,6 +299,18 @@ export function isProfileFollowUp(message) {
     && !/\bon\s+(linkedin|github|twitter|x|facebook|instagram)\b/i.test(text);
 }
 
+/** Build the model-facing context block for a successfully fetched profile. */
+function buildProfileContextBlock(url, excerpt) {
+  return [
+    `[Web page fetched — ${url}]`,
+    'This is the user\'s public LinkedIn profile (fetched directly — no login needed).',
+    'Summarize the profile from the content below. Do NOT say you cannot access LinkedIn or need to log in.',
+    'The full Experience section is NOT shown on public LinkedIn pages — only this snapshot is public. If the user wants more career detail, they can paste their Experience text or resume.',
+    '',
+    excerpt,
+  ].join('\n');
+}
+
 export async function fetchProfileDirectly(message, braveApiKey = '', bridgeSecret = '') {
   const urls = buildProfileCandidateUrls(message);
   // Prefer server-side fetch via the Render bridge — social profile pages
@@ -310,13 +322,7 @@ export async function fetchProfileDirectly(message, braveApiKey = '', bridgeSecr
         try {
           const excerpt = await fetcher(bridgeSecret, url);
           if (excerpt && excerpt.length > 60) {
-            const ctx = [
-              `[Web page fetched — ${url}]`,
-              'Use ONLY the page content below for facts about this profile.',
-              'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
-              '',
-              excerpt,
-            ].join('\n');
+            const ctx = buildProfileContextBlock(url, excerpt);
             lastProfileContext = ctx;
             return ctx;
           }
@@ -333,13 +339,7 @@ export async function fetchProfileDirectly(message, braveApiKey = '', bridgeSecr
     try {
       const excerpt = await fetchPageExcerpt(url);
       if (excerpt && excerpt.length > 60) {
-        const ctx = [
-          `[Web page fetched — ${url}]`,
-          'Use ONLY the page content below for facts about this profile.',
-          'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
-          '',
-          excerpt,
-        ].join('\n');
+        const ctx = buildProfileContextBlock(url, excerpt);
         lastProfileContext = ctx;
         return ctx;
       }
@@ -1076,13 +1076,7 @@ async function fetchWebSearchContextUnsafe(message, braveApiKey = '', bridgeSecr
         }
       }
       if (excerpt && excerpt.length > 60) {
-        const ctx = [
-          `[Web page fetched — ${profileRow.url}]`,
-          'Use ONLY the page content below for facts about this profile.',
-          'Do NOT say you need to log in or that the profile is inaccessible — its content is provided here.',
-          '',
-          excerpt,
-        ].join('\n');
+        const ctx = buildProfileContextBlock(profileRow.url, excerpt);
         lastProfileContext = ctx;
         return ctx;
       }
