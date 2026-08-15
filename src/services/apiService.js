@@ -1073,6 +1073,35 @@ export const fetchBridgeExcerpt = async (bridgeSecret, url) => {
   return data.excerpt || '';
 };
 
+// ---- Slack integration (via the Render bridge) ----
+
+async function slackRequest(path, bridgeSecret, body) {
+  return mailRequest(path, bridgeSecret, null, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
+export const slackListChannels = async (bridgeSecret, token) => {
+  const data = await slackRequest('/slack/channels', bridgeSecret, { token });
+  return data.channels || [];
+};
+
+export const slackReadMessages = async (bridgeSecret, token, channel, limit = 50) => {
+  const data = await slackRequest('/slack/messages', bridgeSecret, { token, channel, limit });
+  return data.messages || [];
+};
+
+export const slackPostMessage = async (bridgeSecret, token, channel, text) => {
+  const data = await slackRequest('/slack/post', bridgeSecret, { token, channel, text });
+  return data.posted || null;
+};
+
+export const slackIngestChannel = async (bridgeSecret, token, channel, limit = 50) => {
+  const data = await slackRequest('/slack/ingest', bridgeSecret, { token, channel, limit });
+  return data;
+};
+
 export const fetchMailList = async (bridgeSecret, { folder = 'INBOX', limit = 50, offset = 0, nocache = false } = {}) => {
   const q = `folder=${encodeURIComponent(folder)}&limit=${limit}&offset=${offset}${nocache ? '&nocache=1' : ''}`;
   const data = await mailRequest(`/mail/list?${q}`, bridgeSecret, null);

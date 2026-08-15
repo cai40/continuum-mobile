@@ -30,6 +30,7 @@ const {
 const { slimHistoryForEmailRecall } = require('./emailRecallHistory');
 const { fetchWebContext } = require('./webContext');
 const { handleFetchExcerpt } = require('./fetchExcerpt');
+const slackClient = require('./slackClient');
 const bridgeVersion = require('./bridgeVersion');
 const { wantsEmailMemoryIngest, parseSenderFromMessage, shouldBypassEmailSummaryMode } = require('./emailSender');
 const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
@@ -954,6 +955,43 @@ const server = http.createServer(async (req, res) => {
       return await handleFetchExcerpt(req, res);
     }
 
+    // ── Slack integration ────────────────────────────────────────────────
+    if (req.method === 'POST' && req.url === '/slack/channels') {
+      if (!verifyBridgeSecret(req, config)) {
+        return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      }
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const channels = await slackClient.listChannels(body.token);
+      return json(res, 200, { success: true, channels });
+    }
+
+    if (req.method === 'POST' && req.url === '/slack/messages') {
+      if (!verifyBridgeSecret(req, config)) {
+        return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      }
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const messages = await slackClient.readMessages(body.token, body.channel, body.limit || 50);
+      return json(res, 200, { success: true, messages });
+    }
+
+    if (req.method === 'POST' && req.url === '/slack/post') {
+      if (!verifyBridgeSecret(req, config)) {
+        return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      }
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const posted = await slackClient.postMessage(body.token, body.channel, body.text);
+      return json(res, 200, { success: true, posted });
+    }
+
+    if (req.method === 'POST' && req.url === '/slack/ingest') {
+      if (!verifyBridgeSecret(req, config)) {
+        return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+      }
+      const body = JSON.parse((await readBody(req)) || '{}');
+      const result = await slackClient.ingestSlackChannel(body.token, body.channel, body.limit || 50);
+      return json(res, 200, { success: true, ...result });
+    }
+
     return json(res, 404, { success: false, error: 'Not found' });
   } catch (err) {
     return json(res, 500, { success: false, error: err.message });
@@ -984,6 +1022,10 @@ server.listen(PORT, HOST, () => {
   console.log('  POST /zillow/sync         (Zillow Rental Manager — ingest new emails)');
   console.log('  GET  /zillow/state        (Zillow Rental Manager — ingest status)');
   console.log('  GET  /fetch-excerpt    (server-side page/profile excerpt fetch)');
+  console.log('  POST /slack/channels   (Slack — list channels)');
+  console.log('  POST /slack/messages   (Slack — read channel messages)');
+  console.log('  POST /slack/post       (Slack — post a message)');
+  console.log('  POST /slack/ingest     (Slack — ingest recent messages into memory)');
   console.log('  POST /chat/stream  (Continuum app + Yahoo email)');
   console.log('  POST /ask          (CLI / skill)');
 });

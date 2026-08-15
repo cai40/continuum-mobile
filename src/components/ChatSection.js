@@ -71,6 +71,8 @@ import {
   isEmailJobCancellationError,
 } from '../utils/emailBackgroundJobs';
 import { isComposeEmailRequest } from '../utils/emailComposeIntent';
+import { wantsSlackRead, wantsSlackPost, extractSlackChannel, extractSlackPostText, resolveSlackChannel } from '../utils/slackIntent';
+import { slackListChannels, slackReadMessages, slackPostMessage, slackIngestChannel } from '../services/apiService';
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch, needsFullMinFolderRefetch } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
 import { extractEmailEvidenceForPin, attachPinOfferToMessages, shouldOfferEmailEvidencePin } from '../utils/memoryDisplay';
@@ -129,6 +131,7 @@ const ChatSection = () => {
     autoModelRouting,
     setActiveResolvedProvider,
     braveSearchKey,
+    slackToken,
     persona,
     sttLang,
     activeTab,
@@ -691,6 +694,75 @@ const ChatSection = () => {
           { id: Date.now().toString(), role: 'user', content: finalInput.trim() },
           { id: (Date.now() + 1).toString(), role: 'assistant', content: 'Cloud email cleanup stopped.' },
         ]);
+        return;
+      }
+
+      // ── Slack agent intents ─────────────────────────────────────────────
+      const slackSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
+      const wantsSlack = slackSecret && (slackToken || '').trim() && (wantsSlackRead(finalInput) || wantsSlackPost(finalInput));
+      if (wantsSlack) {
+        const token = (slackToken || '').trim();
+        setInput('');
+        setLocalTranscript('');
+        setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'user', content: finalInput.trim() }]);
+        setIsTyping(true);
+        setStreamingContent(wantsSlackPost(finalInput) ? 'Posting to Slack…' : 'Reading Slack…');
+        try {
+          if (wantsSlackPost(finalInput)) {
+            const channel = extractSlackChannel(finalInput) || null;
+            const postText = extractSlackPostText(finalInput);
+            if (!postText) {
+              throw new Error('What should I post? Tell me the message and a channel, e.g. "post standup notes to #general".');
+            }
+            if (!channel) {
+              throw new Error('Which channel? Use #channel-name in your message, e.g. "post hello to #general".');
+            }
+            const posted = await slackPostMessage(slackSecret, token, channel, postText);
+            setMessages((prev) => [
+              ...prev,
+              { id: (Date.now() + 1).toString(), role: 'assistant', content: `Posted to #${channel}.` },
+            ]);
+          } else {
+            const channels = await slackListChannels(slackSecret, token);
+            const channel = resolveSlackChannel(finalInput, channels);
+            if (!channel) {
+              if (!channels.length) throw new Error('No Slack channels found — add the bot to your workspace first.');
+              const names = channels.slice(0, 10).map((c) => `#${c.name}`).join(', ');
+              setMessages((prev) => [
+                ...prev,
+                { id: (Date.now() + 1).toString(), role: 'assistant', content: `Which Slack channel should I read? ${names}. Say e.g. "read #general".` },
+              ]);
+            } else {
+              const messages = await slackReadMessages(slackSecret, token, channel, 25);
+              if (!messages.length) {
+                setMessages((prev) => [
+                  ...prev,
+                  { id: (Date.now() + 1).toString(), role: 'assistant', content: `No recent messages in #${channel}.` },
+                ]);
+              } else {
+                const lines = messages.slice(0, 15).map((m) => `**${m.user}** (${m.ts_iso ? new Date(m.ts_iso).toLocaleString() : ''}): ${m.text}`);
+                setMessages((prev) => [
+                  ...prev,
+                  { id: (Date.now() + 1).toString(), role: 'assistant', content: `Recent messages in #${channel}:\n\n${lines.join('\n')}` },
+                ]);
+                try {
+                  await slackIngestChannel(slackSecret, token, channel, 25);
+                } catch {
+                  // ingestion is best-effort
+                }
+              }
+            }
+          }
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } catch (err) {
+          setMessages((prev) => [
+            ...prev,
+            { id: (Date.now() + 1).toString(), role: 'assistant', content: `Slack error: ${err?.message || String(err)}` },
+          ]);
+        } finally {
+          setIsTyping(false);
+          setStreamingContent('');
+        }
         return;
       }
 

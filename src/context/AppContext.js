@@ -79,6 +79,8 @@ export const AppProvider = ({ children }) => {
   const [openrouterKey, setOpenrouterKey] = useState("");
   const [deepseekKey, setDeepseekKey] = useState("");
   const [braveSearchKey, setBraveSearchKey] = useState("");
+  const [slackToken, setSlackToken] = useState("");
+  const [slackWorkspace, setSlackWorkspace] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("en-US-AvaNeural");
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
@@ -261,6 +263,8 @@ export const AppProvider = ({ children }) => {
           "@openrouter_key",
           "@deepseek_key",
           "@brave_search_key",
+          "@slack_token",
+          "@slack_workspace",
           "@provider",
           "@auto_model_routing",
           "@selected_voice",
@@ -305,6 +309,8 @@ export const AppProvider = ({ children }) => {
           if (key === "@openrouter_key") setOpenrouterKey(value);
           if (key === "@deepseek_key") setDeepseekKey(value);
           if (key === "@brave_search_key") setBraveSearchKey(value);
+          if (key === "@slack_token") setSlackToken(value);
+          if (key === "@slack_workspace") setSlackWorkspace(value);
           if (key === "@provider") {
             setProviderState(normalizeProviderId(value));
           }
@@ -501,6 +507,8 @@ export const AppProvider = ({ children }) => {
         ["@openrouter_key", openrouterKey.trim()],
         ["@deepseek_key", deepseekKey.trim()],
         ["@brave_search_key", braveSearchKey.trim()],
+        ["@slack_token", slackToken.trim()],
+        ["@slack_workspace", slackWorkspace.trim()],
         ["@selected_voice", selectedVoice],
         ["@provider", activeProvider],
         ["@auto_model_routing", autoModelRouting ? "true" : "false"],
@@ -679,6 +687,10 @@ export const AppProvider = ({ children }) => {
         setDeepseekKey,
         braveSearchKey,
         setBraveSearchKey,
+        slackToken,
+        setSlackToken,
+        slackWorkspace,
+        setSlackWorkspace,
         selectedVoice,
         setSelectedVoice,
         persona,

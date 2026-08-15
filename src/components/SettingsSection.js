@@ -47,6 +47,7 @@ import { formatPhotoPreviewAlertSummary } from "../utils/photoCleanupPreview";
 import EmailIntegrationSection from "./EmailIntegrationSection";
 import GoogleDriveIntegrationSection from "./GoogleDriveIntegrationSection";
 import ZillowIntegrationSection from "./ZillowIntegrationSection";
+import SlackIntegrationSection from "./SlackIntegrationSection";
 import { providerDisplayLabel, normalizeProviderId, deepseekPlatformModel, isDeepseekProvider, verifyProviderRouting } from "../utils/providers";
 
 const SettingsSection = (props) => {
@@ -2290,6 +2291,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         return <GoogleDriveIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "zillow":
         return <ZillowIntegrationSection onBack={() => setActiveSubTab(null)} />;
+      case "slack":
+        return <SlackIntegrationSection onBack={() => setActiveSubTab(null)} />;
       case "diag": return renderDiagnostics();
       case "account": return renderAccountSettings();
       default: return null;
@@ -2380,6 +2383,12 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             icon="business-outline"
             label="Zillow Rentals"
             onPress={() => setActiveSubTab("zillow")}
+          />
+          <Divider />
+          <MenuRow
+            icon="chatbubbles-outline"
+            label="Slack"
+            onPress={() => setActiveSubTab("slack")}
           />
           <Divider />
           <MenuRow
