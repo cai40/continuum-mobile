@@ -15,7 +15,8 @@ import {
   clearRemoteChatHistory as apiClearRemoteChatHistory,
   fetchMemories,
   pulseFetch,
-  fetchSystemVersion
+  fetchSystemVersion,
+  setBridgeAuthToken
 } from "../services/apiService";
 import { API_URL, DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT } from "../constants/Config";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
@@ -60,6 +61,13 @@ export const AppProvider = ({ children }) => {
   const [activeTab, setActiveTab] = useState("chat");
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
+
+  // Keep the email/mail bridge bearer in sync with the signed-in user so the
+  // backend proxy can authorize bridge calls. The shared BRIDGE_SECRET no longer
+  // has to be stored on the device.
+  useEffect(() => {
+    setBridgeAuthToken(session?.access_token);
+  }, [session?.access_token]);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isBiometricAuthenticated, setIsBiometricAuthenticated] = useState(false);
   const [serverStatus, setServerStatus] = useState("checking"); // 'healthy', 'degraded', 'offline'

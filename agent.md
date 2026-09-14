@@ -91,11 +91,20 @@ curl -s https://continuum-email-bridge.onrender.com/health
 
 ## Render cloud email
 
-App route: `POST {API_URL}/integrations/email/chat/stream` when **Render cloud email** is ON in Settings.
+Base URL: `{API_URL}/integrations/email` — set in `src/constants/Config.js` as
+`RENDER_EMAIL_BRIDGE_URL`. **Every** bridge call the app makes (chat/stream, `/mail/*`,
+`/slack/*`, `/zillow/*`, `/fetch-excerpt`, `/email-jobs*`, `/memories/*`, `/daily-cleanup/*`)
+goes through this backend proxy, which authorizes with the signed-in user's Supabase bearer
+and injects `X-Bridge-Secret` from its own environment. The bridge is therefore never called
+directly by the client and `BRIDGE_SECRET` is not stored on the device.
 
 1. Deploy Node bridge: `integrations/render-email-bridge/README.md` (Render Web Service + `YAHOO_EMAIL` / `YAHOO_APP_PASSWORD` secrets).
 2. Copy `integrations/continuum-backend/email_router.py` into continuum-backend; mount router.
 3. On main Render service set `CONTINUUM_EMAIL_BRIDGE_URL` + `CONTINUUM_EMAIL_BRIDGE_SECRET`.
+4. `apiService.setBridgeAuthToken()` is fed the current session token from `AppContext`, so no
+   bridge caller has to thread it through manually.
+
+The Settings → Email & Bridge secret field is now an **optional device override**; leave it blank.
 
 Verify:
 

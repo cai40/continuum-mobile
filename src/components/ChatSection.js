@@ -219,7 +219,6 @@ const ChatSection = () => {
   useEffect(() => {
     if (activeTab !== 'chat' || !renderEmailEnabled) return undefined;
     const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
-    if (!secret) return undefined;
     let cancelled = false;
     (async () => {
       try {
@@ -421,7 +420,8 @@ const ChatSection = () => {
     if (!pendingId) return;
     const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
     const token = session?.access_token?.trim();
-    if (!secret || !token) return;
+    // The backend proxy supplies the bridge secret; only the user bearer is needed.
+    if (!token) return;
 
     const meta = await loadPendingEmailJobMeta();
     const existing = await peekEmailJobStatus(secret, pendingId, token);
@@ -896,13 +896,8 @@ const ChatSection = () => {
         return;
       }
 
-      if (useRenderEmail && !renderEmailSecret) {
-        Alert.alert(
-          "Render email secret required",
-          "Setup → Email & Bridge → Render email bridge secret.\nPaste BRIDGE_SECRET from your continuum-email-bridge service on Render.",
-        );
-        return;
-      }
+      // The bridge secret is injected server-side by the backend proxy, so it is no
+      // longer required on the device (see RENDER_EMAIL_BRIDGE_URL in constants/Config).
 
       // Prefer direct DeepSeek for text chat. Image uploads need Continuum multipart.
       const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery && !hasImageAttachments;

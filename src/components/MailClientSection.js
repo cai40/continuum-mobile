@@ -203,7 +203,6 @@ const MailClientSection = () => {
   }, [activeFolder]);
 
   const loadFolders = useCallback(async () => {
-    if (!bridgeSecret) return;
     if (foldersCacheRef.current) {
       safeSet(setFolders, foldersCacheRef.current);
       return;
@@ -220,8 +219,8 @@ const MailClientSection = () => {
   }, [bridgeSecret, safeSet]);
 
   const loadEmails = useCallback(async ({ folder = activeFolder, refresh = false } = {}) => {
-    if (!bridgeSecret || !renderEmailEnabled) {
-      safeSet(setError, 'Email bridge is not configured. Open Setup → Email & Bridge and set your bridge secret.');
+    if (!renderEmailEnabled) {
+      safeSet(setError, 'Email bridge is not configured. Open Setup → Email & Bridge and turn on Render cloud email.');
       return;
     }
     if (refresh) safeSet(setRefreshing, true); else safeSet(setLoading, true);
@@ -300,7 +299,6 @@ const MailClientSection = () => {
   const detailCacheRef = useRef({});
 
   const openEmail = async (uid) => {
-    if (!bridgeSecret) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     safeSet(setSelectedUid, uid);
     // Show a cached body instantly if we have one (faster perceived open),
@@ -366,7 +364,7 @@ const MailClientSection = () => {
   };
 
   const markAsRead = async (uid) => {
-    if (!bridgeSecret || uid == null) return;
+    if (uid == null) return;
     try {
       await markMailRead(bridgeSecret, [uid], activeFolder);
     } catch (err) {
@@ -391,7 +389,7 @@ const MailClientSection = () => {
   }, [activeFolder, persistCache, safeSet]);
 
   const deleteEmailsNow = async (uids, folder = activeFolder) => {
-    if (!bridgeSecret || !uids?.length) return;
+    if (!uids?.length) return;
     safeSet(setDeleting, true);
     try {
       await deleteMail(bridgeSecret, uids, folder);

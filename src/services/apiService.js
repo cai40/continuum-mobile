@@ -1022,12 +1022,24 @@ export const testBridgeHealth = async (bridgeBaseUrl, bridgeSecret) => {
 
 // ---- Mail client API (browse / read / reply / memory ingest) ----
 
+// Email, mail, Slack and Zillow now go through the backend proxy
+// (`RENDER_EMAIL_BRIDGE_URL` = API_URL/integrations/email), which authorizes with
+// the signed-in user's Supabase bearer and injects X-Bridge-Secret server-side.
+// AppContext pushes the current access token here on every session change so the
+// callers below do not each have to thread it through.
+let bridgeAuthToken = '';
+
+export function setBridgeAuthToken(token) {
+  bridgeAuthToken = token || '';
+}
+
 function mailHeaders(bridgeSecret, authToken) {
+  const token = authToken || bridgeAuthToken;
   return {
     Accept: 'application/json',
     'Content-Type': 'application/json',
     ...(bridgeSecret ? { 'X-Bridge-Secret': bridgeSecret } : {}),
-    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 

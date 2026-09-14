@@ -1,5 +1,8 @@
 export const API_URL = "https://continuum-backend-0q9j.onrender.com";
-export const RENDER_EMAIL_BRIDGE_URL = "https://continuum-email-bridge.onrender.com";
+// Email is proxied by the backend (/integrations/email/*), which forwards the user
+// bearer plus the shared X-Bridge-Secret from its own env, so BRIDGE_SECRET no
+// longer has to be stored or sent by the client.
+export const RENDER_EMAIL_BRIDGE_URL = `${API_URL}/integrations/email`;
 export const DEFAULT_EMAIL_LIMIT = 25;
 export const MAX_EMAIL_LIMIT = 50000;
 export const DEFAULT_EMAIL_RECENT = '7d';

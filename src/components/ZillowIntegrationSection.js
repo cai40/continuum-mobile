@@ -46,7 +46,6 @@ const ZillowIntegrationSection = ({ onBack }) => {
   useEffect(() => { load().catch(() => {}); }, [load]);
 
   useEffect(() => {
-    if (!bridgeSecret) return;
     fetchZillowState(bridgeSecret)
       .then((s) => setIngestedCount(s.ingestedCount ?? null))
       .catch(() => {});
@@ -105,10 +104,6 @@ const ZillowIntegrationSection = ({ onBack }) => {
   };
 
   const runSync = async (dryRun = false) => {
-    if (!bridgeSecret) {
-      Alert.alert('Bridge not configured', 'Set your Render email bridge secret in Setup → Email & Bridge first.');
-      return;
-    }
     setSyncing(true);
     setSyncResult(null);
     try {

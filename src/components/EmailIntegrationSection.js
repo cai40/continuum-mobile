@@ -51,7 +51,7 @@ const EmailIntegrationSection = ({ onBack }) => {
   const effectiveRenderSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
 
   const loadDailyCleanup = useCallback(async () => {
-    if (!renderEmailEnabled || !effectiveRenderSecret) return;
+    if (!renderEmailEnabled) return;
     try {
       const data = await fetchDailyCleanupLatest(effectiveRenderSecret);
       setDailyCleanup(data);
@@ -73,10 +73,6 @@ const EmailIntegrationSection = ({ onBack }) => {
   };
 
   const handleRunDailyCleanup = async () => {
-    if (!effectiveRenderSecret) {
-      Alert.alert("Render email secret required", "Paste BRIDGE_SECRET from continuum-email-bridge.");
-      return;
-    }
     if (!emailDeleteEnabled) {
       Alert.alert("Allow move to Trash", "Turn on Allow move to Trash below before daily cleanup can run.");
       return;
@@ -101,13 +97,6 @@ const EmailIntegrationSection = ({ onBack }) => {
   };
 
   const handleTestRenderEmail = async () => {
-    if (!effectiveRenderSecret) {
-      Alert.alert(
-        "Render email secret required",
-        "Paste BRIDGE_SECRET from continuum-email-bridge on Render into Render email bridge secret below.",
-      );
-      return;
-    }
     setTestingRenderEmail(true);
     try {
       const health = await testRenderEmailHealth(effectiveRenderSecret);
@@ -179,13 +168,13 @@ const EmailIntegrationSection = ({ onBack }) => {
         />
       </View>
 
-      <Text style={[styles.categoryTitle, { marginTop: 16 }]}>RENDER EMAIL BRIDGE SECRET</Text>
+      <Text style={[styles.categoryTitle, { marginTop: 16 }]}>RENDER EMAIL BRIDGE SECRET (OPTIONAL)</Text>
       <View style={styles.groupedCard}>
         <TextInput
           style={[styles.keyInput, { borderWidth: 0 }]}
           value={renderEmailBridgeSecret}
           onChangeText={setRenderEmailBridgeSecret}
-          placeholder="BRIDGE_SECRET from continuum-email-bridge"
+          placeholder="Leave blank — backend holds the secret"
           autoCapitalize="none"
           autoCorrect={false}
           clearButtonMode="while-editing"
@@ -193,7 +182,8 @@ const EmailIntegrationSection = ({ onBack }) => {
         />
       </View>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Render → continuum-email-bridge → Environment → BRIDGE_SECRET.
+        Optional. The backend forwards BRIDGE_SECRET from its own environment, so leave this
+        blank. Set it only to bypass the backend and call the bridge directly.
       </Text>
 
       <TouchableOpacity
@@ -343,8 +333,8 @@ const EmailIntegrationSection = ({ onBack }) => {
         <Text style={{ fontSize: 12, color: renderEmailEnabled ? theme.colors.success : theme.colors.gray, marginTop: 4 }}>
           Render cloud email: {renderEmailEnabled ? "enabled" : "disabled"}
         </Text>
-        <Text style={{ fontSize: 12, color: effectiveRenderSecret ? theme.colors.success : theme.colors.danger, marginTop: 4 }}>
-          {effectiveRenderSecret ? "✓" : "✗"} Render email secret {effectiveRenderSecret ? "set" : "(required)"}
+        <Text style={{ fontSize: 12, color: theme.colors.success, marginTop: 4 }}>
+          ✓ Email secret held by backend{effectiveRenderSecret ? " (device override set)" : ""}
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
           Email fetch: {effectiveEmailLimit} messages / {effectiveEmailRecent}

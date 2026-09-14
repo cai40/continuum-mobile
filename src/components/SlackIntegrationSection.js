@@ -51,10 +51,6 @@ const SlackIntegrationSection = ({ onBack }) => {
   };
 
   const tokenReady = () => {
-    if (!bridgeSecret) {
-      Alert.alert("Bridge not configured", "Set your Render email bridge secret in Setup → Email & Bridge first.");
-      return false;
-    }
     if (!slackToken?.trim()) {
       Alert.alert("Slack token required", "Paste your Slack Bot User OAuth Token (starts with xoxb-…).");
       return false;
