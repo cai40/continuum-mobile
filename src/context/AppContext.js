@@ -18,7 +18,7 @@ import {
   fetchSystemVersion,
   setBridgeAuthToken
 } from "../services/apiService";
-import { API_URL, DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT } from "../constants/Config";
+import { API_URL, DEFAULT_EMAIL_LIMIT, LEGACY_DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT } from "../constants/Config";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
 import { sanitizeUserVisibleContent } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
@@ -300,7 +300,11 @@ export const AppProvider = ({ children }) => {
         const emailRecentSaved = valueFor("@email_recent");
         const emailDeleteSaved = valueFor("@email_delete_enabled");
         const emailJunkSaved = valueFor("@email_auto_trash_junk");
-        if (emailLimitSaved) setEmailLimit(emailLimitSaved);
+        // A saved value equal to the old default is a carry-over, not a choice —
+        // skip it so the new DEFAULT_EMAIL_LIMIT takes effect.
+        if (emailLimitSaved && String(emailLimitSaved).trim() !== String(LEGACY_DEFAULT_EMAIL_LIMIT)) {
+          setEmailLimit(emailLimitSaved);
+        }
         if (emailRecentSaved) setEmailRecent(emailRecentSaved);
         if (emailDeleteSaved) setEmailDeleteEnabled(emailDeleteSaved === "true");
         if (emailJunkSaved) setEmailAutoTrashJunk(emailJunkSaved === "true");

@@ -3,7 +3,11 @@ export const API_URL = "https://continuum-backend-0q9j.onrender.com";
 // bearer plus the shared X-Bridge-Secret from its own env, so BRIDGE_SECRET no
 // longer has to be stored or sent by the client.
 export const RENDER_EMAIL_BRIDGE_URL = `${API_URL}/integrations/email`;
-export const DEFAULT_EMAIL_LIMIT = 25;
+export const DEFAULT_EMAIL_LIMIT = 5000;
+// The previous default. A stored value equal to this is treated as an untouched
+// carry-over rather than a deliberate choice, so installs that never customized
+// the field pick up the new default instead of silently keeping the old cap.
+export const LEGACY_DEFAULT_EMAIL_LIMIT = 25;
 export const MAX_EMAIL_LIMIT = 50000;
 // Bridge-side default scan cap for a daily cleanup run (DAILY_CLEANUP_LIMIT on
 // Render overrides it). Display only — the run cap is decided by the bridge.

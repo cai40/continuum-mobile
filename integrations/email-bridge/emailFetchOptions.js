@@ -15,7 +15,9 @@ const {
   isExplicitFullEmailFetch,
 } = require('../../shared/emailRecallEvidence');
 
-const DEFAULT_LIMIT = 25;
+// Fallback when a chat message carries no explicit limit. Kept in step with the
+// app's DEFAULT_EMAIL_LIMIT (Config.js) so both ends agree on the default cap.
+const DEFAULT_LIMIT = 5000;
 const MAX_LIMIT = 50000;
 /** Minimum fetch cap for month date-range queries (no explicit limit in message). */
 const MONTH_RANGE_MIN_LIMIT = 50000;

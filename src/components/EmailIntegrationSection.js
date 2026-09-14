@@ -243,7 +243,7 @@ const EmailIntegrationSection = ({ onBack }) => {
         </Text>
       </TouchableOpacity>
 
-      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>EMAIL FETCH LIMIT</Text>
+      <Text style={[styles.categoryTitle, { marginTop: 24 }]}>CHAT EMAIL FETCH LIMIT</Text>
       <View style={styles.groupedCard}>
         <TextInput
           style={[styles.keyInput, { borderWidth: 0 }]}
@@ -256,7 +256,7 @@ const EmailIntegrationSection = ({ onBack }) => {
         />
       </View>
       <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-        Max emails per inbox request (1–{MAX_EMAIL_LIMIT}). Default {DEFAULT_EMAIL_LIMIT}. Override in chat: “last 50 emails”, “skip 100, next 250 emails”, “emails 101–350”, or “fetch emails from 6/15/2026 back to 1/1/2026”.
+        Max emails per inbox request in chat (1–{MAX_EMAIL_LIMIT}). Default {DEFAULT_EMAIL_LIMIT}. This applies to chat and folder requests only — the daily cleanup below has its own {DAILY_CLEANUP_SCAN_LIMIT}/run cap. Override per message: “last 50 emails”, “skip 100, next 250 emails”, “emails 101–350”, or “fetch emails from 6/15/2026 back to 1/1/2026”.
       </Text>
 
       <Text style={[styles.categoryTitle, { marginTop: 24 }]}>EMAIL LOOKBACK</Text>
@@ -323,7 +323,7 @@ const EmailIntegrationSection = ({ onBack }) => {
           Automatic daily purge + summary
         </Text>
         <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-          Scans the last 24 hours each day, trashes newsletters/promos (up to {DAILY_CLEANUP_SCAN_LIMIT}/run), and saves a report you can view here or ask in chat: “daily cleanup summary”.
+          Scans the last 24 hours each day, trashes newsletters/promos (up to {DAILY_CLEANUP_SCAN_LIMIT}/run — this cap belongs to the bridge and is independent of the chat fetch limit above), and saves a report you can view here or ask in chat: “daily cleanup summary”.
         </Text>
         {dailyCleanup?.last_run ? (
           <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
@@ -394,7 +394,10 @@ const EmailIntegrationSection = ({ onBack }) => {
           ✓ Email secret held by backend{effectiveRenderSecret ? " (device override set)" : ""}
         </Text>
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
-          Email fetch: {effectiveEmailLimit} messages / {effectiveEmailRecent}
+          Chat email fetch: {effectiveEmailLimit} messages / {effectiveEmailRecent}
+        </Text>
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 4 }}>
+          Daily cleanup scan cap: {DAILY_CLEANUP_SCAN_LIMIT} per run (set by the bridge)
         </Text>
         <Text style={{ fontSize: 12, color: emailDeleteEnabled ? theme.colors.danger : theme.colors.gray, marginTop: 4 }}>
           Email move to Trash: {emailDeleteEnabled ? "enabled" : "disabled"}
