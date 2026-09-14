@@ -1,6 +1,6 @@
 'use strict';
 
-/** Minimal stand-in for integrations/continuum-bridge/emailMove used by tests. */
+/** Minimal stand-in for integrations/email-bridge/emailMove used by tests. */
 module.exports.runImapCopyBatched = async (imapScript, uids, destFolder) => ({
   success: true,
   uids,

@@ -6,7 +6,7 @@ const Module = require('module');
 
 // Load mailClient.js in a sandbox that stubs child_process.execFile so we never
 // touch a real IMAP/SMTP server.
-const srcPath = path.join(__dirname, '../integrations/continuum-bridge/mailClient.js');
+const srcPath = path.join(__dirname, '../integrations/email-bridge/mailClient.js');
 const src = fs.readFileSync(srcPath, 'utf8');
 
 const scriptCalls = [];

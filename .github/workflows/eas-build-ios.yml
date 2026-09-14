@@ -1,6 +1,6 @@
 name: EAS iOS Build
 
-# Native rebuild required for NSAppTransportSecurity (HTTP to VPS IP).
+# Native rebuild required for Info.plist / NSAppTransportSecurity changes.
 # OTA updates alone cannot apply Info.plist changes.
 
 on:

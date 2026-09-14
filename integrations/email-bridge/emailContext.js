@@ -855,7 +855,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
     : (sender || mailbox)
       ? [imapScript, ...imapSearchArgs(fetchOptions, sender, { chronological, mailbox })]
       : [imapScript, ...imapCheckArgs(fetchOptions)];
-  console.error('[continuum-bridge] imap args:', args.slice(1).join(' '));
+  console.error('[email-bridge] imap args:', args.slice(1).join(' '));
   const timeoutMs = fetchOptions.since && fetchOptions.before
     ? Math.min(3600000, 180000 + fetchOptions.limit * 1500)
     : Math.min(3600000, 90000 + fetchOptions.limit * 1500);
@@ -880,7 +880,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
         },
       );
   if (stderr?.trim()) {
-    console.error('[continuum-bridge] imap stderr:', stderr.trim());
+    console.error('[email-bridge] imap stderr:', stderr.trim());
   }
   const scanMeta = parseScanMeta(stderr);
   const formatted = formatEmailMessages(
@@ -895,7 +895,7 @@ async function runImapCheckOnce(imapScript, message, payloadOptions = {}, onProg
     },
   );
   console.error(
-    '[continuum-bridge] email fetch result:',
+    '[email-bridge] email fetch result:',
     `count=${formatted.fetchedCount ?? formatted.messages?.length ?? 0}`,
     fetchOptions.dateRangeLabel || fetchOptions.recent || '',
   );
@@ -966,7 +966,7 @@ async function runImapCheck(imapScript, message, payloadOptions = {}, onProgress
     const expandedLimit = Math.min(MAX_LIMIT, matched);
     if (expandedLimit > (result.fetchOptions?.limit || 0)) {
       console.error(
-        '[continuum-bridge] expanding date-range fetch:',
+        '[email-bridge] expanding date-range fetch:',
         `limit ${result.fetchOptions.limit} → ${expandedLimit} (${matched} matched)`,
       );
       if (onProgress) onProgress(`Expanding scan to load all ${matched} matched…`);
@@ -1009,7 +1009,7 @@ async function runImapCheck(imapScript, message, payloadOptions = {}, onProgress
         result.inboxProbe = probe;
       }
     } catch (err) {
-      console.error('[continuum-bridge] inbox date probe failed:', err.message || err);
+      console.error('[email-bridge] inbox date probe failed:', err.message || err);
     }
   }
 
@@ -1020,7 +1020,7 @@ function formatImapError(err, fetchOptions = {}) {
   const detail = err.stderr?.toString?.() || err.message || String(err);
   if (/maxBuffer|stdout maxBuffer/i.test(detail)) {
     const limit = fetchOptions.limit || '?';
-    return `Yahoo IMAP failed: inbox response too large (${limit} emails). The bridge now uses lite mode; run git pull and restart continuum-bridge. If it persists, try limit 100.`;
+    return `Yahoo IMAP failed: inbox response too large (${limit} emails). The bridge now uses lite mode; run git pull and restart email-bridge. If it persists, try limit 100.`;
   }
   if (/SELECT error|Folder does not exist|Folder not found/i.test(detail)) {
     return `Yahoo IMAP failed: ${detail}. For custom folders (e.g. Min), the bridge resolves Yahoo folder paths before SELECT. If it persists, verify the folder name in Yahoo Mail or ask Continuum to list mailboxes.`;
@@ -1060,7 +1060,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
       return {
         matched: true,
         context: null,
-        error: 'Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+        error: 'Yahoo IMAP skill not installed on the email bridge. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in the email bridge service environment and redeploy the bridge.',
         fetchOptions: null,
         deleteResult: null,
         moveResult: null,
@@ -1085,7 +1085,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
       return {
         matched: true,
         context: null,
-        error: 'Yahoo credentials missing. Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+        error: 'Yahoo credentials missing. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in the email bridge service environment and redeploy the bridge.',
         fetchOptions: null,
         deleteResult: null,
         moveResult: null,
@@ -1148,7 +1148,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     return {
       matched: true,
       context: null,
-      error: 'Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+      error: 'Yahoo IMAP skill not installed on the email bridge. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in the email bridge service environment and redeploy the bridge.',
       fetchOptions: null,
       deleteResult: null,
       moveResult: null,
@@ -1172,7 +1172,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
     return {
       matched: true,
       context: null,
-      error: 'Yahoo credentials missing. Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh',
+      error: 'Yahoo credentials missing. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in the email bridge service environment and redeploy the bridge.',
       fetchOptions: null,
       deleteResult: null,
       moveResult: null,
@@ -1242,7 +1242,7 @@ async function fetchEmailContext(message, payloadOptions = {}, onProgress = null
         const familyResults = await runFamilyMemoryIngest({ imapScript });
         familyIngestSummary = formatFamilyIngestSummary(familyResults);
       } catch (err) {
-        console.error('[continuum-bridge] family memory ingest failed:', err?.message || err);
+        console.error('[email-bridge] family memory ingest failed:', err?.message || err);
       }
     }
 
@@ -1442,7 +1442,7 @@ async function getEmailHealth({ quick = false } = {}) {
       delete_supported: deleteSupported,
       delete_hint: deleteSupported
         ? null
-        : 'Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/sync-imap-skill.sh',
+        : 'Run: bash /tmp/continuum-mobile/integrations/email-bridge/sync-imap-skill.sh',
     };
   } catch (err) {
     return { ready: false, reason: err.message || String(err) };

@@ -1177,7 +1177,7 @@ const ChatSection = () => {
             ? (isEmailRecallQuestion
               ? "Could not answer from chat history. Force-quit and reopen Continuum, then retry in the same thread. If the persona analysis is far above in chat, scroll up and confirm it is still there."
               : "Email bridge returned no reply. Check your Gemini / 4o MINI API key and Render email secret. For persona scans, try: “Read every email from Min in Min and Kids folder — build persona, cite UID and Date.”")
-            : "Bridge returned empty reply. Check VPS bridge secret, HTTPS URL, and API key for your selected model.";
+            : "Bridge returned an empty reply. Check the email bridge secret and your model API key.";
           finishError(hint);
           return;
         }

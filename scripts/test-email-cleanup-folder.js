@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const srcPath = path.join(__dirname, '../integrations/continuum-bridge/emailCleanupFolder.js');
+const srcPath = path.join(__dirname, '../integrations/email-bridge/emailCleanupFolder.js');
 const noopMove = require.resolve('./shims/noop-move.js');
 const src = fs.readFileSync(srcPath, 'utf8')
   .replace(/require\('\.\/emailMove'\)/g, `require(${JSON.stringify(noopMove)})`);

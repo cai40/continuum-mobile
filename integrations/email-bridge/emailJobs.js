@@ -50,9 +50,9 @@ const jobMemory = new Map();
 function jobsPath() {
   if (process.env.EMAIL_JOBS_STATE_PATH) return process.env.EMAIL_JOBS_STATE_PATH;
   if (process.env.RENDER) {
-    return path.join('/opt/render/project/src', '.continuum-bridge-data', 'email-jobs.json');
+    return path.join('/opt/render/project/src', '.email-bridge-data', 'email-jobs.json');
   }
-  return path.join(process.env.HOME || '/root', '.config/continuum-bridge/email-jobs.json');
+  return path.join(process.env.HOME || '/root', '.config/email-bridge/email-jobs.json');
 }
 
 function loadJobsState() {
@@ -432,7 +432,7 @@ function cancelAllActiveEmailJobs(exceptJobId = null) {
     cancelled += 1;
   }
   if (cancelled > 0) {
-    console.error(`[continuum-bridge] cancelled ${cancelled} older email job(s) for new request`);
+    console.error(`[email-bridge] cancelled ${cancelled} older email job(s) for new request`);
   }
   return cancelled;
 }

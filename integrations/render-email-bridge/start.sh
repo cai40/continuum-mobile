@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start continuum-bridge on Render (Yahoo IMAP + chat/stream) — no user VPS required.
+# Start email-bridge on Render (Yahoo IMAP + chat/stream).
 set -euo pipefail
 
 export PATH="/usr/local/bin:/usr/bin:$PATH"
@@ -28,7 +28,7 @@ chmod 600 "${CONFIG_DIR}/.env"
 rm -f "${HOME}/.config/imap-smtp-email/.env"
 echo "Wrote Yahoo IMAP config at ${CONFIG_DIR}/.env"
 
-bash "$REPO_ROOT/integrations/continuum-bridge/sync-imap-skill.sh"
+bash "$REPO_ROOT/integrations/email-bridge/sync-imap-skill.sh"
 
 CONFIG_DIR="${HOME}/.config/continuum"
 mkdir -p -m 700 "$CONFIG_DIR"
@@ -40,7 +40,7 @@ chmod 600 "${CONFIG_DIR}/.env"
 
 export CONTINUUM_BRIDGE_HOST="0.0.0.0"
 export CONTINUUM_BRIDGE_PORT="${PORT:-8787}"
-export EMAIL_JOBS_STATE_PATH="${EMAIL_JOBS_STATE_PATH:-/opt/render/project/src/.continuum-bridge-data/email-jobs.json}"
+export EMAIL_JOBS_STATE_PATH="${EMAIL_JOBS_STATE_PATH:-/opt/render/project/src/.email-bridge-data/email-jobs.json}"
 
-echo "Starting continuum-bridge on ${CONTINUUM_BRIDGE_HOST}:${CONTINUUM_BRIDGE_PORT}..."
-exec node "$REPO_ROOT/integrations/continuum-bridge/server.js"
+echo "Starting email-bridge on ${CONTINUUM_BRIDGE_HOST}:${CONTINUUM_BRIDGE_PORT}..."
+exec node "$REPO_ROOT/integrations/email-bridge/server.js"

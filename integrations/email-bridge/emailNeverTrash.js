@@ -28,7 +28,7 @@ function findImapScriptLocal() {
 
 const STATE_PATH = path.join(
   process.env.HOME || '/root',
-  '.config/continuum-bridge/never-trash-senders.json',
+  '.config/email-bridge/never-trash-senders.json',
 );
 
 const BUILTIN_NEVER_TRASH = [

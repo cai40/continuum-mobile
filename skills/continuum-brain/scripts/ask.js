@@ -5,7 +5,7 @@ const path = require('path');
 const { loadConfig, saveAccessToken } = require('./config');
 const { appendGroundingPersona } = require(path.join(
   __dirname,
-  '../../../integrations/continuum-bridge/groundingPrompt.js',
+  '../../../integrations/email-bridge/groundingPrompt.js',
 ));
 
 async function refreshAccessToken(config) {

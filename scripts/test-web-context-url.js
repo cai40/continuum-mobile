@@ -5,7 +5,7 @@ const vm = require('vm');
 const Module = require('module');
 
 // Test webContext URL detection without network.
-const ctxSrc = fs.readFileSync(path.join(__dirname, '../integrations/continuum-bridge/webContext.js'), 'utf8');
+const ctxSrc = fs.readFileSync(path.join(__dirname, '../integrations/email-bridge/webContext.js'), 'utf8');
 const webSearchStub = {
   wantsWebSearch: () => false,
   buildSearchQueries: () => [''],
@@ -23,12 +23,12 @@ const ctxSandbox = {
   require: (name) => {
     if (name === './emailFetchOptions') return { wantsEmailFetch: () => false };
     if (name === './webSearch') return webSearchStub;
-    return Module.createRequire(path.join(__dirname, '../integrations/continuum-bridge/webContext.js'))(name);
+    return Module.createRequire(path.join(__dirname, '../integrations/email-bridge/webContext.js'))(name);
   },
   console,
   process,
-  __dirname: path.join(__dirname, '../integrations/continuum-bridge'),
-  __filename: path.join(__dirname, '../integrations/continuum-bridge/webContext.js'),
+  __dirname: path.join(__dirname, '../integrations/email-bridge'),
+  __filename: path.join(__dirname, '../integrations/email-bridge/webContext.js'),
 };
 vm.runInNewContext(ctxSrc, ctxSandbox, { filename: 'webContext.js' });
 const webContext = ctxSandbox.module.exports;

@@ -9,7 +9,7 @@ const { getAllNeverTrashSenders } = require('./emailNeverTrash');
 
 const DEFAULT_STATE_PATH = path.join(
   process.env.HOME || '/root',
-  '.config/continuum-bridge/daily-cleanup.json',
+  '.config/email-bridge/daily-cleanup.json',
 );
 
 function statePath() {

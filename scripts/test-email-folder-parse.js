@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const srcPath = path.join(__dirname, '../integrations/continuum-bridge/emailFolderParse.js');
+const srcPath = path.join(__dirname, '../integrations/email-bridge/emailFolderParse.js');
 const src = fs.readFileSync(srcPath, 'utf8');
 const sandbox = { module: { exports: {} }, exports: {}, require, console, process };
 vm.runInNewContext(src, sandbox, { filename: srcPath });

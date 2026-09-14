@@ -123,9 +123,9 @@ Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to
 *   **Neural Voice**: Six high-fidelity neural voices for AI response.
 
 ### 2.11 Email Bridge & Yahoo Email [NEW]
-Continuum chat can route through a self-hosted **email bridge** on a VPS (HTTPS via Cloudflare tunnel) or via **Render cloud email** (`/integrations/email` on continuum-backend + Node email bridge on Render — no user VPS).
+Continuum chat routes email through **Render cloud email** (`/integrations/email` on continuum-backend + the Node email bridge on Render).
 
-*   **Bridge service**: Node HTTP server (`continuum-bridge`) on port 8787 — `GET /health`, `POST /chat/stream`.
+*   **Bridge service**: Node HTTP server (`email-bridge`) on port 8787 — `GET /health`, `POST /chat/stream`.
 *   **Email fetch**: Lite IMAP check (headers + snippet) with pagination (`offset`, `limit` up to 1000).
 *   **Date-range fetch**: Natural-language ranges parsed server-side (`emailDateRange.js`) and filtered in JS after Yahoo-safe UID scans (no hanging `SEARCH ALL` / absolute `SINCE` on large mailboxes).
     - Day ranges: `Fetch emails from 4/1/2026 to 6/15/2026`
@@ -138,12 +138,12 @@ Continuum chat can route through a self-hosted **email bridge** on a VPS (HTTPS 
     - Bank & financial **statements** (e-statements)
     - **Never** trashes OTP, security alerts, fraud warnings, DocuSign, or Cash App alerts
 *   **Move to folder**: Move mail from a sender to a Yahoo folder (e.g. `Move all emails from Min Zhang to Min folder`). Requires **Allow email delete** (mailbox write permission). Resolves folder by name; max 100 per batch; over-limit permission prompt applies.
-*   **Web search**: Live sports, news, and weather. **Direct chat** (no VPS): Google News RSS → DuckDuckGo → Wikipedia, plus light scrape of the top result page. **Bridge**: Wikipedia or optional Brave API on VPS. Injected as `[Web search]` block — model must not claim "no internet" when present.
+*   **Web search**: Live sports, news, and weather. **Direct chat**: Google News RSS → DuckDuckGo → Wikipedia, plus light scrape of the top result page. **Bridge**: Wikipedia or optional Brave API via the email bridge. Injected as `[Web search]` block — model must not claim "no internet" when present.
 *   **Over-limit permission**: If matches exceed the default fetch limit (250 for date/month/year ranges; 100 for plain cleanup), the bridge **does not trash** until the user replies `yes proceed` / `confirm cleanup`, or raises the limit (e.g. `limit 500`).
 *   **Auto-trash (optional)**: Settings toggle to move newsletter/promo/spam on every inbox fetch (max 100; banks/OTP protected).
 *   **Anti-hallucination**: Live inbox UIDs injected into the LLM prompt; fresh fetch drops chat history for email turns; grounding rules forbid inventing messages.
-*   **Resilience**: SSE opened immediately with keepalive pings during slow IMAP so Cloudflare tunnels do not idle-timeout; HTML error pages sanitized in the app.
-*   **Bridge version**: Tracked in `/health` as `bridge_version` (e.g. `2026.07.27`) — VPS must `git pull origin master` + restart after changes.
+*   **Resilience**: SSE opened immediately with keepalive pings during slow IMAP so the stream does not idle-timeout; HTML error pages sanitized in the app.
+*   **Bridge version**: Tracked in `/health` as `bridge_version` (e.g. `2026.07.27`) — the bridge redeploys automatically when `master` is pushed.
 
 ---
 

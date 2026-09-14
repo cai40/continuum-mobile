@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Yahoo IMAP skill on VPS and write mail config (~/.config/mail-skills/.env)
+# Install the Yahoo IMAP skill and write mail config (~/.config/mail-skills/.env)
 set -euo pipefail
 
 export PATH="/usr/local/bin:/usr/bin:$PATH"

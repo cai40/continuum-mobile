@@ -24,7 +24,7 @@ const REPO = process.env.CONTINUUM_MOBILE_REPO || '/tmp/continuum-mobile';
 const IMAP = process.env.IMAP_SCRIPT || path.join(REPO, 'skills/@gzlicanyi/imap-smtp-email/scripts/imap.js');
 const STATE_DIR = process.env.ZILLOW_STATE_DIR
   || (process.env.RENDER
-    ? path.join('/opt/render/project/src', '.continuum-bridge-data')
+    ? path.join('/opt/render/project/src', '.email-bridge-data')
     : configDir());
 
 const ZILLOW_SENDERS = [

@@ -57,7 +57,7 @@ const LAYERS = [
 
 const DEFAULT_STATE_PATH = path.join(
   process.env.HOME || '/tmp',
-  '.config/continuum-bridge/memory-cleanup.json',
+  '.config/email-bridge/memory-cleanup.json',
 );
 
 function statePath() {

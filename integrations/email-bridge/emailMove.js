@@ -103,7 +103,7 @@ async function runImapMove(imapScript, uids, destFolder) {
   });
 
   if (stderr?.trim()) {
-    console.error('[continuum-bridge] imap move stderr:', stderr.trim());
+    console.error('[email-bridge] imap move stderr:', stderr.trim());
   }
 
   try {
@@ -126,7 +126,7 @@ async function runImapCopy(imapScript, uids, destFolder, sourceMailbox = null) {
   });
 
   if (stderr?.trim()) {
-    console.error('[continuum-bridge] imap copy stderr:', stderr.trim());
+    console.error('[email-bridge] imap copy stderr:', stderr.trim());
   }
 
   try {
@@ -169,7 +169,7 @@ async function runImapListUids(imapScript, mailbox, { limit = null, offset = 0 }
   });
 
   if (stderr?.trim()) {
-    console.error('[continuum-bridge] imap list-uids stderr:', stderr.trim());
+    console.error('[email-bridge] imap list-uids stderr:', stderr.trim());
   }
 
   try {
@@ -193,7 +193,7 @@ async function runImapCopyAll(imapScript, sourceFolder, destFolder, { limit = nu
   });
 
   if (stderr?.trim()) {
-    console.error('[continuum-bridge] imap copy-all stderr:', stderr.trim());
+    console.error('[email-bridge] imap copy-all stderr:', stderr.trim());
   }
 
   try {
@@ -326,7 +326,7 @@ async function maybeCopyFolderToInbox(message, imapScript, { enabled = false, on
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
     const syncHint = /unknown command:\s*copy-all/i.test(detail)
-      ? ' Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/sync-imap-skill.sh'
+      ? ' The email bridge IMAP skill is missing; redeploy the bridge service.'
       : '';
     return {
       executed: false,
@@ -435,7 +435,7 @@ async function maybeMoveEmailsToFolder(message, emails, imapScript, { enabled = 
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
     const syncHint = /unknown command:\s*move/i.test(detail)
-      ? ' Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/sync-imap-skill.sh'
+      ? ' The email bridge IMAP skill is missing; redeploy the bridge service.'
       : '';
     return {
       executed: false,

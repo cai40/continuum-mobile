@@ -1,6 +1,6 @@
 # Continuum Mobile — Agent Instructions
 
-**Read this file first** before changing the email bridge, IMAP, VPS-related code, or shipping any mobile release.
+**Read this file first** before changing the email bridge, IMAP, or shipping any mobile release.
 
 ---
 
@@ -45,17 +45,17 @@ This repo has two audiences:
 
 | Audience | What they pull |
 |----------|----------------|
-| **VPS (Mr. Cai)** | `git pull origin master` only |
+| **Render (email bridge)** | auto-deploys on push to `master` |
 | **GitHub / PR review** | feature branch `cursor/<name>-5b08` |
 
 ### Rule: never leave deployable work on a feature branch alone
 
-If you change anything the **VPS runs** (below), you **must merge to `master` and push `master`** before marking the task complete:
+If you change anything the **deployed bridge runs** (below), you **must merge to `master` and push `master`** before marking the task complete:
 
-- `integrations/continuum-bridge/**`
+- `integrations/email-bridge/**`
 - `skills/@gzlicanyi/imap-smtp-email/**`
 - `skills/email-triage/**`
-- `skills/continuum-brain/**` (when VPS setup scripts change)
+- `skills/continuum-brain/**` (when bridge setup scripts change)
 
 **Workflow every time:**
 
@@ -69,30 +69,27 @@ Do **not** tell the user to pull a feature branch name unless `master` is blocke
 ### What went wrong before (do not repeat)
 
 - Fixes landed only on `cursor/increase-email-fetch-limit-5b08`
-- User ran `git pull origin master` on VPS → old code kept running
+- `master` was never updated, so the deployed bridge kept running old code
 - Symptoms looked like bugs (e.g. `Invalid time format`) but were **deploy drift**
 
 ---
 
-## VPS deploy commands (copy-paste for user)
+## Deploying the bridge
 
-Always give **one line**, `master` only:
+`master` is the deploy branch: pushing to it auto-deploys `continuum-email-bridge` on Render.
+There are no user-run commands, no SSH, and no shell on the bridge host — all configuration is
+Render service environment variables (`YAHOO_EMAIL`, `YAHOO_APP_PASSWORD`, `BRIDGE_SECRET`,
+`CONTINUUM_API_URL`).
+
+After a bridge change, confirm the new build is live:
 
 ```bash
-export PATH="/usr/local/bin:/usr/bin:$PATH" && cd /tmp/continuum-mobile && git pull origin master && bash integrations/continuum-bridge/sync-imap-skill.sh && systemctl --user restart continuum-bridge
+curl -s https://continuum-email-bridge.onrender.com/health
 ```
-
-If the repo is missing on VPS:
-
-```bash
-export PATH="/usr/local/bin:/usr/bin:$PATH" && git clone https://github.com/cai40/continuum-mobile.git /tmp/continuum-mobile && cd /tmp/continuum-mobile && bash integrations/continuum-bridge/setup-bridge-service.sh && bash integrations/continuum-bridge/sync-imap-skill.sh
-```
-
-Tell the user to run commands **one line at a time** if paste breaks on iPhone/Termius.
 
 ---
 
-## Render cloud email (no user VPS)
+## Render cloud email
 
 App route: `POST {API_URL}/integrations/email/chat/stream` when **Render cloud email** is ON in Settings.
 
@@ -118,10 +115,10 @@ curl -s http://127.0.0.1:8787/health
 
 Expect:
 
-- `"bridge_version": "..."` (from `integrations/continuum-bridge/bridgeVersion.js`)
+- `"bridge_version": "..."` (from `integrations/email-bridge/bridgeVersion.js`)
 - `"features": { "date_range": true, ... }`
 
-If `bridge_version` is **missing**, the VPS is still on old code — do not debug app logic until pull + restart succeed.
+If `bridge_version` is **missing**, the bridge is still on old code — wait for the Render deploy to finish before debugging app logic.
 
 **When you change bridge behavior**, bump `bridgeVersion.version` in `bridgeVersion.js`.
 
@@ -160,7 +157,7 @@ Chat examples that must work:
 
 - [ ] Merged to `master` and pushed
 - [ ] **Device-tested** on iOS (and Android if changed) — real device or simulator, exact release artifact
-- [ ] VPS command uses `git pull origin master` (not feature branch)
+- [ ] Merged to `master` so Render redeploys the bridge
 - [ ] `bridgeVersion.js` bumped if bridge/IMAP behavior changed
 - [ ] User given `/health` check to confirm deploy
 - [ ] PR updated with summary + verify steps
@@ -170,4 +167,4 @@ Chat examples that must work:
 ## Other context
 
 - Handover / product state: `MEMO.md`
-- Email bridge setup: `integrations/continuum-bridge/` and `integrations/render-email-bridge/`
+- Email bridge setup: `integrations/email-bridge/` and `integrations/render-email-bridge/`

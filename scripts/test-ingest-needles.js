@@ -5,7 +5,7 @@ const vm = require('vm');
 const Module = require('module');
 
 // Load ingest-sender-emails.js with stubs so we can test the needles filter.
-const srcPath = path.join(__dirname, '../integrations/continuum-bridge/ingest-sender-emails.js');
+const srcPath = path.join(__dirname, '../integrations/email-bridge/ingest-sender-emails.js');
 const src = fs.readFileSync(srcPath, 'utf8');
 
 const scriptCalls = [];

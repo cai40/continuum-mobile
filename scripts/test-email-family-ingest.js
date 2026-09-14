@@ -39,7 +39,7 @@ const familyStub = {
   },
 };
 
-const familyIngest = loadModule('integrations/continuum-bridge/emailFamilyIngest.js', familyStub);
+const familyIngest = loadModule('integrations/email-bridge/emailFamilyIngest.js', familyStub);
 
 async function run() {
   assert.strictEqual(
@@ -90,7 +90,7 @@ async function run() {
     },
     './emailCleanupFolder': familyStub['./emailCleanupFolder'],
   };
-  const familyIngest2 = loadModule('integrations/continuum-bridge/emailFamilyIngest.js', failingStub);
+  const familyIngest2 = loadModule('integrations/email-bridge/emailFamilyIngest.js', failingStub);
   const results2 = await familyIngest2.runFamilyMemoryIngest({});
   const daniel = results2.find((r) => r.sender === 'Daniel Cai');
   assert.ok(daniel.error.includes('boom'), 'sender error captured');

@@ -24,7 +24,7 @@ const IMAP = process.env.IMAP_SCRIPT || path.join(REPO, 'skills/@gzlicanyi/imap-
 // redeploys; otherwise every deploy resets dedup and re-ingests everything.
 const STATE_DIR = process.env.EMAIL_INGEST_STATE_DIR
   || (process.env.RENDER
-    ? path.join('/opt/render/project/src', '.continuum-bridge-data')
+    ? path.join('/opt/render/project/src', '.email-bridge-data')
     : configDir());
 const DEFAULT_SENDER = process.env.EMAIL_INGEST_SENDER || 'Min Zhang';
 

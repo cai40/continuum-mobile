@@ -13,7 +13,7 @@ const SLACK_API = 'https://slack.com/api';
 const TIMEOUT_MS = 25000;
 
 const STATE_DIR = process.env.RENDER
-  ? path.join('/opt/render/project/src', '.continuum-bridge-data')
+  ? path.join('/opt/render/project/src', '.email-bridge-data')
   : configDir();
 
 async function slackRequest(token, method, body = {}) {

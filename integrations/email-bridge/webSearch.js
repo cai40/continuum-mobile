@@ -327,7 +327,7 @@ async function fetchPageExcerpt(url) {
 
     return text.slice(0, PAGE_SCRAPE_MAX_CHARS);
   } catch (err) {
-    console.error('[continuum-bridge] page fetch failed:', target, err.message);
+    console.error('[email-bridge] page fetch failed:', target, err.message);
     return '';
   }
 }
@@ -384,7 +384,7 @@ async function searchWebOnce(query) {
       const brave = await searchBrave(query, braveKey);
       if (brave.results.length > 0) return enrichResultsWithPageText(brave);
     } catch (err) {
-      console.error('[continuum-bridge] brave search failed:', err.message);
+      console.error('[email-bridge] brave search failed:', err.message);
     }
   }
 
@@ -393,7 +393,7 @@ async function searchWebOnce(query) {
       const news = await searchGoogleNewsRss(query);
       if (news.results.length > 0) return enrichResultsWithPageText(news);
     } catch (err) {
-      console.error('[continuum-bridge] Google News RSS failed:', err.message);
+      console.error('[email-bridge] Google News RSS failed:', err.message);
     }
   }
 
@@ -401,7 +401,7 @@ async function searchWebOnce(query) {
     const ddg = await searchDuckDuckGoInstant(query);
     if (ddg.results.length > 0) return enrichResultsWithPageText(ddg);
   } catch (err) {
-    console.error('[continuum-bridge] DuckDuckGo failed:', err.message);
+    console.error('[email-bridge] DuckDuckGo failed:', err.message);
   }
 
   const wiki = await searchWikipedia(query);

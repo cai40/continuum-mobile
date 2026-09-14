@@ -478,7 +478,7 @@ async function runImapDelete(imapScript, uids, timeoutMs = 120000) {
   });
 
   if (stderr?.trim()) {
-    console.error('[continuum-bridge] imap delete stderr:', stderr.trim());
+    console.error('[email-bridge] imap delete stderr:', stderr.trim());
   }
 
   try {
@@ -644,7 +644,7 @@ async function maybeDeleteEmails(message, emails, imapScript, { enabled = false,
   } catch (err) {
     const detail = err.stderr?.toString?.() || err.message || String(err);
     const syncHint = /unknown command:\s*delete/i.test(detail)
-      ? ' Run on VPS: bash /tmp/continuum-mobile/integrations/continuum-bridge/sync-imap-skill.sh'
+      ? ' The email bridge IMAP skill is missing; redeploy the bridge service.'
       : '';
     return {
       executed: false,

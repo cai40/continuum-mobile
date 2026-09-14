@@ -183,11 +183,11 @@ async function runScriptNow(scriptPath, args, { timeoutMs = 120000, maxBuffer = 
   } catch (err) {
     const childErr = (err && (err.stderr || err.stdout)) || '';
     const detail = String(childErr || err?.message || 'Unknown script error').trim().slice(0, 500);
-    console.error(`[continuum-bridge] ${path.basename(scriptPath)} ${args[0] || ''} failed:`, detail);
+    console.error(`[email-bridge] ${path.basename(scriptPath)} ${args[0] || ''} failed:`, detail);
     throw new Error(detail || `Script ${path.basename(scriptPath)} failed.`);
   }
   if (stderr && String(stderr).trim()) {
-    console.error(`[continuum-bridge] ${path.basename(scriptPath)} ${args[0] || ''} stderr:`, String(stderr).trim().slice(0, 500));
+    console.error(`[email-bridge] ${path.basename(scriptPath)} ${args[0] || ''} stderr:`, String(stderr).trim().slice(0, 500));
   }
   const text = String(stdout || '').trim();
   if (!text) return null;
@@ -229,7 +229,7 @@ async function listMailboxes() {
   const cached = cacheGet(key);
   if (cached) return cached;
   const imap = findImapScript();
-  if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
+  if (!imap) throw new Error('Yahoo IMAP skill not installed on the email bridge. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in the email bridge service environment and redeploy the bridge.');
   const result = await runScript(imap, ['list-mailboxes']);
   const folders = Array.isArray(result) ? result : [];
   cacheSet(key, folders, CACHE_TTL.folders);
@@ -243,7 +243,7 @@ async function listEmails({ folder = 'INBOX', limit = 50, offset = 0, nocache = 
     if (cached) return cached;
   }
   const imap = findImapScript();
-  if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
+  if (!imap) throw new Error('Yahoo IMAP skill not installed on the email bridge. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in the email bridge service environment and redeploy the bridge.');
   // Use the fast seqno-window `list` command (no full-mailbox SEARCH ALL).
   const args = ['list', '--mailbox', folder, '--limit', String(limit), '--offset', String(offset)];
   const rows = await runScript(imap, args, { timeoutMs: 120000 });
@@ -258,7 +258,7 @@ async function fetchEmail(uid, folder = 'INBOX') {
   const cached = cacheGet(key);
   if (cached) return cached;
   const imap = findImapScript();
-  if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
+  if (!imap) throw new Error('Yahoo IMAP skill not installed on the email bridge. Set YAHOO_EMAIL and YAHOO_APP_PASSWORD in the email bridge service environment and redeploy the bridge.');
   const args = ['fetch', String(uid), '--mailbox', folder];
   const result = await runScript(imap, args, { timeoutMs: 45000 });
   if (!result || result.uid == null) throw new Error('Email not found.');
@@ -288,7 +288,7 @@ async function fetchEmail(uid, folder = 'INBOX') {
 
 async function markRead(uids, folder = 'INBOX') {
   const imap = findImapScript();
-  if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS.');
+  if (!imap) throw new Error('Yahoo IMAP skill not installed on the email bridge.');
   const list = (Array.isArray(uids) ? uids : [uids]).map(String);
   if (!list.length) return { success: true, uids: [] };
   const result = await runScript(imap, ['mark-read', ...list, '--mailbox', folder], { timeoutMs: 120000 });
@@ -300,7 +300,7 @@ async function markRead(uids, folder = 'INBOX') {
 
 async function deleteEmails(uids, folder = 'INBOX') {
   const imap = findImapScript();
-  if (!imap) throw new Error('Yahoo IMAP skill not installed on VPS.');
+  if (!imap) throw new Error('Yahoo IMAP skill not installed on the email bridge.');
   const list = (Array.isArray(uids) ? uids : [uids]).map(String);
   if (!list.length) return { success: true, uids: [] };
   // `delete` moves to Yahoo Trash (recoverable), matching the cleanup flow.
@@ -315,7 +315,7 @@ async function sendEmail({ to, cc = null, subject, body } = {}) {
   const imap = findImapScript();
   const smtp = findSmtpScript(imap);
   if (!smtp || !fs.existsSync(smtp)) {
-    throw new Error('SMTP skill not installed. Run: bash /tmp/continuum-mobile/integrations/continuum-bridge/setup-yahoo-email.sh');
+    throw new Error('SMTP skill not installed. Run: bash /tmp/continuum-mobile/integrations/email-bridge/setup-yahoo-email.sh');
   }
   if (!to || !subject || !body) throw new Error('To, subject, and body are required.');
 

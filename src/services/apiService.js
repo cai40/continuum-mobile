@@ -782,7 +782,7 @@ function sanitizeBridgeErrorMessage(raw, status) {
   if (!text) return `Bridge error (${status || "unknown"})`;
   if (/^\s*</.test(text) || /<!DOCTYPE/i.test(text) || /<html/i.test(text)) {
     if (/cloudflare/i.test(text)) {
-      return "Cloudflare timed out the bridge connection. Email fetch can take 1–2 minutes — retry with a smaller range, or wait and try again.";
+      return "The email bridge timed out. Email fetch can take 1–2 minutes — retry with a smaller range, or wait and try again.";
     }
     if (status === 502 || status === 503 || status === 504) {
       return `Bridge or backend unavailable (${status}). Try again shortly.`;

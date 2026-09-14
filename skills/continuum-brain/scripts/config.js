@@ -5,14 +5,10 @@ const path = require('path');
 const os = require('os');
 
 const CONFIG_DIR = path.join(os.homedir(), '.config', 'continuum');
-const LEGACY_CONFIG_DIR = path.join(os.homedir(), '.config', 'continuum-openclaw');
-
 /** New location wins; fall back to the not-yet-migrated legacy dir. */
 function resolveConfigPath() {
   const preferred = path.join(CONFIG_DIR, '.env');
   if (fs.existsSync(preferred)) return preferred;
-  const legacy = path.join(LEGACY_CONFIG_DIR, '.env');
-  if (fs.existsSync(legacy)) return legacy;
   return preferred;
 }
 

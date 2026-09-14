@@ -70,9 +70,9 @@ echo "Installed email-triage to $TRIAGE_DST"
 
 node -e "require('${TRIAGE_DST}/scripts/classifier')" && echo "✓ email-triage classifier loads"
 
-if systemctl --user is-active continuum-bridge >/dev/null 2>&1; then
-  systemctl --user restart continuum-bridge
-  echo "✓ continuum-bridge restarted"
+if systemctl --user is-active email-bridge >/dev/null 2>&1; then
+  systemctl --user restart email-bridge
+  echo "✓ email-bridge restarted"
 fi
 
 echo "Done. Bridge prefers $REPO/skills/.../imap.js and email-triage after git pull."

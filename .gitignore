@@ -41,4 +41,4 @@ yarn-error.*
 /android
 
 # bridge runtime state (Render)
-.continuum-bridge-data/
+.email-bridge-data/

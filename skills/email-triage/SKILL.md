@@ -19,7 +19,7 @@ Heuristic inbox triage for the Continuum email bridge. Classifies fetched emails
 
 - [briancolinger/email-triage](https://clawhub.ai/briancolinger/email-triage) (MIT) — category model
 - [danieleschmidt/crewai-email-triage](https://github.com/danieleschmidt/crewai-email-triage) — keyword/sender heuristics
-- Integrated with `@gzlicanyi/imap-smtp-email` + `continuum-bridge`
+- Integrated with `@gzlicanyi/imap-smtp-email` + `email-bridge`
 
 ## Categories
 
@@ -64,23 +64,23 @@ Setup → Email & Bridge:
 
 Then say daily: `check my Yahoo inbox` — junk is moved to Trash automatically (`[Email auto-trash executed]`).
 
-### VPS cron (background, no app open)
+### Render cron (background, no app open)
 
 ```bash
 cd /tmp/continuum-mobile && git pull origin master
-chmod +x integrations/continuum-bridge/auto-trash-junk.sh
+chmod +x integrations/email-bridge/auto-trash-junk.sh
 # Every 6 hours:
-(crontab -l 2>/dev/null; echo '0 */6 * * * bash /tmp/continuum-mobile/integrations/continuum-bridge/auto-trash-junk.sh >> ~/.continuum-auto-trash.log 2>&1') | crontab -
+(crontab -l 2>/dev/null; echo '0 */6 * * * bash /tmp/continuum-mobile/integrations/email-bridge/auto-trash-junk.sh >> ~/.continuum-auto-trash.log 2>&1') | crontab -
 ```
 
 ### Yahoo Mail filters (native, most reliable)
 
-Yahoo → Settings → Filters → create rules for senders like `noreply@`, `newsletter@`, or domains you always trash. Filters run 24/7 without VPS.
+Yahoo → Settings → Filters → create rules for senders like `noreply@`, `newsletter@`, or domains you always trash. Filters run 24/7.
 
-## Install on VPS
+## Install (self-hosted)
 
 ```bash
 cp -r /tmp/continuum-mobile/skills/email-triage ~/.continuum/workspace/skills/
 ```
 
-Or run `bash integrations/continuum-bridge/sync-imap-skill.sh` (syncs IMAP + triage).
+Or run `bash integrations/email-bridge/sync-imap-skill.sh` (syncs IMAP + triage).

@@ -159,7 +159,7 @@ const EmailIntegrationSection = ({ onBack }) => {
       </View>
 
       <Text style={{ fontSize: 13, color: theme.colors.gray, lineHeight: 20, marginBottom: 20 }}>
-        Yahoo email via Continuum on Render — no VPS needed. Powers the Email tab, Zillow feed,
+        Yahoo email via Continuum on Render. Powers the Email tab, Zillow feed,
         and family memory ingest. Chat can also read and clean your inbox when this is on.
       </Text>
 

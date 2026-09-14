@@ -12,7 +12,7 @@ Main Render service env:
 Mobile app (after deploy):
   POST {API_URL}/integrations/email/chat/stream
   Authorization: Bearer <supabase session>
-  (No VPS / Cloudflare tunnel required.)
+  (Runs entirely on Render; no user-hosted server.)
 """
 
 from __future__ import annotations

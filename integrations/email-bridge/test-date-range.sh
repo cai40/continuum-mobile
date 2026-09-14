@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Quick VPS test: date-range IMAP fetch (bypasses Continuum)
+# Quick local test: date-range IMAP fetch (bypasses Continuum)
 set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 IMAP="${CONTINUUM_MOBILE_REPO:-/tmp/continuum-mobile}/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js"

@@ -69,10 +69,10 @@ async function fetchWebContext(message) {
   try {
     const data = await searchWeb(primary, extra);
     const context = formatSearchResults(data);
-    console.error('[continuum-bridge] web search:', data.provider, `hits=${data.results.length}`, data.query || primary);
+    console.error('[email-bridge] web search:', data.provider, `hits=${data.results.length}`, data.query || primary);
     return { matched: true, context, error: null, query: data.query || primary, provider: data.provider };
   } catch (err) {
-    console.error('[continuum-bridge] web search failed:', err.message);
+    console.error('[email-bridge] web search failed:', err.message);
     return {
       matched: true,
       context: null,

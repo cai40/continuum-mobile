@@ -31,7 +31,7 @@ CONTINUUM_EMAIL_BRIDGE_URL=https://your-email-bridge.onrender.com
 CONTINUUM_EMAIL_BRIDGE_SECRET=<same as BRIDGE_SECRET above>
 ```
 
-4. Mobile app calls `POST /integrations/email/chat/stream` on `API_URL` (no VPS).
+4. Mobile app calls `POST /integrations/email/chat/stream` on `API_URL`.
 
 ## Test locally
 
@@ -56,7 +56,7 @@ iPhone → continuum-backend (Render) /integrations/email/chat/stream
          continuum-backend /chat/stream (memory + LLM)
 ```
 
-No user VPS required when this path is enabled in the app (Settings → Render cloud email).
+No user-hosted server required when this path is enabled in the app (Settings → Render cloud email).
 
 ## Daily email cleanup (Cron)
 

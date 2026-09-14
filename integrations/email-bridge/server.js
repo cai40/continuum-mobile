@@ -116,7 +116,7 @@ function sanitizeUpstreamError(raw, status) {
   if (!text) return `Upstream request failed (${status || 'unknown'})`;
   if (/^\s*</.test(text) || /<!DOCTYPE/i.test(text) || /<html/i.test(text)) {
     if (/cloudflare/i.test(text)) {
-      return 'Cloudflare timed out or blocked the request. Email fetch can take 1–2 minutes — retry, or run a smaller date range with a lower limit.';
+      return 'The email bridge timed out or was blocked. Email fetch can take 1–2 minutes — retry, or run a smaller date range with a lower limit.';
     }
     if (status === 502 || status === 503 || status === 504) {
       return `Continuum backend unavailable (${status}). Try again in a moment.`;
@@ -470,7 +470,7 @@ async function handleChatStream(req, res, config) {
       : buildEffectiveEmailMessage(originalMessage, payload.history || []);
   payload.message = message;
 
-  // Open SSE before slow IMAP / upstream work so Cloudflare tunnels stay alive.
+  // Open SSE before slow IMAP / upstream work so the stream connection stays alive.
   const sse = beginSse(res);
   sse.write('status', { detail: 'Starting…' });
 
@@ -603,7 +603,7 @@ async function handleChatStream(req, res, config) {
       'Do NOT reference emails from earlier chat turns unless they appear in the list below.',
       'Do NOT say you cannot access email or external accounts.',
       deleteEnabled
-        ? 'The user has enabled move-to-Trash. The bridge may have ALREADY moved mail to Yahoo Trash via IMAP before this reply — check for [Email trash executed] or [Email cleanup executed] below. Confirm only what that block lists. NEVER say "deleted" or "permanently removed" — say "moved to Trash". NEVER tell the user to run terminal/bash/VPS commands.'
+        ? 'The user has enabled move-to-Trash. The bridge may have ALREADY moved mail to Yahoo Trash via IMAP before this reply — check for [Email trash executed] or [Email cleanup executed] below. Confirm only what that block lists. NEVER say "deleted" or "permanently removed" — say "moved to Trash". NEVER tell the user to run terminal/bash/shell commands.'
         : 'Do NOT move emails to Trash unless the user has enabled "Allow move to Trash" in app settings.',
       '',
       emailContext,
@@ -773,7 +773,7 @@ const server = http.createServer(async (req, res) => {
         // Fire-and-forget memory ingest so opening an email loads it into the vault.
         if (userAuth.startsWith('Bearer ') && email?.uid != null) {
           mailClient.ingestEmailIntoMemory(email, userAuth.slice(7), config.apiUrl).catch((ingestErr) => {
-            console.error('[continuum-bridge] mail ingest-on-open failed:', ingestErr?.message || ingestErr);
+            console.error('[email-bridge] mail ingest-on-open failed:', ingestErr?.message || ingestErr);
           });
         }
         return json(res, 200, { success: true, folder, email });
@@ -859,7 +859,7 @@ const server = http.createServer(async (req, res) => {
         const path = require('path');
         const statePath = process.env.ZILLOW_STATE_DIR
           || (process.env.RENDER
-            ? path.join('/opt/render/project/src', '.continuum-bridge-data')
+            ? path.join('/opt/render/project/src', '.email-bridge-data')
             : configDir());
         let state = { uids: [] };
         try {
@@ -876,7 +876,7 @@ const server = http.createServer(async (req, res) => {
       const emailHealth = await getEmailHealth({ quick: quickHealth });
       return json(res, 200, {
         success: true,
-        service: 'continuum-bridge',
+        service: 'email-bridge',
         bridge_version: bridgeVersion.version,
         features: bridgeVersion.features,
         continuum_api: config.apiUrl,

@@ -2,18 +2,12 @@
 set -euo pipefail
 
 CONFIG_DIR="$HOME/.config/continuum"
-LEGACY_CONFIG_DIR="$HOME/.config/continuum-openclaw"
 CONFIG_FILE="$CONFIG_DIR/.env"
 
 echo "================================"
 echo "  Continuum Brain Skill Setup"
 echo "================================"
 echo ""
-
-# Move a legacy config dir into the new Continuum location once.
-if [ ! -d "$CONFIG_DIR" ] && [ -d "$LEGACY_CONFIG_DIR" ]; then
-  mv "$LEGACY_CONFIG_DIR" "$CONFIG_DIR"
-fi
 
 echo "Links this server to your Continuum memory backend."
 echo "Get credentials from the Continuum app → Setup → Email & Bridge."

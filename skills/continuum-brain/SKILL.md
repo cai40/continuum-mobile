@@ -1,6 +1,6 @@
 ---
 name: continuum-brain
-description: Route messages to Continuum backend for memory-aware replies (L1-L5). Use for conversational questions, identity-aware advice, and decisions that should persist in Continuum memory. Pair with imap-smtp-email for email actions on this VPS.
+description: Route messages to Continuum backend for memory-aware replies (L1-L5). Use for conversational questions, identity-aware advice, and decisions that should persist in Continuum memory. Pair with imap-smtp-email for email actions.
 metadata:
   continuum:
     emoji: "🧠"
@@ -68,7 +68,7 @@ BRIDGE_SECRET=optional_shared_secret
 Run the bridge service so external channels or hooks can POST messages:
 
 ```bash
-node ../../integrations/continuum-bridge/server.js
+node ../../integrations/email-bridge/server.js
 ```
 
-See `integrations/continuum-bridge/` in the Continuum mobile repo.
+See `integrations/email-bridge/` in the Continuum mobile repo.

@@ -5,7 +5,7 @@ const vm = require('vm');
 const Module = require('module');
 
 // Load zillowFeed.js with stubs for IMAP + Continuum.
-const srcPath = path.join(__dirname, '../integrations/continuum-bridge/zillowFeed.js');
+const srcPath = path.join(__dirname, '../integrations/email-bridge/zillowFeed.js');
 const src = fs.readFileSync(srcPath, 'utf8');
 
 const scriptCalls = [];
