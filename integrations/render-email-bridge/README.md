@@ -60,7 +60,7 @@ No user-hosted server required when this path is enabled in the app (Settings â†
 
 ## Daily email cleanup (Cron)
 
-Automatic purge of newsletters/promos from the **last 24 hours** (up to **500** per run), with a saved summary.
+Automatic purge of newsletters/promos from the **last 30 days** (up to **5000** per run), with a saved summary.
 
 ### Render Cron Job
 
@@ -80,7 +80,7 @@ Optional on the **web service** env:
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `DAILY_CLEANUP_ENABLED` | `true` | Set `false` to skip cron runs |
-| `DAILY_CLEANUP_RECENT` | `24h` | Lookback window |
+| `DAILY_CLEANUP_RECENT` | `30d` | Lookback window for the daily run |
 | `DAILY_CLEANUP_LIMIT` | `5000` | Max emails scanned per run |
 
 ### API

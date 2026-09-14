@@ -12,6 +12,7 @@ module.exports = {
     cleanup_delete_max: 10000,
     daily_cleanup: true,
     daily_cleanup_default_limit: 5000,
+    daily_cleanup_default_lookback: '30d',
     daily_cleanup_progress: true,
     never_trash_senders: true,
     move_to_folder: true,

@@ -12,6 +12,9 @@ export const MAX_EMAIL_LIMIT = 50000;
 // Bridge-side default scan cap for a daily cleanup run (DAILY_CLEANUP_LIMIT on
 // Render overrides it). Display only — the run cap is decided by the bridge.
 export const DAILY_CLEANUP_SCAN_LIMIT = 5000;
+// Bridge-side default lookback window for a daily cleanup run. Display only —
+// must stay in step with DEFAULT_CLEANUP_LOOKBACK in the email bridge.
+export const DAILY_CLEANUP_LOOKBACK = "30d";
 export const DEFAULT_EMAIL_RECENT = '7d';
 export const SUPABASE_URL = 'https://yybojfgjhtrwqhtavorg.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_o9AuvayIw6vnMtnqhdTpNg__V7pA5i5';

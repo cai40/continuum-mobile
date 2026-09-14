@@ -16,6 +16,17 @@ const DEFAULT_STATE_PATH = path.join(
 const DEFAULT_CLEANUP_LIMIT = 5000;
 
 /**
+ * Default lookback window for a daily cleanup run; override with DAILY_CLEANUP_RECENT.
+ *
+ * NOTE: for a cleanup intent the *effective* window is decided in
+ * `emailFetchOptions.resolveEmailFetchOptions`, which resolves `cleanup ? '30d'`
+ * ahead of any payload value. This constant must stay in step with that branch or
+ * the reported window (run.lookback, the summary, the app) will disagree with what
+ * was actually scanned.
+ */
+const DEFAULT_CLEANUP_LOOKBACK = '30d';
+
+/**
  * Live progress for the in-flight run. A large scan can take 5-15 minutes, far
  * longer than an HTTP request the app is willing to hold open, so the app polls
  * `/daily-cleanup/progress` while the POST is still pending. In-memory only —
@@ -175,7 +186,7 @@ function buildPrefilledDailySummary(run) {
 }
 
 async function runDailyCleanup(options = {}) {
-  const lookback = options.recent || process.env.DAILY_CLEANUP_RECENT || '24h';
+  const lookback = options.recent || process.env.DAILY_CLEANUP_RECENT || DEFAULT_CLEANUP_LOOKBACK;
   const limit = parseInt(options.limit || process.env.DAILY_CLEANUP_LIMIT || String(DEFAULT_CLEANUP_LIMIT), 10);
   const ranAt = new Date().toISOString();
 
@@ -259,7 +270,7 @@ function buildSetupReply() {
     '',
     '## Daily email cleanup enabled',
     '',
-    `The bridge will trash newsletters/promos from the last **24 hours** (up to **${DEFAULT_CLEANUP_LIMIT}** per run) when the daily job runs.`,
+    `The bridge will trash newsletters/promos from the last **30 days** (up to **${DEFAULT_CLEANUP_LIMIT}** per run) when the daily job runs.`,
     '',
     '**Render Cron Job** (one-time setup):',
     `1. [Render Dashboard](https://dashboard.render.com/) → **New** → **Cron Job**`,
@@ -287,4 +298,5 @@ module.exports = {
   saveState,
   getCleanupProgress,
   DEFAULT_CLEANUP_LIMIT,
+  DEFAULT_CLEANUP_LOOKBACK,
 };

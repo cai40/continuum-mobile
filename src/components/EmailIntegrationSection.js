@@ -20,6 +20,7 @@ import {
   DEFAULT_EMAIL_RECENT,
   MAX_EMAIL_LIMIT,
   DAILY_CLEANUP_SCAN_LIMIT,
+  DAILY_CLEANUP_LOOKBACK,
 } from "../constants/Config";
 import { resolveRenderEmailBridgeSecret } from "../utils/emailBridge";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
@@ -329,7 +330,7 @@ const EmailIntegrationSection = ({ onBack }) => {
           Automatic daily purge + summary
         </Text>
         <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-          Scans the last 24 hours each day, trashes newsletters/promos (up to {DAILY_CLEANUP_SCAN_LIMIT}/run — this cap belongs to the bridge and is independent of the chat fetch limit above), and saves a report you can view here or ask in chat: “daily cleanup summary”.
+          Scans the last {DAILY_CLEANUP_LOOKBACK} each day, trashes newsletters/promos (up to {DAILY_CLEANUP_SCAN_LIMIT}/run — this cap belongs to the bridge and is independent of the chat fetch limit above), and saves a report you can view here or ask in chat: “daily cleanup summary”.
         </Text>
         {dailyCleanup?.last_run ? (
           <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
