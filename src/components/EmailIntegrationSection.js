@@ -34,6 +34,47 @@ function formatElapsed(ms) {
   return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
 }
 
+/** How long to keep checking whether an interrupted run actually finished. */
+const CLEANUP_RECOVERY_POLLS = 15;
+const CLEANUP_RECOVERY_INTERVAL_MS = 4000;
+/** Allow for clock skew between this device and the bridge when matching a run. */
+const CLEANUP_RUN_SKEW_MS = 120000;
+
+/**
+ * A cleanup can outlive the request that started it: the proxy times out, or a
+ * deploy restarts a service mid-run, so the POST fails even though the bridge
+ * finished the work. Recover the outcome instead of reporting a bare failure.
+ *
+ * Returns the run only if it started at/after `startedAt`, so a stale run from an
+ * earlier day is never shown as the result of this tap.
+ */
+async function recoverCleanupResult(secret, startedAt, onProgress) {
+  for (let i = 0; i < CLEANUP_RECOVERY_POLLS; i += 1) {
+    // If the bridge still reports an active run, the work is ongoing — keep waiting.
+    try {
+      const { progress } = await fetchDailyCleanupProgress(secret);
+      if (progress?.running) {
+        if (onProgress) onProgress(progress);
+        await new Promise((r) => setTimeout(r, CLEANUP_RECOVERY_INTERVAL_MS));
+        continue;
+      }
+    } catch {
+      // Bridge may be restarting; fall through and try for a stored result.
+    }
+    try {
+      const latest = await fetchDailyCleanupLatest(secret);
+      const run = latest?.last_run;
+      if (run?.ran_at && new Date(run.ran_at).getTime() >= startedAt - CLEANUP_RUN_SKEW_MS) {
+        return run;
+      }
+    } catch {
+      // Keep polling until the attempts run out.
+    }
+    await new Promise((r) => setTimeout(r, CLEANUP_RECOVERY_INTERVAL_MS));
+  }
+  return null;
+}
+
 const EmailIntegrationSection = ({ onBack }) => {
   const {
     session,
@@ -99,6 +140,7 @@ const EmailIntegrationSection = ({ onBack }) => {
       Alert.alert("Allow move to Trash", "Turn on Allow move to Trash below before daily cleanup can run.");
       return;
     }
+    const startedAt = Date.now();
     setRunningDailyCleanup(true);
     setCleanupProgress({ stage: "Starting cleanup…", elapsed_ms: 0 });
     stopProgressPolling();
@@ -135,7 +177,36 @@ const EmailIntegrationSection = ({ onBack }) => {
       );
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
-      Alert.alert("Daily cleanup failed", e.message || String(e));
+      // The request failed, but the run may have succeeded anyway. Check before
+      // telling the user it failed — a bare 502 here is usually just the request
+      // dying, not the cleanup.
+      stopProgressPolling();
+      setCleanupProgress({ stage: "Cleanup interrupted — checking whether it finished…", elapsed_ms: 0 });
+      const recovered = await recoverCleanupResult(effectiveRenderSecret, startedAt, (progress) => {
+        setCleanupProgress({
+          stage: progress.stage,
+          elapsed_ms: progress.elapsed_ms,
+          processed: progress.processed,
+          total: progress.total,
+          remaining: progress.remaining,
+        });
+      });
+      if (recovered) {
+        setDailyCleanup({ enabled: true, last_run: recovered, runs: [recovered] });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          "Daily cleanup finished",
+          recovered.moved_to_trash
+            ? `The request dropped, but the run completed: moved ${recovered.moved_to_trash} email(s) to Trash (scanned ${recovered.fetched} from last ${recovered.lookback}).`
+            : `The request dropped, but the run completed: ${recovered.summary_text || "nothing to remove."}`,
+        );
+      } else {
+        Alert.alert(
+          "Daily cleanup failed",
+          `${e.message || String(e)}\n\nNo completed run was found, so nothing is reported. ` +
+            "If this happened right after a deploy, wait a minute and run it again.",
+        );
+      }
     } finally {
       stopProgressPolling();
       setRunningDailyCleanup(false);
