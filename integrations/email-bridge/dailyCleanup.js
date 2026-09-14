@@ -110,7 +110,7 @@ function buildPrefilledDailySummary(run) {
 
 async function runDailyCleanup(options = {}) {
   const lookback = options.recent || process.env.DAILY_CLEANUP_RECENT || '24h';
-  const limit = parseInt(options.limit || process.env.DAILY_CLEANUP_LIMIT || '500', 10);
+  const limit = parseInt(options.limit || process.env.DAILY_CLEANUP_LIMIT || '5000', 10);
   const ranAt = new Date().toISOString();
 
   const result = await fetchEmailContext('fetch and clean inbox', {

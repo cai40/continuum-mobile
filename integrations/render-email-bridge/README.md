@@ -81,7 +81,7 @@ Optional on the **web service** env:
 |----------|---------|---------|
 | `DAILY_CLEANUP_ENABLED` | `true` | Set `false` to skip cron runs |
 | `DAILY_CLEANUP_RECENT` | `24h` | Lookback window |
-| `DAILY_CLEANUP_LIMIT` | `500` | Max emails scanned per run |
+| `DAILY_CLEANUP_LIMIT` | `5000` | Max emails scanned per run |
 
 ### API
 
