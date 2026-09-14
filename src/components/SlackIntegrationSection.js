@@ -74,7 +74,7 @@ const SlackIntegrationSection = ({ onBack }) => {
   }, [bridgeSecret, slackToken]);
 
   useEffect(() => {
-    if (slackToken?.trim() && bridgeSecret) handleLoadChannels();
+    if (slackToken?.trim()) handleLoadChannels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
