@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Image, Alert, RefreshControl, Keyboard } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Image, Alert, RefreshControl, Keyboard, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,7 +15,7 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt } from '../services/apiService';
+import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt, fetchChatHistory } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveRenderEmailBridgeSecret, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/emailBridge';
 import { resolveEmailFetchPayload } from '../utils/emailOptions';
@@ -185,6 +185,64 @@ const ChatSection = () => {
   const startRecordingRef = useRef(null);
   const sendMessageRef = useRef(null);
   const speakAssistantReplyRef = useRef(null);
+
+  // iOS suspends the app as soon as the user switches away, which kills the streaming
+  // request. The server finishes the turn regardless (see /chat/stream in the backend),
+  // so these track what we showed optimistically for the turn in flight, letting the
+  // foreground reconcile swap it for the transcript that was actually stored rather
+  // than leaving a bubble the server never had.
+  const streamTurnRef = useRef(null);
+  const reconcileInFlightRef = useRef(false);
+  const reconcileRef = useRef(null);
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+
+  // Called when the app returns to the foreground. Deliberately conservative: it only
+  // rewrites the UI once the server actually holds a reply, so a socket that survived a
+  // brief switch (turn still streaming) is left to the live stream callbacks.
+  const reconcileInterruptedTurn = useCallback(async () => {
+    const turn = streamTurnRef.current;
+    if (!turn || reconcileInFlightRef.current) return;
+    const token = session?.access_token?.trim();
+    if (!token) return;
+    reconcileInFlightRef.current = true;
+    try {
+      const history = await fetchChatHistory(null, token);
+      if (!Array.isArray(history) || history.length === 0) return;
+      // Match on ids, never timestamps: the device clock and the server clock are not
+      // the same clock, and a skew would silently select the wrong window.
+      const known = new Set(messagesRef.current.map((m) => m.id));
+      const add = history.filter((m) => !known.has(m.id) && !turn.ids.has(m.id));
+      if (!add.some((m) => m.role && m.role !== 'user')) return;
+
+      setMessages((prev) => {
+        const kept = prev.filter((m) => !turn.ids.has(m.id));
+        const have = new Set(kept.map((m) => m.id));
+        const fresh = add.filter((m) => !have.has(m.id));
+        return fresh.length ? [...kept, ...fresh] : kept;
+      });
+      // Take ownership of the turn before touching the socket, so the callbacks that may
+      // still arrive from a socket that survived the switch are ignored rather than
+      // appending a second copy of the reply.
+      turn.reconciled = true;
+      setIsTyping(false);
+      setStreamingContent('');
+      abortControllerRef.current?.abort?.();
+      streamTurnRef.current = null;
+    } catch {
+      // Leave the optimistic view alone; the live stream may still be running.
+    } finally {
+      reconcileInFlightRef.current = false;
+    }
+  }, [session?.access_token, setMessages]);
+
+  useEffect(() => { reconcileRef.current = reconcileInterruptedTurn; }, [reconcileInterruptedTurn]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (next) => {
+      if (next === 'active') reconcileRef.current?.();
+    });
+    return () => subscription.remove();
+  }, []);
 
   const dismissKeyboard = useCallback(() => {
     inputRef.current?.blur();
@@ -961,6 +1019,13 @@ const ChatSection = () => {
         clearPhotoCleanupCancel();
       }
 
+      // Past this point this is a real streamed chat turn (photo cleanup returned above),
+      // and it can outlive the app staying in the foreground. `reconciled` lets the
+      // foreground reconcile take ownership of the turn, so a socket that survived the
+      // switch cannot have its late callbacks append the same reply a second time.
+      const activeTurn = { ids: new Set([userMsg.id]), reconciled: false };
+      streamTurnRef.current = activeTurn;
+
       if (isVoiceMode) {
         try {
           await Audio.setAudioModeAsync({
@@ -1166,6 +1231,9 @@ const ChatSection = () => {
       };
 
       const finishSuccess = (finalText, voiceTranscript, meta = null) => {
+        // The foreground reconcile already rendered this turn from the server's copy;
+        // accepting a late callback from the old socket would duplicate the reply.
+        if (activeTurn.reconciled) return;
         if (meta?.servedModel) lastServedModel = meta.servedModel;
         if (!finalText.trim() && bridgeAttempted && !renderFallbackUsed) {
           const hint = useRenderEmail
@@ -1237,8 +1305,7 @@ const ChatSection = () => {
           let aiMsgs = buildDraftAssistantMessages(finalText, {
             requestedDraft: wantsCopyDraft,
             baseId: Date.now(),
-          });
-          aiMsgs = aiMsgs.map((m) => ({
+          });          aiMsgs = aiMsgs.map((m) => ({
             ...m,
             continuumProvider: resolvedProvider,
             continuumProviderLabel: providerDisplayLabel(resolvedProvider),
@@ -1247,6 +1314,10 @@ const ChatSection = () => {
               : null,
           }));
           const combinedText = aiMsgs.map((m) => m.content).join('\n\n');
+          // Record these ids as part of this turn's optimistic view, so a later
+          // foreground reconcile removes them in favour of the stored rows. Adding to a
+          // Set is idempotent, which matters if React invokes this updater twice.
+          aiMsgs.forEach((m) => activeTurn.ids.add(m.id));
           const pinBody = extractEmailEvidenceForPin(finalText) || extractEmailEvidenceForPin(combinedText);
           const offerPin = pinBody
             && activeToken
@@ -1264,6 +1335,10 @@ const ChatSection = () => {
           }
           return [...prev, ...aiMsgs];
         });
+
+        // The turn resolved in this session, so there is nothing left to reconcile.
+        activeTurn.reconciled = true;
+        streamTurnRef.current = null;
 
         if (isVoiceMode) {
           speakAssistantReplyRef.current?.(finalText);
@@ -1320,6 +1395,9 @@ const ChatSection = () => {
       };
 
       const finishError = (err) => {
+        // Ignore a late failure for a turn the reconcile already recovered: the reply
+        // exists server-side, so alarming the user about it would be wrong.
+        if (activeTurn.reconciled) return;
         if (isEmailJobCancellationError(err)) {
           clearTypingSafety();
           setIsTyping(false);
