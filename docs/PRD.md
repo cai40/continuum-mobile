@@ -1,6 +1,6 @@
 # Continuum 2.0: Product Requirements Document (PRD)
 
-**Version**: 3.4.68 (OpenClaw Email Bridge)
+**Version**: 3.4.68 (Email Bridge)
 **Date**: July 5, 2026
 **Platform**: iOS (Primary) / Android (Compatible)
 
@@ -122,8 +122,8 @@ Transitioned from "Feature Gating" to "Capacity Gating" to provide high value to
 *   **Neural STT**: Instant transcription with multilingual cycling (EN, ZH, ES).
 *   **Neural Voice**: Six high-fidelity neural voices for AI response.
 
-### 2.11 OpenClaw VPS Bridge & Yahoo Email [NEW]
-Continuum chat can route through a user-hosted **OpenClaw bridge** on a VPS (HTTPS via Cloudflare tunnel) or via **Render cloud email** (`/integrations/email` on continuum-backend + Node email bridge on Render — no user VPS).
+### 2.11 Email Bridge & Yahoo Email [NEW]
+Continuum chat can route through a self-hosted **email bridge** on a VPS (HTTPS via Cloudflare tunnel) or via **Render cloud email** (`/integrations/email` on continuum-backend + Node email bridge on Render — no user VPS).
 
 *   **Bridge service**: Node HTTP server (`continuum-bridge`) on port 8787 — `GET /health`, `POST /chat/stream`.
 *   **Email fetch**: Lite IMAP check (headers + snippet) with pagination (`offset`, `limit` up to 1000).
@@ -162,5 +162,5 @@ Continuum chat can route through a user-hosted **OpenClaw bridge** on a VPS (HTT
 *   **Biometric Vault**: ✅ Complete. Smart Autofill operational in v3.4.47.
 *   **Auth Infrastructure**: ✅ Complete. Deep-link verification bridge active.
 *   **Data Sovereignty**: ✅ Complete. RLS-hardened Multi-Tenancy active.
-*   **OpenClaw Yahoo Email Bridge**: ✅ Complete. Date-range fetch, clean-up trash rules, month/year phrases, over-limit permission (`bridge_version` 2026.07.27).
+*   **Yahoo Email Bridge**: ✅ Complete. Date-range fetch, clean-up trash rules, month/year phrases, over-limit permission (`bridge_version` 2026.07.27).
 *   **App Store Submission**: In progress. Metadata and screenshots finalized.

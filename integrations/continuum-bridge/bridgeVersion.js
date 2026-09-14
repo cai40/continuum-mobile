@@ -1,8 +1,9 @@
 'use strict';
 
 module.exports = {
-  version: '2026.07.13f',
+  version: '2026.09.13',
   features: {
+    continuum_paths: true,
     date_range: true,
     date_range_mode: 'recent_lookback_filter',
     pagination: true,

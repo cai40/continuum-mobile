@@ -15,6 +15,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const { configDir } = require('./continuumPaths');
 const { execFileSync } = require('child_process');
 const { callContinuum } = require('../../skills/continuum-brain/scripts/ask');
 const { loadConfig } = require('../../skills/continuum-brain/scripts/config');
@@ -24,7 +25,7 @@ const IMAP = process.env.IMAP_SCRIPT || path.join(REPO, 'skills/@gzlicanyi/imap-
 const STATE_DIR = process.env.ZILLOW_STATE_DIR
   || (process.env.RENDER
     ? path.join('/opt/render/project/src', '.continuum-bridge-data')
-    : path.join(process.env.HOME || '/root', '.config/continuum-openclaw'));
+    : configDir());
 
 const ZILLOW_SENDERS = [
   'zillow.com',

@@ -42,7 +42,7 @@ function sanitizeFilename(filename) {
 
 // IMAP ID information for 163.com compatibility
 const IMAP_ID = {
-  name: 'openclaw',
+  name: 'continuum',
   version: '0.0.1',
   vendor: 'netease',
   'support-email': 'kefu@188.com'

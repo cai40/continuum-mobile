@@ -2,6 +2,6 @@
   "name": "continuum-brain",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenClaw skill — Continuum memory backend bridge",
+  "description": "Continuum skill — memory backend bridge",
   "type": "commonjs"
 }

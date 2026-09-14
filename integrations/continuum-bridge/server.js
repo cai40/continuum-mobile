@@ -32,6 +32,7 @@ const { fetchWebContext } = require('./webContext');
 const { handleFetchExcerpt } = require('./fetchExcerpt');
 const slackClient = require('./slackClient');
 const bridgeVersion = require('./bridgeVersion');
+const { configDir } = require('./continuumPaths');
 const { wantsEmailMemoryIngest, parseSenderFromMessage, shouldBypassEmailSummaryMode } = require('./emailSender');
 const { wantsEmailMoveToFolder, wantsEmailCopyFolderToInbox } = require('./emailMove');
 const {
@@ -859,7 +860,7 @@ const server = http.createServer(async (req, res) => {
         const statePath = process.env.ZILLOW_STATE_DIR
           || (process.env.RENDER
             ? path.join('/opt/render/project/src', '.continuum-bridge-data')
-            : path.join(process.env.HOME || '/root', '.config/continuum-openclaw'));
+            : configDir());
         let state = { uids: [] };
         try {
           state = JSON.parse(fs.readFileSync(path.join(statePath, 'zillow-ingested-uids.json'), 'utf8'));

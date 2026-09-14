@@ -8,8 +8,13 @@ REPO_DIR="$(cd "$BRIDGE_DIR/../.." && pwd)"
 
 echo "=== Continuum Bridge (mobile app chat) ==="
 
-if [ ! -f "$HOME/.config/continuum-openclaw/.env" ]; then
-  echo "Missing ~/.config/continuum-openclaw/.env — run continuum-brain setup first."
+# Migrate the legacy config dir if it has not been moved yet.
+if [ ! -d "$HOME/.config/continuum" ] && [ -d "$HOME/.config/continuum-openclaw" ]; then
+  mv "$HOME/.config/continuum-openclaw" "$HOME/.config/continuum"
+fi
+
+if [ ! -f "$HOME/.config/continuum/.env" ]; then
+  echo "Missing ~/.config/continuum/.env — run continuum-brain setup first."
   exit 1
 fi
 
@@ -17,7 +22,7 @@ fi
 mkdir -p "$HOME/.config/systemd/user"
 cat > "$HOME/.config/systemd/user/continuum-bridge.service" <<EOF
 [Unit]
-Description=Continuum OpenClaw Bridge
+Description=Continuum Bridge
 After=network.target
 
 [Service]
@@ -44,12 +49,11 @@ systemctl --user enable continuum-bridge
 systemctl --user restart continuum-bridge
 
 if command -v ufw >/dev/null 2>&1; then
-  ufw allow 8787/tcp comment 'Continuum OpenClaw bridge' || true
+  ufw allow 8787/tcp comment 'Continuum bridge' || true
 fi
 
 sleep 1
 curl -s "http://127.0.0.1:8787/health" && echo ""
 echo ""
 echo "Bridge running on 0.0.0.0:8787"
-echo "In Continuum app: Settings → OpenClaw Gateway → enable 'Route chat through OpenClaw'"
-echo "Use the same Bridge Secret saved in the app."
+echo "In the Continuum app: Setup → Email & Bridge → use the same Bridge Secret saved there."

@@ -11,7 +11,7 @@ const { appendGroundingPersona } = require(path.join(
 async function refreshAccessToken(config) {
   if (!config.refreshToken || !config.supabaseAnonKey) {
     throw new Error(
-      'CONTINUUM_ACCESS_TOKEN expired. Set CONTINUUM_REFRESH_TOKEN in ~/.config/continuum-openclaw/.env (copy from Continuum app Settings → OpenClaw Gateway).',
+      'CONTINUUM_ACCESS_TOKEN expired. Set CONTINUUM_REFRESH_TOKEN in ~/.config/continuum/.env (copy from Continuum app → Setup → Email & Bridge).',
     );
   }
 

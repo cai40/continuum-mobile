@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const { skillsDir } = require('./continuumPaths');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const { resolveEmailFetchOptions, MAX_LIMIT, wantsEmailFetch, wantsEmailSummaryOnly, parseLimitFromMessage } = require('./emailFetchOptions');
@@ -60,11 +61,11 @@ async function probeImapDeleteCommand(imapScript) {
 }
 
 function findImapScript() {
-  const home = process.env.HOME || '/root';
+  const skills = skillsDir();
   const candidates = [
     '/tmp/continuum-mobile/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js',
-    path.join(home, '.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js'),
-    path.join(home, '.openclaw/workspace/skills/imap-smtp-email/scripts/imap.js'),
+    path.join(skills, '@gzlicanyi/imap-smtp-email/scripts/imap.js'),
+    path.join(skills, 'imap-smtp-email/scripts/imap.js'),
   ];
   return candidates.find((p) => {
     try {

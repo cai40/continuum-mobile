@@ -1,6 +1,6 @@
 # Continuum Mobile — Agent Instructions
 
-**Read this file first** before changing OpenClaw bridge, IMAP, VPS-related code, or shipping any mobile release.
+**Read this file first** before changing the email bridge, IMAP, VPS-related code, or shipping any mobile release.
 
 ---
 
@@ -127,11 +127,11 @@ If `bridge_version` is **missing**, the VPS is still on old code — do not debu
 
 ---
 
-## OpenClaw / email feature map
+## Email feature map
 
 | Feature | Config / code |
 |---------|----------------|
-| Max emails per batch | `MAX_LIMIT` / `MAX_OPENCLAW_EMAIL_LIMIT` (1000) |
+| Max emails per batch | `MAX_LIMIT` in `emailFetchOptions.js` |
 | Pagination offset | `emailFetchOptions.js`, `--offset` on IMAP |
 | Date range fetch | `emailDateRange.js`, `--since` / `--before` on IMAP |
 | Month / year ranges | `parseMonthRangeFromMessage`, `parseYearRangeFromMessage` in `emailDateRange.js` |
@@ -170,5 +170,4 @@ Chat examples that must work:
 ## Other context
 
 - Handover / product state: `MEMO.md`
-- OpenClaw setup: `docs/OPENCLAW_INTEGRATION.md`
-- OpenClaw agent snippet: `integrations/continuum-bridge/AGENTS-continuum.snippet.md`
+- Email bridge setup: `integrations/continuum-bridge/` and `integrations/render-email-bridge/`

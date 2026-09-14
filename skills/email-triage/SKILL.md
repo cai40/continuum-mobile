@@ -3,7 +3,7 @@ name: email-triage
 version: 1.0.0
 description: Classify Yahoo/IMAP inbox mail as urgent, needs-response, informational, newsletter, spam, or protected. Select junk UIDs for bridge trash/bulk actions. Node heuristics — no Ollama required.
 metadata:
-  openclaw:
+  continuum:
     emoji: "📬"
     requires:
       bins:
@@ -13,7 +13,7 @@ metadata:
 
 # Email Triage (Continuum port)
 
-Heuristic inbox triage for the Continuum OpenClaw bridge. Classifies fetched emails and **selects junk UIDs** for safe bulk trash.
+Heuristic inbox triage for the Continuum email bridge. Classifies fetched emails and **selects junk UIDs** for safe bulk trash.
 
 ## Credits
 
@@ -36,8 +36,8 @@ Heuristic inbox triage for the Continuum OpenClaw bridge. Classifies fetched ema
 
 ```bash
 # Classify last 50 inbox messages
-node ~/.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js check --limit 50 --recent 7d \
-  | node ~/.openclaw/workspace/skills/email-triage/scripts/triage.js
+node ~/.continuum/workspace/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js check --limit 50 --recent 7d \
+  | node ~/.continuum/workspace/skills/email-triage/scripts/triage.js
 
 # JSON junk UID list for scripts
 node imap.js check --limit 100 | node triage.js --select-junk --json
@@ -56,7 +56,7 @@ node imap.js check --limit 100 | node triage.js --select-junk --no-github --json
 
 ### Continuum app (on each inbox fetch)
 
-Setup → OpenClaw Gateway:
+Setup → Email & Bridge:
 
 1. **Permit inbox deletions** = ON
 2. **Auto-trash promos & newsletters on fetch** = ON
@@ -80,7 +80,7 @@ Yahoo → Settings → Filters → create rules for senders like `noreply@`, `ne
 ## Install on VPS
 
 ```bash
-cp -r /tmp/continuum-mobile/skills/email-triage ~/.openclaw/workspace/skills/
+cp -r /tmp/continuum-mobile/skills/email-triage ~/.continuum/workspace/skills/
 ```
 
 Or run `bash integrations/continuum-bridge/sync-imap-skill.sh` (syncs IMAP + triage).

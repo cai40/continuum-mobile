@@ -5,7 +5,7 @@ set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 REPO="${CONTINUUM_MOBILE_REPO:-/tmp/continuum-mobile}"
 SKILL_SRC="${REPO}/skills/@gzlicanyi/imap-smtp-email"
-SKILL_DST="${HOME}/.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email"
+SKILL_DST="${HOME}/.continuum/workspace/skills/@gzlicanyi/imap-smtp-email"
 CONFIG_DIR="${HOME}/.config/mail-skills"
 CONFIG_FILE="${CONFIG_DIR}/.env"
 

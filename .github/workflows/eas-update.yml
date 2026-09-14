@@ -28,4 +28,4 @@ jobs:
       - name: EAS Update (production)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx eas-cli update --branch production --message "OpenClaw Gateway" --non-interactive
+        run: npx eas-cli update --branch production --message "Continuum" --non-interactive
