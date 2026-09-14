@@ -110,7 +110,7 @@ const EmailIntegrationSection = ({ onBack }) => {
     } catch (e) {
       Alert.alert(
         "Render email unreachable",
-        `${e.message || String(e)}\n\nCheck Render email bridge secret matches BRIDGE_SECRET on continuum-email-bridge.`,
+        `${e.message || String(e)}\n\nCheck that CONTINUUM_EMAIL_BRIDGE_SECRET on the backend matches BRIDGE_SECRET on continuum-email-bridge.`,
       );
     } finally {
       setTestingRenderEmail(false);

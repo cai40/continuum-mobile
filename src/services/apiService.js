@@ -995,9 +995,12 @@ export const renderEmailChatStream = (
 export const testRenderEmailHealth = async (bridgeSecret) =>
   testBridgeHealth(RENDER_EMAIL_BRIDGE_URL, bridgeSecret);
 
+// These go through the backend proxy, so they need the user bearer (added by
+// mailHeaders) as well as the optional device secret. Without it the proxy
+// rejects the call with 401 before it ever reaches the bridge.
 export const fetchDailyCleanupLatest = async (bridgeSecret) => {
   const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}/daily-cleanup/latest`, {
-    headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
+    headers: mailHeaders(bridgeSecret),
   });
   if (!res.ok) throw new Error(`Daily cleanup status failed (${res.status})`);
   return res.json();
@@ -1006,7 +1009,7 @@ export const fetchDailyCleanupLatest = async (bridgeSecret) => {
 export const runDailyCleanupNow = async (bridgeSecret) => {
   const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}/daily-cleanup/run`, {
     method: "POST",
-    headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
+    headers: mailHeaders(bridgeSecret),
   });
   if (!res.ok) throw new Error(`Daily cleanup run failed (${res.status})`);
   return res.json();
@@ -1014,7 +1017,7 @@ export const runDailyCleanupNow = async (bridgeSecret) => {
 
 export const testBridgeHealth = async (bridgeBaseUrl, bridgeSecret) => {
   const res = await fetch(`${bridgeBaseUrl.replace(/\/$/, "")}/health`, {
-    headers: bridgeSecret ? { "X-Bridge-Secret": bridgeSecret } : {},
+    headers: mailHeaders(bridgeSecret),
   });
   if (!res.ok) throw new Error(`Bridge health check failed (${res.status})`);
   return res.json();
