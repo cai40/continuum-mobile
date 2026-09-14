@@ -278,10 +278,6 @@ export const AppProvider = ({ children }) => {
           "@email_recent",
           "@email_delete_enabled",
           "@email_auto_trash_junk",
-          "@openclaw_email_limit",
-          "@openclaw_email_recent",
-          "@openclaw_email_delete_enabled",
-          "@openclaw_email_auto_trash_junk",
         ]);
 
         let clearedAtMs = 0;
@@ -292,10 +288,10 @@ export const AppProvider = ({ children }) => {
         }
 
         const valueFor = (name) => keys.find(([k]) => k === name)?.[1] || null;
-        const emailLimitSaved = valueFor("@email_limit") || valueFor("@openclaw_email_limit");
-        const emailRecentSaved = valueFor("@email_recent") || valueFor("@openclaw_email_recent");
-        const emailDeleteSaved = valueFor("@email_delete_enabled") || valueFor("@openclaw_email_delete_enabled");
-        const emailJunkSaved = valueFor("@email_auto_trash_junk") || valueFor("@openclaw_email_auto_trash_junk");
+        const emailLimitSaved = valueFor("@email_limit");
+        const emailRecentSaved = valueFor("@email_recent");
+        const emailDeleteSaved = valueFor("@email_delete_enabled");
+        const emailJunkSaved = valueFor("@email_auto_trash_junk");
         if (emailLimitSaved) setEmailLimit(emailLimitSaved);
         if (emailRecentSaved) setEmailRecent(emailRecentSaved);
         if (emailDeleteSaved) setEmailDeleteEnabled(emailDeleteSaved === "true");

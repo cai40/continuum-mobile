@@ -2,17 +2,18 @@
 
 const fs = require('fs');
 const path = require('path');
+const { skillsDir } = require('./continuumPaths');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
 
 function findImapScriptLocal() {
-  const home = process.env.HOME || '/root';
+  const skills = skillsDir();
   const candidates = [
     '/tmp/continuum-mobile/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js',
-    `${home}/.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email/scripts/imap.js`,
-    `${home}/.openclaw/workspace/skills/imap-smtp-email/scripts/imap.js`,
+    path.join(skills, '@gzlicanyi/imap-smtp-email/scripts/imap.js'),
+    path.join(skills, 'imap-smtp-email/scripts/imap.js'),
   ];
   const fs = require('fs');
   return candidates.find((p) => {

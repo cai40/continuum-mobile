@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
+const { configEnvPath } = require('./continuumPaths');
 
 const EMAIL_BLOCK = /\b(emails?|inbox|yahoo|mail|imap|smtp|uid\b|clean\s*up|clean\b.*\b(emails?|inbox|mail)\b|\bfetch\b.*\b(emails?|mail|inbox)\b|move\s+all\s+emails|from\s+\d{1,2}[\/\-]\d{1,2}|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\s+(?:\d{4}\s+)?emails?)\b/i;
 const SEARCH_TIMEOUT_MS = 20000;
@@ -12,7 +12,7 @@ function loadBraveApiKey() {
   if (process.env.BRAVE_SEARCH_API_KEY?.trim()) {
     return process.env.BRAVE_SEARCH_API_KEY.trim();
   }
-  const cfgPath = path.join(process.env.HOME || '/root', '.config/continuum-openclaw/.env');
+  const cfgPath = configEnvPath();
   try {
     const raw = fs.readFileSync(cfgPath, 'utf8');
     const match = raw.match(/^BRAVE_SEARCH_API_KEY=(.+)$/m);

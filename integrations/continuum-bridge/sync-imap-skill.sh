@@ -5,10 +5,10 @@ set -euo pipefail
 export PATH="/usr/local/bin:/usr/bin:$PATH"
 REPO="${CONTINUUM_MOBILE_REPO:-/tmp/continuum-mobile}"
 SKILL_SRC="${REPO}/skills/@gzlicanyi/imap-smtp-email"
-SKILL_DST="${HOME}/.openclaw/workspace/skills/@gzlicanyi/imap-smtp-email"
+SKILL_DST="${HOME}/.continuum/workspace/skills/@gzlicanyi/imap-smtp-email"
 IMAP_JS="${SKILL_DST}/scripts/imap.js"
 TRIAGE_SRC="${REPO}/skills/email-triage"
-TRIAGE_DST="${HOME}/.openclaw/workspace/skills/email-triage"
+TRIAGE_DST="${HOME}/.continuum/workspace/skills/email-triage"
 
 echo "=== Sync Yahoo IMAP + email-triage skills ==="
 
@@ -23,7 +23,7 @@ if ! grep -q "case 'delete'" "${SKILL_SRC}/scripts/imap.js"; then
 fi
 echo "✓ delete handler found in repo"
 
-echo "Installing npm dependencies (repo + openclaw copy)..."
+echo "Installing npm dependencies (repo + workspace copy)..."
 (cd "$SKILL_SRC" && npm install --production --no-audit --no-fund)
 
 mkdir -p "$(dirname "$SKILL_DST")"

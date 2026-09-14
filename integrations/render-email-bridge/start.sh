@@ -30,13 +30,13 @@ echo "Wrote Yahoo IMAP config at ${CONFIG_DIR}/.env"
 
 bash "$REPO_ROOT/integrations/continuum-bridge/sync-imap-skill.sh"
 
-OPENCLAW_DIR="${HOME}/.config/continuum-openclaw"
-mkdir -p -m 700 "$OPENCLAW_DIR"
-cat > "${OPENCLAW_DIR}/.env" <<EOF
+CONFIG_DIR="${HOME}/.config/continuum"
+mkdir -p -m 700 "$CONFIG_DIR"
+cat > "${CONFIG_DIR}/.env" <<EOF
 CONTINUUM_API_URL=$(echo "${CONTINUUM_API_URL:-https://continuum-backend-0q9j.onrender.com}" | sed 's#/*$##' | sed 's#/integrations/email$##i')
 BRIDGE_SECRET=${BRIDGE_SECRET:-${RENDER_EMAIL_BRIDGE_SECRET:-}}
 EOF
-chmod 600 "${OPENCLAW_DIR}/.env"
+chmod 600 "${CONFIG_DIR}/.env"
 
 export CONTINUUM_BRIDGE_HOST="0.0.0.0"
 export CONTINUUM_BRIDGE_PORT="${PORT:-8787}"

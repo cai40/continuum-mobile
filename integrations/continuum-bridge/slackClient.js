@@ -7,13 +7,14 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { configDir } = require('./continuumPaths');
 
 const SLACK_API = 'https://slack.com/api';
 const TIMEOUT_MS = 25000;
 
 const STATE_DIR = process.env.RENDER
   ? path.join('/opt/render/project/src', '.continuum-bridge-data')
-  : path.join(process.env.HOME || '/root', '.config/continuum-openclaw');
+  : configDir();
 
 async function slackRequest(token, method, body = {}) {
   if (!token) throw new Error('Slack token missing');

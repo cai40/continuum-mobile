@@ -91,7 +91,7 @@ Optional on the **web service** env:
 | `POST` | `/daily-cleanup/run` | `X-Bridge-Secret` (manual run from app) |
 | `GET` | `/daily-cleanup/latest` | `X-Bridge-Secret` (last 14 runs) |
 
-In the app: **Setup → OpenClaw Gateway → Daily email cleanup**, or chat: “daily cleanup summary”.
+In the app: **Setup → Email & Bridge → Daily email cleanup**, or chat: “daily cleanup summary”.
 
 ---
 

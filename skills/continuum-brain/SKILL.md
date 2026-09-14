@@ -2,7 +2,7 @@
 name: continuum-brain
 description: Route messages to Continuum backend for memory-aware replies (L1-L5). Use for conversational questions, identity-aware advice, and decisions that should persist in Continuum memory. Pair with imap-smtp-email for email actions on this VPS.
 metadata:
-  openclaw:
+  continuum:
     emoji: "🧠"
     requires:
       bins:
@@ -15,7 +15,7 @@ metadata:
 
 # Continuum Brain
 
-OpenClaw executes **channels and skills** (email, SMS, WeChat). **Continuum** is the memory-aware brain (L1–L5 identity, facts, documents).
+Continuum executes **channels and skills** (email, SMS, WeChat) on top of its memory-aware brain (L1–L5 identity, facts, documents).
 
 Use this skill when the user asks anything that should use their Continuum memory — not just generic LLM answers.
 
@@ -25,7 +25,7 @@ Use this skill when the user asks anything that should use their Continuum memor
 bash setup.sh
 ```
 
-Or copy credentials from **Continuum app → Settings → OpenClaw Gateway** to `~/.config/continuum-openclaw/.env`.
+Or copy credentials from the **Continuum app → Setup → Email & Bridge** to `~/.config/continuum/.env`.
 
 ## Ask Continuum
 
@@ -51,7 +51,7 @@ node scripts/ask.js --json "Quick health check"
 
 ## Config file
 
-`~/.config/continuum-openclaw/.env`:
+`~/.config/continuum/.env`:
 
 ```bash
 CONTINUUM_API_URL=https://continuum-backend-0q9j.onrender.com
@@ -65,10 +65,10 @@ BRIDGE_SECRET=optional_shared_secret
 
 ## HTTP bridge (optional)
 
-Run the bridge service so OpenClaw hooks or external channels can POST messages:
+Run the bridge service so external channels or hooks can POST messages:
 
 ```bash
 node ../../integrations/continuum-bridge/server.js
 ```
 
-See `docs/OPENCLAW_INTEGRATION.md` in the Continuum mobile repo.
+See `integrations/continuum-bridge/` in the Continuum mobile repo.

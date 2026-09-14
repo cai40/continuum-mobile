@@ -2,8 +2,8 @@
 
 /**
  * Heuristic email triage classifier.
- * Ported for Continuum/OpenClaw from community patterns:
- * - briancolinger/email-triage (MIT, OpenClaw) — categories urgent/needs-response/informational/spam
+ * Ported for Continuum from community patterns:
+ * - briancolinger/email-triage (MIT) — categories urgent/needs-response/informational/spam
  * - danieleschmidt/crewai-email-triage — keyword + sender reputation scoring
  */
 
