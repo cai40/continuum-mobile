@@ -12,6 +12,9 @@ const DEFAULT_STATE_PATH = path.join(
   '.config/email-bridge/daily-cleanup.json',
 );
 
+/** Default per-run scan cap for the daily cleanup; override with DAILY_CLEANUP_LIMIT. */
+const DEFAULT_CLEANUP_LIMIT = 5000;
+
 function statePath() {
   return process.env.DAILY_CLEANUP_STATE_PATH || DEFAULT_STATE_PATH;
 }
@@ -110,7 +113,7 @@ function buildPrefilledDailySummary(run) {
 
 async function runDailyCleanup(options = {}) {
   const lookback = options.recent || process.env.DAILY_CLEANUP_RECENT || '24h';
-  const limit = parseInt(options.limit || process.env.DAILY_CLEANUP_LIMIT || '5000', 10);
+  const limit = parseInt(options.limit || process.env.DAILY_CLEANUP_LIMIT || String(DEFAULT_CLEANUP_LIMIT), 10);
   const ranAt = new Date().toISOString();
 
   const result = await fetchEmailContext('fetch and clean inbox', {
@@ -185,7 +188,7 @@ function buildSetupReply() {
     '',
     '## Daily email cleanup enabled',
     '',
-    'The bridge will trash newsletters/promos from the last **24 hours** (up to **500** per run) when the daily job runs.',
+    `The bridge will trash newsletters/promos from the last **24 hours** (up to **${DEFAULT_CLEANUP_LIMIT}** per run) when the daily job runs.`,
     '',
     '**Render Cron Job** (one-time setup):',
     `1. [Render Dashboard](https://dashboard.render.com/) → **New** → **Cron Job**`,
