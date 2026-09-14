@@ -1,7 +1,7 @@
 'use strict';
 
 module.exports = {
-  version: '2026.09.13',
+  version: '2026.09.14',
   features: {
     continuum_paths: true,
     date_range: true,
@@ -11,6 +11,7 @@ module.exports = {
     max_limit: 50000,
     cleanup_delete_max: 10000,
     daily_cleanup: true,
+    daily_cleanup_default_limit: 5000,
     never_trash_senders: true,
     move_to_folder: true,
     copy_folder_to_inbox: true,
