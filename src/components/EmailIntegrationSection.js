@@ -108,7 +108,13 @@ const EmailIntegrationSection = ({ onBack }) => {
       try {
         const { progress } = await fetchDailyCleanupProgress(effectiveRenderSecret);
         if (progress?.running) {
-          setCleanupProgress({ stage: progress.stage, elapsed_ms: progress.elapsed_ms });
+          setCleanupProgress({
+            stage: progress.stage,
+            elapsed_ms: progress.elapsed_ms,
+            processed: progress.processed,
+            total: progress.total,
+            remaining: progress.remaining,
+          });
         }
       } catch {
         // Keep the last known stage — the run POST owns the final outcome.
@@ -369,6 +375,28 @@ const EmailIntegrationSection = ({ onBack }) => {
             <Text style={{ fontSize: 12, color: theme.colors.black, marginTop: 8 }}>
               {cleanupProgress?.stage || "Starting cleanup…"}
             </Text>
+            {typeof cleanupProgress?.total === "number" && cleanupProgress.total > 0 ? (
+              <>
+                <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, marginTop: 10, overflow: "hidden" }}>
+                  <View
+                    style={{
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: theme.colors.primary,
+                      width: `${Math.min(100, Math.round((cleanupProgress.processed / cleanupProgress.total) * 100))}%`,
+                    }}
+                  />
+                </View>
+                <Text style={{ fontSize: 11, color: theme.colors.black, marginTop: 6 }}>
+                  {cleanupProgress.processed} of {cleanupProgress.total} processed
+                  {typeof cleanupProgress.remaining === "number" ? ` · ${cleanupProgress.remaining} left` : ""}
+                </Text>
+              </>
+            ) : (
+              <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6 }}>
+                Counting emails in the window…
+              </Text>
+            )}
             <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 15 }}>
               Scanning up to {DAILY_CLEANUP_SCAN_LIMIT} emails. Large scans can take 5–15 minutes — you can leave this
               screen, the cleanup keeps running.

@@ -728,6 +728,46 @@ function parseImapProgressLine(line) {
   if (/date-range\s+direct\s+failed/i.test(text)) {
     return 'Direct search failed — switching to lookback scan…';
   }
+  // Chunked `check` fetch (see CHECK_FETCH_CHUNK in imap.js). This is the only
+  // progress the daily cleanup emits, because it scans a rolling window rather
+  // than a date range.
+  if ((m = text.match(/^\[imap\]\s+check\s+scan:\s+(\d+)\s+uid/i))) {
+    const total = parseInt(m[1], 10);
+    return total === 0 ? null : `Found ${total} email(s) in the window — fetching headers…`;
+  }
+  if ((m = text.match(/^\[imap\]\s+check\s+progress:\s+(\d+)\/(\d+)\s+fetched/i))) {
+    const done = parseInt(m[1], 10);
+    const total = parseInt(m[2], 10);
+    return total > 0 ? `Fetched ${done} of ${total} emails…` : null;
+  }
+  return null;
+}
+
+/**
+ * Pull numeric counters out of a raw IMAP progress line so the bridge can report
+ * "processed / remaining" instead of prose alone. Returns null when a line has no
+ * usable counts.
+ */
+function parseImapProgressCounts(line) {
+  const text = String(line || '').trim();
+  if (!text.startsWith('[imap]')) return null;
+  let m;
+  if ((m = text.match(/^\[imap\]\s+check\s+progress:\s+(\d+)\/(\d+)\s+fetched/i))) {
+    return { processed: parseInt(m[1], 10), total: parseInt(m[2], 10) };
+  }
+  if ((m = text.match(/^\[imap\]\s+check\s+scan:\s+(\d+)\s+uid/i))) {
+    return { processed: 0, total: parseInt(m[1], 10) };
+  }
+  // Date-range scans report candidates up front, then a cumulative total at the end.
+  if ((m = text.match(/^\[imap\]\s+date-range\s+scan:\s+since=(\d+)\s+recent=(\d+)/i))) {
+    return { processed: 0, total: parseInt(m[1], 10) + parseInt(m[2], 10) };
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range\s+lookback\s+\d+d:\s+fetched\s+(\d+)\s+row/i))) {
+    return { processed: parseInt(m[1], 10) };
+  }
+  if ((m = text.match(/^\[imap\]\s+date-range\s+folder-all:\s+scanned\s+(\d+)\s+header/i))) {
+    return { processed: parseInt(m[1], 10) };
+  }
   return null;
 }
 
@@ -785,7 +825,9 @@ function runImapSpawned(args, { timeoutMs, cwd, env, onProgress, cancelJobId = n
           if (friendly !== lastProgressMsg || now - lastProgressAt > 1500) {
             lastProgressMsg = friendly;
             lastProgressAt = now;
-            try { onProgress(friendly); } catch { /* ignore */ }
+            // Second argument carries counters for callers that render progress
+            // (the daily cleanup); streaming chat callers ignore it.
+            try { onProgress(friendly, parseImapProgressCounts(line)); } catch { /* ignore */ }
           }
         }
         if (stderr.trim()) {
@@ -1456,4 +1498,8 @@ module.exports = {
   buildPrefilledSummaryReply,
   extractPrefilledSummaryFromText,
   extractPrefilledSummary: extractPrefilledSummaryFromText,
+  // Exported for the progress tests; the IMAP progress wording/counters change
+  // together and are easy to break silently.
+  parseImapProgressLine,
+  parseImapProgressCounts,
 };

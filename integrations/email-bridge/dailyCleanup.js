@@ -32,15 +32,30 @@ function beginRunState({ lookback, limit, ranAt }) {
     elapsed_ms: 0,
     lookback,
     limit,
+    processed: 0,
+    total: null,
+    remaining: null,
     steps: [],
     error: null,
   };
   return activeRun;
 }
 
-function recordProgress(line) {
+function recordProgress(line, counts) {
   const stage = String(line || '').trim();
-  if (!stage || !activeRun || !activeRun.running || stage === activeRun.stage) return;
+  if (!stage || !activeRun || !activeRun.running) return;
+  // Counters can arrive without new text (and vice versa); apply them regardless
+  // so the bar keeps moving, but never let a stale report move it backwards.
+  if (counts) {
+    if (Number.isFinite(counts.total) && counts.total > 0) activeRun.total = counts.total;
+    if (Number.isFinite(counts.processed) && counts.processed >= activeRun.processed) {
+      activeRun.processed = counts.processed;
+    }
+    if (Number.isFinite(activeRun.total) && activeRun.total > 0) {
+      activeRun.remaining = Math.max(0, activeRun.total - activeRun.processed);
+    }
+  }
+  if (stage === activeRun.stage) return;
   activeRun.stage = stage;
   activeRun.elapsed_ms = Date.now() - new Date(activeRun.started_at).getTime();
   activeRun.steps = [...activeRun.steps, stage].slice(-MAX_PROGRESS_STEPS);
@@ -172,7 +187,7 @@ async function runDailyCleanup(options = {}) {
       email_recent: lookback,
       email_delete_enabled: options.deleteEnabled !== false,
       email_auto_trash_junk: false,
-    }, (line) => recordProgress(line));
+    }, (line, counts) => recordProgress(line, counts));
   } catch (err) {
     finishRun(err);
     throw err;

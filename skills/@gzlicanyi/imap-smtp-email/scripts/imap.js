@@ -659,6 +659,9 @@ function selectUidsByOffsetLimit(allUids, limit, offset = 0) {
 }
 
 // Check for new/unread emails
+/** Header-fetch chunk size for `check`: small enough to report progress, large enough to stay fast. */
+const CHECK_FETCH_CHUNK = 250;
+
 async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = null, unreadOnly = false, offset = 0, lite = false, sinceStr = null, beforeStr = null) {
   const imap = await connect();
 
@@ -719,7 +722,21 @@ async function checkEmails(mailbox = DEFAULT_MAILBOX, limit = 10, recentTime = n
     const fetchUids = selectUidsByOffsetLimit(allUids, limit, offset);
     if (fetchUids.length === 0) return [];
 
-    const messages = (await fetchByUids(imap, fetchUids, fetchOptions)).reverse();
+    console.error(`[imap] check scan: ${fetchUids.length} uid(s) to fetch (limit ${limit})`);
+
+    // Fetch in chunks so the bridge can report progress; one shot for thousands of
+    // headers leaves the user staring at a blank screen for minutes. Order is
+    // preserved (chunks are concatenated in UID order, then reversed as before).
+    const fetched = [];
+    for (let i = 0; i < fetchUids.length; i += CHECK_FETCH_CHUNK) {
+      const chunk = fetchUids.slice(i, i + CHECK_FETCH_CHUNK);
+      const chunkMessages = await fetchByUids(imap, chunk, fetchOptions);
+      fetched.push(...chunkMessages);
+      console.error(
+        `[imap] check progress: ${Math.min(i + chunk.length, fetchUids.length)}/${fetchUids.length} fetched`,
+      );
+    }
+    const messages = fetched.reverse();
 
     const results = [];
 
