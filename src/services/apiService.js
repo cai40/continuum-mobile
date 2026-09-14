@@ -1006,6 +1006,16 @@ export const fetchDailyCleanupLatest = async (bridgeSecret) => {
   return res.json();
 };
 
+// Live stage text for an in-flight cleanup. The run itself can take 5-15
+// minutes, so the app polls this instead of holding one request open.
+export const fetchDailyCleanupProgress = async (bridgeSecret) => {
+  const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}/daily-cleanup/progress`, {
+    headers: mailHeaders(bridgeSecret),
+  });
+  if (!res.ok) throw new Error(`Daily cleanup progress failed (${res.status})`);
+  return res.json();
+};
+
 export const runDailyCleanupNow = async (bridgeSecret) => {
   const res = await fetch(`${RENDER_EMAIL_BRIDGE_URL.replace(/\/$/, "")}/daily-cleanup/run`, {
     method: "POST",

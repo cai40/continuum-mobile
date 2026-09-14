@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -7,21 +7,31 @@ import {
   ScrollView,
   Alert,
   Switch,
+  ActivityIndicator,
 } from "react-native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useAppContext } from "../context/AppContext";
-import { testRenderEmailHealth, fetchDailyCleanupLatest, runDailyCleanupNow } from "../services/apiService";
+import { testRenderEmailHealth, fetchDailyCleanupLatest, runDailyCleanupNow, fetchDailyCleanupProgress } from "../services/apiService";
 import {
   RENDER_EMAIL_BRIDGE_URL,
   DEFAULT_EMAIL_LIMIT,
   DEFAULT_EMAIL_RECENT,
   MAX_EMAIL_LIMIT,
+  DAILY_CLEANUP_SCAN_LIMIT,
 } from "../constants/Config";
 import { resolveRenderEmailBridgeSecret } from "../utils/emailBridge";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
 import { styles, theme } from "../styles/theme";
+
+/** Elapsed time for an in-flight cleanup, e.g. "1m 05s". */
+function formatElapsed(ms) {
+  const total = Math.max(0, Math.floor((ms || 0) / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return minutes ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
 
 const EmailIntegrationSection = ({ onBack }) => {
   const {
@@ -47,6 +57,17 @@ const EmailIntegrationSection = ({ onBack }) => {
   const [testingRenderEmail, setTestingRenderEmail] = useState(false);
   const [dailyCleanup, setDailyCleanup] = useState(null);
   const [runningDailyCleanup, setRunningDailyCleanup] = useState(false);
+  const [cleanupProgress, setCleanupProgress] = useState(null);
+  const progressTimerRef = useRef(null);
+
+  const stopProgressPolling = useCallback(() => {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => stopProgressPolling, [stopProgressPolling]);
 
   const effectiveRenderSecret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
 
@@ -78,6 +99,23 @@ const EmailIntegrationSection = ({ onBack }) => {
       return;
     }
     setRunningDailyCleanup(true);
+    setCleanupProgress({ stage: "Starting cleanup…", elapsed_ms: 0 });
+    stopProgressPolling();
+    let pollInFlight = false;
+    progressTimerRef.current = setInterval(async () => {
+      if (pollInFlight) return;
+      pollInFlight = true;
+      try {
+        const { progress } = await fetchDailyCleanupProgress(effectiveRenderSecret);
+        if (progress?.running) {
+          setCleanupProgress({ stage: progress.stage, elapsed_ms: progress.elapsed_ms });
+        }
+      } catch {
+        // Keep the last known stage — the run POST owns the final outcome.
+      } finally {
+        pollInFlight = false;
+      }
+    }, 2500);
     try {
       const data = await runDailyCleanupNow(effectiveRenderSecret);
       setDailyCleanup({ enabled: true, last_run: data.run, runs: [data.run] });
@@ -92,7 +130,9 @@ const EmailIntegrationSection = ({ onBack }) => {
     } catch (e) {
       Alert.alert("Daily cleanup failed", e.message || String(e));
     } finally {
+      stopProgressPolling();
       setRunningDailyCleanup(false);
+      setCleanupProgress(null);
     }
   };
 
@@ -283,7 +323,7 @@ const EmailIntegrationSection = ({ onBack }) => {
           Automatic daily purge + summary
         </Text>
         <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 8, lineHeight: 16 }}>
-          Scans the last 24 hours each day, trashes newsletters/promos (up to 500/run), and saves a report you can view here or ask in chat: “daily cleanup summary”.
+          Scans the last 24 hours each day, trashes newsletters/promos (up to {DAILY_CLEANUP_SCAN_LIMIT}/run), and saves a report you can view here or ask in chat: “daily cleanup summary”.
         </Text>
         {dailyCleanup?.last_run ? (
           <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
@@ -318,6 +358,23 @@ const EmailIntegrationSection = ({ onBack }) => {
             {runningDailyCleanup ? "Running cleanup…" : "Run daily cleanup now"}
           </Text>
         </TouchableOpacity>
+        {runningDailyCleanup ? (
+          <View style={{ marginTop: 12, padding: 12, backgroundColor: theme.colors.light, borderRadius: 12 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black, marginLeft: 8 }}>
+                {formatElapsed(cleanupProgress?.elapsed_ms)} elapsed
+              </Text>
+            </View>
+            <Text style={{ fontSize: 12, color: theme.colors.black, marginTop: 8 }}>
+              {cleanupProgress?.stage || "Starting cleanup…"}
+            </Text>
+            <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 6, lineHeight: 15 }}>
+              Scanning up to {DAILY_CLEANUP_SCAN_LIMIT} emails. Large scans can take 5–15 minutes — you can leave this
+              screen, the cleanup keeps running.
+            </Text>
+          </View>
+        ) : null}
         <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 10, lineHeight: 16 }}>
           For automatic runs: Render Dashboard → New Cron Job → POST {RENDER_EMAIL_BRIDGE_URL}/cron/daily-cleanup with header X-Bridge-Secret (schedule 0 8 * * *).
         </Text>

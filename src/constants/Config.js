@@ -5,6 +5,9 @@ export const API_URL = "https://continuum-backend-0q9j.onrender.com";
 export const RENDER_EMAIL_BRIDGE_URL = `${API_URL}/integrations/email`;
 export const DEFAULT_EMAIL_LIMIT = 25;
 export const MAX_EMAIL_LIMIT = 50000;
+// Bridge-side default scan cap for a daily cleanup run (DAILY_CLEANUP_LIMIT on
+// Render overrides it). Display only — the run cap is decided by the bridge.
+export const DAILY_CLEANUP_SCAN_LIMIT = 5000;
 export const DEFAULT_EMAIL_RECENT = '7d';
 export const SUPABASE_URL = 'https://yybojfgjhtrwqhtavorg.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_o9AuvayIw6vnMtnqhdTpNg__V7pA5i5';

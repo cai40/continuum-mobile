@@ -59,6 +59,7 @@ const {
   buildSetupReply,
   loadState,
   saveState,
+  getCleanupProgress,
 } = require('./dailyCleanup');
 const mailClient = require('./mailClient');
 const zillowFeed = require('./zillowFeed');
@@ -220,6 +221,13 @@ async function handleDailyCleanupLatest(req, res, config) {
   }
   const history = getDailyCleanupHistory(14);
   return json(res, 200, { success: true, ...history });
+}
+
+async function handleDailyCleanupProgress(req, res, config) {
+  if (!verifyBridgeSecret(req, config)) {
+    return json(res, 401, { success: false, error: 'Invalid bridge secret' });
+  }
+  return json(res, 200, { success: true, progress: getCleanupProgress() });
 }
 
 async function handleDailyCleanupRunNow(req, res, config) {
@@ -894,6 +902,10 @@ const server = http.createServer(async (req, res) => {
       return await handleDailyCleanupLatest(req, res, config);
     }
 
+    if (req.method === 'GET' && req.url === '/daily-cleanup/progress') {
+      return await handleDailyCleanupProgress(req, res, config);
+    }
+
     if (req.method === 'POST' && req.url === '/cron/daily-cleanup') {
       return await handleDailyCleanupCron(req, res, config);
     }
@@ -1003,6 +1015,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Continuum bridge listening on http://${HOST}:${PORT}`);
   console.log('  GET  /health');
   console.log('  GET  /daily-cleanup/latest');
+  console.log('  GET  /daily-cleanup/progress (live progress for an in-flight run)');
   console.log('  POST /cron/daily-cleanup');
   console.log('  POST /daily-cleanup/run');
   console.log('  POST /memories/consolidate');

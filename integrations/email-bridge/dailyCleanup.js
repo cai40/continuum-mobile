@@ -15,6 +15,54 @@ const DEFAULT_STATE_PATH = path.join(
 /** Default per-run scan cap for the daily cleanup; override with DAILY_CLEANUP_LIMIT. */
 const DEFAULT_CLEANUP_LIMIT = 5000;
 
+/**
+ * Live progress for the in-flight run. A large scan can take 5-15 minutes, far
+ * longer than an HTTP request the app is willing to hold open, so the app polls
+ * `/daily-cleanup/progress` while the POST is still pending. In-memory only —
+ * it is about a running process, so it does not need to outlive the container.
+ */
+let activeRun = null;
+const MAX_PROGRESS_STEPS = 6;
+
+function beginRunState({ lookback, limit, ranAt }) {
+  activeRun = {
+    running: true,
+    stage: 'Starting cleanup…',
+    started_at: ranAt,
+    elapsed_ms: 0,
+    lookback,
+    limit,
+    steps: [],
+    error: null,
+  };
+  return activeRun;
+}
+
+function recordProgress(line) {
+  const stage = String(line || '').trim();
+  if (!stage || !activeRun || !activeRun.running || stage === activeRun.stage) return;
+  activeRun.stage = stage;
+  activeRun.elapsed_ms = Date.now() - new Date(activeRun.started_at).getTime();
+  activeRun.steps = [...activeRun.steps, stage].slice(-MAX_PROGRESS_STEPS);
+}
+
+function finishRun(err) {
+  if (!activeRun) return;
+  activeRun.running = false;
+  activeRun.elapsed_ms = Date.now() - new Date(activeRun.started_at).getTime();
+  activeRun.finished_at = new Date().toISOString();
+  if (err) {
+    activeRun.stage = 'Failed';
+    activeRun.error = err?.message || String(err);
+  } else {
+    activeRun.stage = 'Finished';
+  }
+}
+
+function getCleanupProgress() {
+  return activeRun;
+}
+
 function statePath() {
   return process.env.DAILY_CLEANUP_STATE_PATH || DEFAULT_STATE_PATH;
 }
@@ -116,12 +164,20 @@ async function runDailyCleanup(options = {}) {
   const limit = parseInt(options.limit || process.env.DAILY_CLEANUP_LIMIT || String(DEFAULT_CLEANUP_LIMIT), 10);
   const ranAt = new Date().toISOString();
 
-  const result = await fetchEmailContext('fetch and clean inbox', {
-    email_limit: limit,
-    email_recent: lookback,
-    email_delete_enabled: options.deleteEnabled !== false,
-    email_auto_trash_junk: false,
-  });
+  beginRunState({ lookback, limit, ranAt });
+  let result;
+  try {
+    result = await fetchEmailContext('fetch and clean inbox', {
+      email_limit: limit,
+      email_recent: lookback,
+      email_delete_enabled: options.deleteEnabled !== false,
+      email_auto_trash_junk: false,
+    }, (line) => recordProgress(line));
+  } catch (err) {
+    finishRun(err);
+    throw err;
+  }
+  finishRun(null);
 
   const messages = result?.messages || [];
   const deleteResult = result?.deleteResult || {};
@@ -214,4 +270,6 @@ module.exports = {
   buildSetupReply,
   loadState,
   saveState,
+  getCleanupProgress,
+  DEFAULT_CLEANUP_LIMIT,
 };
