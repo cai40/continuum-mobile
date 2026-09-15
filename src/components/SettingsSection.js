@@ -1251,6 +1251,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <Text style={[categoryTitleStyle, {marginTop: 24}]}>LISTENING LANGUAGE (STT)</Text>
       <View style={styles.groupedCard}>
         {[
+          { id: 'auto', label: '🌐 Auto-detect', desc: 'Detects your spoken language automatically' },
           { id: 'en-US', label: '🇺🇸 English (US)', desc: 'Optimized for North American speech' },
           { id: 'zh-CN', label: '🇨🇳 Chinese (Mainland)', desc: 'Optimized for Mandarin speech' },
           { id: 'es-ES', label: '🇪🇸 Spanish (Spain)', desc: 'Optimized for Castilian speech' }

@@ -93,7 +93,9 @@ export const AppProvider = ({ children }) => {
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
-  const [sttLang, setSttLang] = useState("en-US");
+  // "auto" lets the recognizer's locale be inferred per utterance (see ChatSection),
+  // which is what non-English speakers need; a concrete locale still pins it.
+  const [sttLang, setSttLang] = useState("auto");
   const [renderEmailBridgeSecret, setRenderEmailBridgeSecret] = useState("");
   const [emailLimit, setEmailLimit] = useState(String(DEFAULT_EMAIL_LIMIT));
   const [emailRecent, setEmailRecent] = useState(DEFAULT_EMAIL_RECENT);

@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { File, Paths } from 'expo-file-system';
 import * as Clipboard from 'expo-clipboard';
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
@@ -120,6 +121,25 @@ const FULL_FOLDER_PERSONA_APPEND = [
   'Build SENDER PERSONA and ATTITUDE TIMELINE from the full fetched span, not from memory alone.',
 ].join(' ');
 
+// Auto language detection for voice input. OS recognizers are locale-bound: iOS
+// returns nothing (or garbled text) when the spoken language differs from the
+// selected locale, so we resolve a sensible STT locale and let the backend
+// re-transcribe the recorded audio when the on-device attempt comes up empty.
+const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
+const AUTO_LANGS = ['en-US', 'zh-CN', 'es-ES'];
+// Quick-toggle order: Auto leads, so detection is the default posture.
+const AUTO_LANG_CYCLE = ['auto', 'zh-CN', 'es-ES', 'en-US'];
+const STT_CAPTURE_FILE = 'stt_capture.wav';
+
+// Returns a locale when the text is clearly CJK-dominant, else '' (leave to default).
+const detectLangFromText = (text) => {
+  const t = String(text || '');
+  const cjk = (t.match(CJK_RE) || []).length;
+  const latin = (t.match(/[A-Za-z]/g) || []).length;
+  return cjk >= 2 && cjk >= latin ? 'zh-CN' : '';
+};
+const hasLatin = (text) => /[A-Za-z]/.test(String(text || ''));
+
 // Register the server-side excerpt fetcher so profile lookups run on the
 // Render bridge (LinkedIn's ~800KB pages OOM the phone if fetched on-device).
 setBridgeExcerptFetcher((bridgeSecret, url) => fetchBridgeExcerpt(bridgeSecret, url));
@@ -134,6 +154,7 @@ const ChatSection = () => {
     slackToken,
     persona,
     sttLang,
+    setSttLang,
     activeTab,
     user,
     session,
@@ -183,6 +204,15 @@ const ChatSection = () => {
   const longSilenceTimerRef = useRef(null);
   const stopRecordingRef = useRef(null);
   const startRecordingRef = useRef(null);
+  // Voice capture bookkeeping for the server-side STT fallback. The recognizer's
+  // locale is fixed, so the recorded WAV is uploaded and re-transcribed (with
+  // language auto-detection) whenever the on-device transcript is unusable.
+  const lastSttLangRef = useRef('');
+  const transcriptRef = useRef('');
+  const audioUriRef = useRef(null);
+  const voiceAudioEndRef = useRef(false);
+  const voiceFinalizedRef = useRef(false);
+  const voiceEndTimerRef = useRef(null);
   const sendMessageRef = useRef(null);
   const speakAssistantReplyRef = useRef(null);
 
@@ -311,12 +341,43 @@ const ChatSection = () => {
   useSpeechRecognitionEvent('start', () => {
     setRecording(true);
     setLocalTranscript('');
+    transcriptRef.current = '';
+    audioUriRef.current = null;
+    voiceAudioEndRef.current = false;
+    voiceFinalizedRef.current = false;
+    if (voiceEndTimerRef.current) { clearTimeout(voiceEndTimerRef.current); voiceEndTimerRef.current = null; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  });
+
+  useSpeechRecognitionEvent('languagedetection', (event) => {
+    // Android-only: the OS reports the spoken language — reuse it on the next start.
+    if (event?.detectedLanguage) lastSttLangRef.current = event.detectedLanguage;
+  });
+
+  useSpeechRecognitionEvent('audiostart', (event) => {
+    // Present only when recording was persisted; used for server-side transcription.
+    if (event?.uri) audioUriRef.current = event.uri;
+  });
+
+  useSpeechRecognitionEvent('audioend', (event) => {
+    // The recorder flushes the file only at 'audioend'. Reading before this yields a
+    // partially-written WAV (observed as ~4KB silent uploads), so finalize here.
+    if (event?.uri) audioUriRef.current = event.uri;
+    voiceAudioEndRef.current = true;
+    finishVoice();
   });
 
   useSpeechRecognitionEvent('result', (event) => {
     const transcript = event.results[0]?.transcript || '';
+    transcriptRef.current = transcript;
     setLocalTranscript(transcript);
+    // Auto mode: learn the spoken language from the transcript script so the next
+    // utterance starts in the right locale (helps iOS, which emits no detection event).
+    if (sttLang === 'auto' && transcript) {
+      const zh = detectLangFromText(transcript);
+      if (zh) lastSttLangRef.current = zh;
+      else if (hasLatin(transcript)) lastSttLangRef.current = 'en-US';
+    }
   });
 
   useSpeechRecognitionEvent('error', (error) => {
@@ -327,15 +388,68 @@ const ChatSection = () => {
 
   useSpeechRecognitionEvent('end', () => {
     setRecording(false);
-    // If we have a transcript and were in voice mode, auto-send
-    if (localTranscript.trim()) {
-      handleVoiceFinished();
+    if (voiceAudioEndRef.current) {
+      finishVoice();
+    } else {
+      // 'audioend' hasn't fired yet — give the recorder a moment to flush the file,
+      // then send anyway (covers turns/platforms that never emit 'audioend').
+      voiceEndTimerRef.current = setTimeout(finishVoice, 700);
     }
   });
 
-  const handleVoiceFinished = () => {
-    // Trigger send with the local results
-    sendMessage(null, true);
+  // Finalize the utterance exactly once, after the recorded audio has been flushed.
+  // Always prefers server transcription: the on-device recognizer is single-locale, so
+  // iOS returns nothing (or garbled text) when the spoken language differs from the
+  // setting. Falls back to the on-device transcript only if no audio was captured.
+  const finishVoice = () => {
+    if (voiceFinalizedRef.current) return;
+    voiceFinalizedRef.current = true;
+    if (voiceEndTimerRef.current) { clearTimeout(voiceEndTimerRef.current); voiceEndTimerRef.current = null; }
+    const said = (transcriptRef.current || '').trim();
+    let uri = audioUriRef.current;
+    audioUriRef.current = null;
+    if (!uri) {
+      try {
+        const f = new File(Paths.cache, STT_CAPTURE_FILE);
+        if (f.exists) uri = f.uri;
+      } catch (e) { /* best effort */ }
+    }
+    if (uri) {
+      handleVoiceFinished(said, uri);
+    } else if (said) {
+      handleVoiceFinished(said);
+    } else {
+      console.log('STT: no audio captured and empty on-device transcript.');
+    }
+  };
+
+  const handleVoiceFinished = (voiceText = '', voiceUri = null) => {
+    // Send the on-device transcript, or the recorded audio for server-side STT.
+    sendMessage(null, true, voiceText || null, voiceUri);
+  };
+
+  // Read the recorded WAV only once it looks finalized (valid RIFF/WAVE header and a
+  // non-trivial size). The recorder writes audio incrementally and back-patches the
+  // header on flush, so reading too early yields a truncated/silent clip that makes the
+  // transcriber hallucinate. Retries briefly, then falls back to a raw read.
+  const readFinalizedVoice = async (uri) => {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        const f = new File(uri);
+        if (f.exists && f.size > 64) {
+          const b = await f.bytes();
+          if (
+            b.length > 44 &&
+            b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && // "RIFF"
+            b[8] === 0x57 && b[9] === 0x41 && b[10] === 0x56 && b[11] === 0x45    // "WAVE"
+          ) {
+            return await f.base64();
+          }
+        }
+      } catch (e) { /* retry */ }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    try { return await new File(uri).base64(); } catch (e) { return null; }
   };
 
   // Audio & Location Setup
@@ -448,8 +562,13 @@ const ChatSection = () => {
       soundRef.current = null;
     }
     setIsSpeaking(true);
+    // In Auto mode there is no fixed locale, so speak the reply in the language its own
+    // script is written in (a Chinese reply must not be read by an English voice).
+    const ttsLang = (sttLang && sttLang !== 'auto')
+      ? sttLang
+      : (detectLangFromText(spoken) || lastSttLangRef.current || 'en-US');
     Speech.speak(spoken, {
-      language: (sttLang || 'en-US').split('-').length >= 2 ? sttLang : 'en-US',
+      language: ttsLang,
       rate: 0.96,
       onDone: () => {
         setIsSpeaking(false);
@@ -677,19 +796,49 @@ const ChatSection = () => {
         return;
       }
 
+      // Reset the recorded-audio URI for this user-initiated recording, and delete any
+      // previous capture so a failed recording can't upload stale audio.
+      audioUriRef.current = null;
+      try {
+        const prev = new File(Paths.cache, STT_CAPTURE_FILE);
+        if (prev.exists) prev.delete();
+      } catch (e) { /* best effort */ }
+
+      // Resolve the recognition locale. In Auto mode prefer the language we last
+      // observed; otherwise infer it from the current conversation, else English.
+      const resolveBaseLang = () => {
+        if (lastSttLangRef.current) return lastSttLangRef.current;
+        const last = messages[messages.length - 1];
+        return detectLangFromText(last?.content) || 'en-US';
+      };
+      const baseLang = (sttLang && sttLang !== 'auto') ? sttLang : resolveBaseLang();
+      const startOptions = { lang: baseLang, interimResults: true };
+      if (Platform.OS === 'android') {
+        // Always allow the Android recognizer to auto-detect/switch language, even
+        // when the user picked a specific language (e.g. "en") — so switching to
+        // Chinese mid-utterance still works.
+        startOptions.androidIntentOptions = {
+          EXTRA_ENABLE_LANGUAGE_DETECTION: true,
+          EXTRA_ENABLE_LANGUAGE_SWITCH: 'balanced',
+          EXTRA_LANGUAGE_SWITCH_ALLOWED_LANGUAGES: AUTO_LANGS,
+          EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES: AUTO_LANGS,
+        };
+      }
+      // Persist the raw audio so a failed on-device attempt can be re-transcribed
+      // server-side (Whisper/Gemini auto-detect the spoken language).
+      startOptions.recordingOptions = {
+        persist: true,
+        outputDirectory: Paths.cache.uri,
+        outputFileName: STT_CAPTURE_FILE,
+      };
+
       // Safe Start: Prevent engine-level crashes on unsupported locales
       try {
-        await ExpoSpeechRecognitionModule.start({
-          lang: sttLang,
-          interimResults: true,
-        });
+        await ExpoSpeechRecognitionModule.start(startOptions);
       } catch (innerErr) {
         console.warn("Engine Locale Error:", innerErr);
-        // Fallback to English if the specific locale fails
-        await ExpoSpeechRecognitionModule.start({
-          lang: 'en-US',
-          interimResults: true,
-        });
+        // Fallback: plain start in the resolved locale (drop extra options).
+        await ExpoSpeechRecognitionModule.start({ lang: baseLang, interimResults: true });
       }
     } catch (err) {
       console.error("STT Critical Failure:", err);
@@ -707,7 +856,7 @@ const ChatSection = () => {
   };
   stopRecordingRef.current = stopRecording;
 
-  const sendMessage = async (overrideAttachment = null, isFromVoice = false, overrideText = null) => {
+  const sendMessage = async (overrideAttachment = null, isFromVoice = false, overrideText = null, voiceUri = null) => {
     try {
       if (isTyping) {
         await handleStop();
@@ -731,7 +880,9 @@ const ChatSection = () => {
         ? [overrideAttachment]
         : attachments;
       const finalInput = (overrideText ?? (isFromVoice ? localTranscript : input)).trim();
-      if (!finalInput && activeAttachments.length === 0) return;
+      // A voice turn can legitimately carry no on-device text (the recognizer is
+      // single-locale), so the recorded audio alone is enough to send.
+      if (!finalInput && !voiceUri && activeAttachments.length === 0) return;
 
       if (renderEmailEnabled && isStopEmailJobMessage(finalInput)) {
         const secret = resolveRenderEmailBridgeSecret(renderEmailBridgeSecret);
@@ -957,8 +1108,9 @@ const ChatSection = () => {
       // The bridge secret is injected server-side by the backend proxy, so it is no
       // longer required on the device (see RENDER_EMAIL_BRIDGE_URL in constants/Config).
 
-      // Prefer direct DeepSeek for text chat. Image uploads need Continuum multipart.
-      const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery && !hasImageAttachments;
+      // Prefer direct DeepSeek for text chat. Image uploads and recorded voice need
+      // Continuum multipart (the latter so the backend can transcribe the audio).
+      const preferDirectDeepseek = useDirectDeepseek && !isEmailBridgeQuery && !hasImageAttachments && !voiceUri;
       const isModelIdentityQuestion = /\b(what|which)\b[\s\S]{0,40}\b(model|llm|ai|version)\b/i.test(finalInput)
         || /\b(are you|you are|you're)\b[\s\S]{0,20}\b(deepseek|gpt|gemini|claude|v3|v4)\b/i.test(finalInput)
         || /\bmodel\s+(are you|is this|do you use|am i talking)\b/i.test(finalInput);
@@ -969,7 +1121,7 @@ const ChatSection = () => {
       const displayInput = overrideText
         ? overrideText
         : isFromVoice
-          ? finalInput
+          ? (finalInput || (voiceUri ? "🎤 Transcribing..." : ""))
           : sanitizeUserVisibleContent(
             input || (activeAttachments.some((f) => f.type?.startsWith('audio'))
               ? "🎤 Processing..."
@@ -1183,6 +1335,13 @@ const ChatSection = () => {
         for (const file of activeAttachments) {
           formData.append('file', { uri: file.uri, name: file.name, type: file.type });
         }
+      }
+      // Server-side STT fallback: upload the recorded audio so the backend transcribes
+      // it with auto language detection (works regardless of the on-device locale).
+      if (voiceUri) {
+        const audioB64 = await readFinalizedVoice(voiceUri);
+        if (audioB64) formData.append('file_b64', audioB64);
+        else console.warn('Voice audio not ready/valid; skipping upload for', voiceUri);
       }
       if (location) {
         formData.append('lat', location.coords.latitude.toString());
@@ -1484,6 +1643,16 @@ const ChatSection = () => {
             setMessages(prev => prev.map(m =>
               m.id === userMsg.id ? { ...m, content: sanitizeUserVisibleContent(transcript) } : m
             ));
+          }
+        } else if (event === 'nospeech') {
+          // Server-side STT heard no speech: drop the placeholder and resume listening
+          // rather than leaving a bubble the user never said.
+          if (!isFromVoice) return;
+          setMessages(prev => prev.filter(m => m.id !== userMsg.id));
+          setIsTyping(false);
+          setStreamingContent('');
+          if (isVoiceMode && activeTab === 'chat') {
+            setTimeout(() => startRecordingRef.current?.(), 500);
           }
         } else if (event === 'error') {
           finishError(json.detail || "An unexpected error occurred.");
@@ -2033,6 +2202,29 @@ const ChatSection = () => {
               HANDS-FREE
             </Text>
           )}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            const idx = AUTO_LANG_CYCLE.indexOf(sttLang);
+            setSttLang(AUTO_LANG_CYCLE[(idx + 1) % AUTO_LANG_CYCLE.length]);
+          }}
+          style={{
+            marginRight: 8,
+            marginBottom: 4,
+            paddingHorizontal: 10,
+            paddingVertical: 10,
+            backgroundColor: theme.colors.light,
+            borderRadius: 25,
+            flexDirection: 'row',
+            alignItems: 'center'
+          }}
+        >
+          <Ionicons name="language" size={18} color={theme.colors.gray} />
+          <Text style={{ color: theme.colors.gray, fontSize: 10, fontWeight: '900', marginLeft: 4 }}>
+            {sttLang && sttLang !== 'auto' ? sttLang.split('-')[0].toUpperCase() : 'AUTO'}
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
