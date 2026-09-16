@@ -822,20 +822,42 @@ const ChatSection = () => {
         };
       }
       // Persist the raw audio so a failed on-device attempt can be re-transcribed
-      // server-side (Whisper/Gemini auto-detect the spoken language).
+      // server-side (Gemini auto-detects the spoken language).
       startOptions.recordingOptions = {
         persist: true,
         outputDirectory: Paths.cache.uri,
         outputFileName: STT_CAPTURE_FILE,
       };
+      if (Platform.OS === 'ios') {
+        // iOS defaults to 32-bit float at 44100/48000 Hz: ~12x the bytes of Android's
+        // 16-bit PCM, slower to flush, and float samples are not what the backend's
+        // silence/format checks expect. Ask for the same 16 kHz mono int16 that Android
+        // produces so both platforms upload a small, universally decodable clip.
+        startOptions.recordingOptions.outputEncoding = 'pcmFormatInt16';
+        startOptions.recordingOptions.outputSampleRate = 16000;
+      }
 
       // Safe Start: Prevent engine-level crashes on unsupported locales
       try {
         await ExpoSpeechRecognitionModule.start(startOptions);
       } catch (innerErr) {
         console.warn("Engine Locale Error:", innerErr);
-        // Fallback: plain start in the resolved locale (drop extra options).
-        await ExpoSpeechRecognitionModule.start({ lang: baseLang, interimResults: true });
+        // Degrade in steps that keep language detection and audio capture alive. The old
+        // fallback dropped *everything* extra, which silently disabled auto-detect and the
+        // server-side transcription upload - the failure looked like "voice detect is
+        // broken" with nothing in the logs to explain it.
+        try {
+          await ExpoSpeechRecognitionModule.start({ ...startOptions, lang: 'en-US' });
+        } catch (retryErr) {
+          console.warn("Engine start failed even with a fallback locale; retrying without audio capture:", retryErr);
+          const minimal = { lang: baseLang, interimResults: true };
+          // Keep Android's detection extras even when audio capture can't be enabled, so
+          // auto-detect still works on-device; only the server-side STT fallback is lost.
+          if (startOptions.androidIntentOptions) {
+            minimal.androidIntentOptions = startOptions.androidIntentOptions;
+          }
+          await ExpoSpeechRecognitionModule.start(minimal);
+        }
       }
     } catch (err) {
       console.error("STT Critical Failure:", err);
