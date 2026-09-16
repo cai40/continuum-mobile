@@ -155,6 +155,54 @@ export const deleteChatMessages = async (messageIds, authToken = null) => {
 };
 
 /**
+ * One-time recovery for the Sep 2026 database outage: re-insert turns the device still
+ * holds but the cloud never stored. `messages` may be the raw local list — anything that
+ * is not device-created is dropped here.
+ *
+ * Device-created messages are identified by their `id` being a millisecond epoch
+ * (`Date.now()`); server rows carry small sequential integer ids. That is the same
+ * convention `messageTimeMs` already uses, so it needs no new marker on the message.
+ *
+ * Idempotent on the backend: re-sending a batch that was already stored inserts nothing.
+ * Returns the backend summary, or null when the call could not be made.
+ */
+export const backfillChatHistory = async (messages, authToken = null) => {
+  const batch = (Array.isArray(messages) ? messages : []).filter((m) => {
+    if (!m?.role || !m?.content) return false;
+    const ms = parseInt(String(m.id ?? ''), 10);
+    return Number.isFinite(ms) && ms > 1e12;
+  });
+  if (batch.length === 0 || !authToken) return null;
+  try {
+    const res = await fetch(`${API_URL}/chat/backfill`, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authToken}`,
+        'User-Agent': 'Continuum-Mobile/1.0',
+      },
+      body: JSON.stringify({
+        messages: batch.map((m) => ({
+          id: String(m.id),
+          role: m.role,
+          content: m.content,
+          // Only send a timestamp when one was actually recorded; otherwise the backend
+          // derives it from the id, which is the reliable source for device turns.
+          ...(m.timestamp ? { timestamp: m.timestamp } : {}),
+        })),
+        rebuild_memory: true,
+      }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.warn('Chat backfill failed:', e);
+    return null;
+  }
+};
+
+/**
  * Wipe all remote chat history for the signed-in user (fetch + delete in batches).
  */
 export const clearRemoteChatHistory = async (authToken = null, localMessages = []) => {

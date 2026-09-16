@@ -16,7 +16,7 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt, fetchChatHistory } from '../services/apiService';
+import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt, fetchChatHistory, backfillChatHistory } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
 import { resolveRenderEmailBridgeSecret, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/emailBridge';
 import { resolveEmailFetchPayload } from '../utils/emailOptions';
@@ -221,6 +221,8 @@ const ChatSection = () => {
   const streamTurnRef = useRef(null);
   const reconcileInFlightRef = useRef(false);
   const reconcileRef = useRef(null);
+  // Guards the one-time lost-turn backfill so it runs at most once per app launch.
+  const backfillDoneRef = useRef(false);
   const messagesRef = useRef(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
@@ -264,6 +266,40 @@ const ChatSection = () => {
   }, [session?.access_token, setMessages]);
 
   useEffect(() => { reconcileRef.current = reconcileInterruptedTurn; }, [reconcileInterruptedTurn]);
+
+  // --- ONE-TIME RECOVERY: push turns the device still holds but the cloud lost ---
+  // The Sep 14-16 database outage meant replies streamed but turns were never stored, and
+  // because the archival tasks were registered inside the failing commit's try block,
+  // nothing was remembered either. Those turns still exist here: locally-created messages
+  // carry a Date.now() id, so they are distinguishable from server rows by `id > 1e12`.
+  // Push them once per launch; the backend inserts only what it is missing and replays the
+  // recovered turns through the normal memory pipeline. Idempotent, so a repeat is a no-op.
+  useEffect(() => {
+    if (backfillDoneRef.current) return;
+    const token = session?.access_token?.trim();
+    if (!token) return;
+    const deviceOnly = messages.filter((m) => {
+      if (!m?.content) return false;
+      const ms = parseInt(String(m.id ?? ''), 10);
+      return Number.isFinite(ms) && ms > 1e12;
+    });
+    if (deviceOnly.length === 0) return;
+    // Only mark done once there is actually something to send, so a still-loading history
+    // is not mistaken for "nothing to recover".
+    backfillDoneRef.current = true;
+    backfillChatHistory(deviceOnly, token).then((result) => {
+      if (result?.inserted > 0) {
+        console.log(`Recovered ${result.inserted} cloud-missing messages from this device`);
+        Alert.alert(
+          'History recovered',
+          `Restored ${result.inserted} message${result.inserted === 1 ? '' : 's'} missing from `
+            + `the cloud, and queued ${result.memory_rebuild_queued} turn`
+            + `${result.memory_rebuild_queued === 1 ? '' : 's'} to be remembered again.`,
+        );
+      }
+    });
+  }, [messages, session?.access_token]);
+
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
       if (next === 'active') reconcileRef.current?.();

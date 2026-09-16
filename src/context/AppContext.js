@@ -415,9 +415,11 @@ export const AppProvider = ({ children }) => {
           if (incoming.length === 0) return prev;
           
           const combined = [...prev, ...incoming].sort((a, b) => {
-            const dateA = a.timestamp ? new Date(a.timestamp) : new Date(0);
-            const dateB = b.timestamp ? new Date(b.timestamp) : new Date(0);
-            return dateA - dateB;
+            // Sort on messageTimeMs, not `timestamp` alone: device-created messages carry
+            // no timestamp, so sorting on the raw field bucketed them at epoch 0 and moved
+            // them to the front — where the 500-message cap below then trimmed them away.
+            // messageTimeMs already falls back to the Date.now() id for exactly this case.
+            return messageTimeMs(a) - messageTimeMs(b);
           });
 
           // Final Memory Safety Cap
