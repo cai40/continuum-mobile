@@ -127,8 +127,6 @@ const FULL_FOLDER_PERSONA_APPEND = [
 // re-transcribe the recorded audio when the on-device attempt comes up empty.
 const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
 const AUTO_LANGS = ['en-US', 'zh-CN', 'es-ES'];
-// Quick-toggle order: Auto leads, so detection is the default posture.
-const AUTO_LANG_CYCLE = ['auto', 'zh-CN', 'es-ES', 'en-US'];
 const STT_CAPTURE_FILE = 'stt_capture.wav';
 
 // Returns a locale when the text is clearly CJK-dominant, else '' (leave to default).
@@ -154,7 +152,6 @@ const ChatSection = () => {
     slackToken,
     persona,
     sttLang,
-    setSttLang,
     activeTab,
     user,
     session,
@@ -2202,29 +2199,6 @@ const ChatSection = () => {
               HANDS-FREE
             </Text>
           )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            const idx = AUTO_LANG_CYCLE.indexOf(sttLang);
-            setSttLang(AUTO_LANG_CYCLE[(idx + 1) % AUTO_LANG_CYCLE.length]);
-          }}
-          style={{
-            marginRight: 8,
-            marginBottom: 4,
-            paddingHorizontal: 10,
-            paddingVertical: 10,
-            backgroundColor: theme.colors.light,
-            borderRadius: 25,
-            flexDirection: 'row',
-            alignItems: 'center'
-          }}
-        >
-          <Ionicons name="language" size={18} color={theme.colors.gray} />
-          <Text style={{ color: theme.colors.gray, fontSize: 10, fontWeight: '900', marginLeft: 4 }}>
-            {sttLang && sttLang !== 'auto' ? sttLang.split('-')[0].toUpperCase() : 'AUTO'}
-          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
