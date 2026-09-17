@@ -243,6 +243,18 @@ const ChatSection = () => {
       const known = new Set(messagesRef.current.map((m) => m.id));
       const add = history.filter((m) => !known.has(m.id) && !turn.ids.has(m.id));
       if (!add.some((m) => m.role && m.role !== 'user')) return;
+      // Ids can never match across the two id spaces (device ids are Date.now() strings,
+      // server ids are small integers), so a stored turn arrives as *new* rows and the
+      // guard above only proves the window holds some assistant message — never that it
+      // holds this turn's reply. Confirm the server really has THIS turn, question plus a
+      // reply after it, before its local copy is dropped. Otherwise a turn whose send
+      // never landed is deleted with nothing put back, and the auto-save makes it stick.
+      const asked = (messagesRef.current
+        .find((m) => turn.ids.has(m.id) && m.role === 'user')?.content || '').trim();
+      const askedAt = asked
+        ? history.findIndex((m) => (m.content || '').trim() === asked)
+        : -1;
+      if (askedAt < 0 || !history.slice(askedAt + 1).some((m) => m.role && m.role !== 'user')) return;
 
       setMessages((prev) => {
         const kept = prev.filter((m) => !turn.ids.has(m.id));
