@@ -89,10 +89,9 @@ export const AppProvider = ({ children }) => {
   const [braveSearchKey, setBraveSearchKey] = useState("");
   const [slackToken, setSlackToken] = useState("");
   const [slackWorkspace, setSlackWorkspace] = useState("");
-  const [selectedVoice, setSelectedVoice] = useState("en-US-AvaNeural");
-  // On-device (platform) TTS voice. '' means "let the phone choose for the reply's
-  // language". Voice mode speaks through Speech.speak, so this — not selectedVoice,
-  // which names a server voice the app never requests — is what is actually heard.
+  // On-device (platform) TTS voice for hands-free replies. '' means "let the phone
+  // choose for the reply's language". Voice mode speaks through Speech.speak, so this
+  // is what is actually heard.
   const [deviceVoiceId, setDeviceVoiceId] = useState("");
   const [deviceVoiceLang, setDeviceVoiceLang] = useState("");
   const [persona, setPersona] = useState(
@@ -282,7 +281,6 @@ export const AppProvider = ({ children }) => {
           "@slack_workspace",
           "@provider",
           "@auto_model_routing",
-          "@selected_voice",
           "@device_voice_id",
           "@device_voice_lang",
           "@chat_history",
@@ -332,7 +330,6 @@ export const AppProvider = ({ children }) => {
             setProviderState(normalizeProviderId(value));
           }
           if (key === "@auto_model_routing") setAutoModelRoutingState(value !== "false");
-          if (key === "@selected_voice") setSelectedVoice(value);
           if (key === "@device_voice_id") setDeviceVoiceId(value);
           if (key === "@device_voice_lang") setDeviceVoiceLang(value);
           if (key === "@persona") setPersona(value);
@@ -530,7 +527,6 @@ export const AppProvider = ({ children }) => {
         ["@brave_search_key", braveSearchKey.trim()],
         ["@slack_token", slackToken.trim()],
         ["@slack_workspace", slackWorkspace.trim()],
-        ["@selected_voice", selectedVoice],
         ["@device_voice_id", deviceVoiceId],
         ["@device_voice_lang", deviceVoiceLang],
         ["@provider", activeProvider],
@@ -714,8 +710,6 @@ export const AppProvider = ({ children }) => {
         setSlackToken,
         slackWorkspace,
         setSlackWorkspace,
-        selectedVoice,
-        setSelectedVoice,
         deviceVoiceId,
         setDeviceVoiceId,
         deviceVoiceLang,

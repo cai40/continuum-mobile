@@ -69,8 +69,6 @@ const SettingsSection = (props) => {
     setDeepseekKey,
     braveSearchKey,
     setBraveSearchKey,
-    selectedVoice,
-    setSelectedVoice,
     deviceVoiceId,
     setDeviceVoiceId,
     deviceVoiceLang,
@@ -399,31 +397,10 @@ const SettingsSection = (props) => {
     }
   };
 
-  const voices = [
-    {
-      id: "en-US-AvaNeural",
-      name: "Ava (US Female)",
-      desc: "Clear & Contemporary",
-    },
-    {
-      id: "en-US-AndrewNeural",
-      name: "Andrew (US Male)",
-      desc: "Friendly & Warm",
-    },
-    { id: "en-US-EmmaNeural", name: "Emma (US Female)", desc: "Soft & Gentle" },
-    { id: "en-US-BrianNeural", name: "Brian (US Male)", desc: "Professional" },
-    {
-      id: "en-GB-SoniaNeural",
-      name: "Sonia (UK Female)",
-      desc: "Sophisticated British",
-    },
-    { id: "en-GB-RyanNeural", name: "Ryan (UK Male)", desc: "Natural British" },
-  ];
-
   const [legalModal, setLegalModal] = useState({ visible: false, title: "", content: "" });
 
-  // Voice mode speaks with Speech.speak, so the voice actually heard is the platform's,
-  // not the server voice named in `voices`. Enumerate what this device has installed —
+  // Voice mode speaks with Speech.speak, so the voice actually heard is the platform's
+  // and not something the server can choose. Enumerate what this device has installed —
   // on iOS only voices already downloaded appear (Settings → Accessibility → Spoken
   // Content → Voices), so a missing voice means it has not been downloaded yet.
   const [deviceVoices, setDeviceVoices] = useState([]);
@@ -1260,50 +1237,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
   const renderVoiceSettings = () => (
     <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
       {renderHeader("Neural Voice")}
-      <Text style={categoryTitleStyle}>VOICE PERSONALITY</Text>
-      <View style={styles.groupedCard}>
-        {voices.map((v, idx) => (
-          <React.Fragment key={v.id}>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setSelectedVoice(v.id);
-              }}
-              style={{
-                padding: 16,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <View>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "600",
-                    color: theme.colors.black,
-                  }}
-                >
-                  {v.name}
-                </Text>
-                <Text style={{ fontSize: 12, color: theme.colors.gray }}>
-                  {v.desc}
-                </Text>
-              </View>
-              {selectedVoice === v.id && (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={24}
-                  color={theme.colors.success}
-                />
-              )}
-            </TouchableOpacity>
-            {idx < voices.length - 1 && <Divider />}
-          </React.Fragment>
-        ))}
-      </View>
-
-      <Text style={[categoryTitleStyle, {marginTop: 24}]}>SPOKEN VOICE (THIS DEVICE)</Text>
+      <Text style={categoryTitleStyle}>SPOKEN VOICE (THIS DEVICE)</Text>
       <Text style={{ fontSize: 12, color: theme.colors.gray, marginBottom: 8, paddingHorizontal: 4 }}>
         Hands-free replies are spoken by your phone, not by Continuum, so this is the
         voice you actually hear. A voice must be downloaded first — iOS Settings →
