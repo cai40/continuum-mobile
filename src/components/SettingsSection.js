@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -417,37 +417,93 @@ const SettingsSection = (props) => {
   // auto/en-US/zh-CN/es-ES, and reply-language detection only resolves CJK), so the
   // picker stays short instead of listing every voice on the phone.
   const DEVICE_VOICE_LANGS = ['zh', 'en', 'es'];
-  const deviceVoiceOptions = [
-    { id: '', lang: '', name: 'System default', desc: 'Let the phone pick a voice for each language' },
-    ...deviceVoices
-      .filter((v) => DEVICE_VOICE_LANGS.includes(String(v.language || '').split('-')[0].toLowerCase()))
-      .map((v) => ({
-        id: v.identifier,
-        lang: v.language,
-        name: v.name,
-        desc: [v.language, v.quality && v.quality !== 'Default' ? v.quality : '']
-          .filter(Boolean)
-          .join(' · '),
-      }))
-      .sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name)),
-  ];
+  const SYSTEM_VOICE_KEY = 'system-default';
+  const langPrimary = (lang) => String(lang || '').split('-')[0].toLowerCase();
+  const VOICE_LANG_LABELS = {
+    'zh-cn': 'Chinese (Mainland)', 'zh-hans': 'Chinese (Mainland)',
+    'zh-tw': 'Chinese (Taiwan)', 'zh-hant': 'Chinese (Taiwan)',
+    'zh-hk': 'Chinese (Hong Kong)',
+    'en-us': 'English (US)', 'en-gb': 'English (UK)',
+    'es-es': 'Spanish (Spain)',
+  };
+  const voiceLangLabel = (lang) => VOICE_LANG_LABELS[String(lang || '').toLowerCase()] || lang || '';
 
-  // Preview line per language so a voice can be auditioned before it is chosen.
+  const systemVoiceOption = {
+    key: SYSTEM_VOICE_KEY,
+    id: '',
+    lang: '',
+    name: 'System default',
+    desc: 'Let the phone pick a voice for each language',
+  };
+
+  const mappedDeviceVoices = deviceVoices
+    .filter((v) => DEVICE_VOICE_LANGS.includes(langPrimary(v.language)))
+    .map((v) => ({
+      key: v.identifier,
+      id: v.identifier,
+      lang: v.language,
+      name: v.name,
+      desc: [voiceLangLabel(v.language), v.quality && v.quality !== 'Default' ? v.quality : '']
+        .filter(Boolean)
+        .join(' · '),
+    }));
+  const byLangThenName = (a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name);
+
+  // Chinese voices are listed first on purpose: they speak the replies this user reads
+  // Chinese in, and plain alphabetical order sorts zh-* below every English voice —
+  // which is exactly how a voice someone wanted ended up looking "missing".
+  const chineseVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) === 'zh').sort(byLangThenName);
+  const otherVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) !== 'zh').sort(byLangThenName);
+
+  // A sentence per language so a voice can be auditioned before it is chosen.
   const VOICE_SAMPLES = {
     zh: '你好，我是你的助理，很高兴为你服务。',
     es: 'Hola, soy tu asistente. Encantado de ayudarte.',
     en: 'Hi, I am your assistant. It is good to help you.',
   };
-  const previewVoice = (option) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const key = String(option.lang || '').split('-')[0].toLowerCase();
-    try { Speech.stop(); } catch (_) { /* ignore */ }
-    Speech.speak(VOICE_SAMPLES[key] || VOICE_SAMPLES.en, {
+
+  // Which row is speaking right now, so a voice being auditioned is visible by name.
+  const [previewingKey, setPreviewingKey] = useState(null);
+  const previewQueueRef = useRef([]);
+
+  const speakOption = (option, onDone) => {
+    setPreviewingKey(option.key);
+    Speech.speak(VOICE_SAMPLES[langPrimary(option.lang)] || VOICE_SAMPLES.en, {
       ...(option.id ? { voice: option.id } : {}),
       ...(option.lang ? { language: option.lang } : {}),
       rate: 0.96,
+      onDone: () => { setPreviewingKey(null); if (onDone) onDone(); },
+      onStopped: () => setPreviewingKey(null),
+      onError: () => { setPreviewingKey(null); if (onDone) onDone(); },
     });
   };
+
+  const stopPreview = () => {
+    previewQueueRef.current = [];
+    setPreviewingKey(null);
+    try { Speech.stop(); } catch (_) { /* ignore */ }
+  };
+
+  const previewVoice = (option) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    stopPreview();
+    speakOption(option, null);
+  };
+
+  // Play each given voice back to back, so voices can be compared by ear without
+  // tapping every row — the fastest way to find one you heard before.
+  const previewAll = (options) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    stopPreview();
+    previewQueueRef.current = options.slice();
+    const next = () => {
+      const option = previewQueueRef.current.shift();
+      if (option) speakOption(option, next);
+    };
+    next();
+  };
+
+  useEffect(() => stopPreview, []);
 
   const PRIVACY_TEXT = `CONTINUUM PRIVACY POLICY (v3.1.0_FORTRESS)
 Last Updated: April 2026
@@ -1234,6 +1290,66 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
     </ScrollView>
   );
 
+  // A row is either a voice or the Chinese group header, so the header can sit inside
+  // the same card while dividers stay correct (rendered before each item but the first).
+  const deviceVoiceRows = [
+    { kind: 'voice', option: systemVoiceOption },
+    ...(chineseVoices.length
+      ? [{ kind: 'header', key: 'chinese-header', label: `CHINESE VOICES (${chineseVoices.length})`, listenAll: chineseVoices }]
+      : []),
+    ...chineseVoices.map((option) => ({ kind: 'voice', option })),
+    ...otherVoices.map((option) => ({ kind: 'voice', option })),
+  ];
+
+  const renderDeviceVoiceRow = (v) => (
+    <TouchableOpacity
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        setDeviceVoiceId(v.id);
+        setDeviceVoiceLang(v.id ? v.lang : '');
+      }}
+      style={{
+        padding: 16,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+      }}
+    >
+      <View style={{ flex: 1, paddingRight: 12 }}>
+        <Text
+          style={{
+            fontSize: 15,
+            fontWeight: "600",
+            color: theme.colors.black,
+          }}
+        >
+          {v.name}
+        </Text>
+        <Text style={{ fontSize: 12, color: theme.colors.gray }}>
+          {v.desc}
+        </Text>
+      </View>
+      <TouchableOpacity
+        onPress={() => previewVoice(v)}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        style={{ paddingHorizontal: 10 }}
+      >
+        <Ionicons
+          name={previewingKey === v.key ? "volume-high" : "play-circle-outline"}
+          size={26}
+          color={previewingKey === v.key ? theme.colors.primary : theme.colors.gray}
+        />
+      </TouchableOpacity>
+      {deviceVoiceId === v.id && (
+        <Ionicons
+          name="checkmark-circle"
+          size={24}
+          color={theme.colors.success}
+        />
+      )}
+    </TouchableOpacity>
+  );
+
   const renderVoiceSettings = () => (
     <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
       {renderHeader("Neural Voice")}
@@ -1241,57 +1357,51 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <Text style={{ fontSize: 12, color: theme.colors.gray, marginBottom: 8, paddingHorizontal: 4 }}>
         Hands-free replies are spoken by your phone, not by Continuum, so this is the
         voice you actually hear. A voice must be downloaded first — iOS Settings →
-        Accessibility → Spoken Content → Voices. Tap ▶ to hear a sample.
+        Accessibility → Spoken Content → Voices. Tap the speaker to hear one.
       </Text>
       <View style={styles.groupedCard}>
-        {deviceVoiceOptions.map((v, idx) => (
-          <React.Fragment key={v.id || 'system-default'}>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setDeviceVoiceId(v.id);
-                setDeviceVoiceLang(v.id ? v.lang : '');
-              }}
-              style={{
-                padding: 16,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <View style={{ flex: 1, paddingRight: 12 }}>
-                <Text
-                  style={{
-                    fontSize: 15,
-                    fontWeight: "600",
-                    color: theme.colors.black,
-                  }}
-                >
-                  {v.name}
-                </Text>
-                <Text style={{ fontSize: 12, color: theme.colors.gray }}>
-                  {v.desc}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => previewVoice(v)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                style={{ paddingHorizontal: 10 }}
+        {deviceVoiceRows.map((item, idx) => (
+          <React.Fragment key={item.kind === 'header' ? item.key : item.option.key}>
+            {idx > 0 && <Divider />}
+            {item.kind === 'header' ? (
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingTop: 14,
+                  paddingBottom: 6,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
               >
-                <Ionicons name="play-circle-outline" size={26} color={theme.colors.gray} />
-              </TouchableOpacity>
-              {deviceVoiceId === v.id && (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={24}
-                  color={theme.colors.success}
-                />
-              )}
-            </TouchableOpacity>
-            {idx < deviceVoiceOptions.length - 1 && <Divider />}
+                <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.gray, letterSpacing: 0.5 }}>
+                  {item.label}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => previewAll(item.listenAll)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={{ flexDirection: "row", alignItems: "center" }}
+                >
+                  <Ionicons name="play" size={13} color={theme.colors.primary} />
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.primary, marginLeft: 4 }}>
+                    Listen to all
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              renderDeviceVoiceRow(item.option)
+            )}
           </React.Fragment>
         ))}
       </View>
+
+      {chineseVoices.length === 0 && (
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
+          No Chinese voice is installed on this phone, so Chinese replies fall back to the
+          system default. To add one, open iOS Settings → Accessibility → Spoken Content
+          → Voices → Chinese, download a voice, then reopen Continuum.
+        </Text>
+      )}
 
       <Text style={[categoryTitleStyle, {marginTop: 24}]}>LISTENING LANGUAGE (STT)</Text>
       <View style={styles.groupedCard}>
