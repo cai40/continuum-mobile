@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as Updates from "expo-updates";
 import * as DocumentPicker from 'expo-document-picker';
+import * as Speech from 'expo-speech';
 import * as Constants from "expo-constants";
 import { useAppContext } from "../context/AppContext";
 import { pulseFetch, ingestDocuments, pinCoreMemory, deleteMemoryItem, dedupeMemoryLayer, runMemoryCleanup } from "../services/apiService";
@@ -70,6 +71,10 @@ const SettingsSection = (props) => {
     setBraveSearchKey,
     selectedVoice,
     setSelectedVoice,
+    deviceVoiceId,
+    setDeviceVoiceId,
+    deviceVoiceLang,
+    setDeviceVoiceLang,
     saveKeys,
     logout,
     clearLocalHistory,
@@ -416,6 +421,56 @@ const SettingsSection = (props) => {
   ];
 
   const [legalModal, setLegalModal] = useState({ visible: false, title: "", content: "" });
+
+  // Voice mode speaks with Speech.speak, so the voice actually heard is the platform's,
+  // not the server voice named in `voices`. Enumerate what this device has installed —
+  // on iOS only voices already downloaded appear (Settings → Accessibility → Spoken
+  // Content → Voices), so a missing voice means it has not been downloaded yet.
+  const [deviceVoices, setDeviceVoices] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+    Speech.getAvailableVoicesAsync()
+      .then((list) => { if (alive) setDeviceVoices(Array.isArray(list) ? list : []); })
+      .catch(() => { if (alive) setDeviceVoices([]); });
+    return () => { alive = false; };
+  }, []);
+
+  // Keep the list to the languages the app can actually ask for (STT offers
+  // auto/en-US/zh-CN/es-ES, and reply-language detection only resolves CJK), so the
+  // picker stays short instead of listing every voice on the phone.
+  const DEVICE_VOICE_LANGS = ['zh', 'en', 'es'];
+  const deviceVoiceOptions = [
+    { id: '', lang: '', name: 'System default', desc: 'Let the phone pick a voice for each language' },
+    ...deviceVoices
+      .filter((v) => DEVICE_VOICE_LANGS.includes(String(v.language || '').split('-')[0].toLowerCase()))
+      .map((v) => ({
+        id: v.identifier,
+        lang: v.language,
+        name: v.name,
+        desc: [v.language, v.quality && v.quality !== 'Default' ? v.quality : '']
+          .filter(Boolean)
+          .join(' · '),
+      }))
+      .sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name)),
+  ];
+
+  // Preview line per language so a voice can be auditioned before it is chosen.
+  const VOICE_SAMPLES = {
+    zh: '你好，我是你的助理，很高兴为你服务。',
+    es: 'Hola, soy tu asistente. Encantado de ayudarte.',
+    en: 'Hi, I am your assistant. It is good to help you.',
+  };
+  const previewVoice = (option) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const key = String(option.lang || '').split('-')[0].toLowerCase();
+    try { Speech.stop(); } catch (_) { /* ignore */ }
+    Speech.speak(VOICE_SAMPLES[key] || VOICE_SAMPLES.en, {
+      ...(option.id ? { voice: option.id } : {}),
+      ...(option.lang ? { language: option.lang } : {}),
+      rate: 0.96,
+    });
+  };
 
   const PRIVACY_TEXT = `CONTINUUM PRIVACY POLICY (v3.1.0_FORTRESS)
 Last Updated: April 2026
@@ -1244,6 +1299,62 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               )}
             </TouchableOpacity>
             {idx < voices.length - 1 && <Divider />}
+          </React.Fragment>
+        ))}
+      </View>
+
+      <Text style={[categoryTitleStyle, {marginTop: 24}]}>SPOKEN VOICE (THIS DEVICE)</Text>
+      <Text style={{ fontSize: 12, color: theme.colors.gray, marginBottom: 8, paddingHorizontal: 4 }}>
+        Hands-free replies are spoken by your phone, not by Continuum, so this is the
+        voice you actually hear. A voice must be downloaded first — iOS Settings →
+        Accessibility → Spoken Content → Voices. Tap ▶ to hear a sample.
+      </Text>
+      <View style={styles.groupedCard}>
+        {deviceVoiceOptions.map((v, idx) => (
+          <React.Fragment key={v.id || 'system-default'}>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setDeviceVoiceId(v.id);
+                setDeviceVoiceLang(v.id ? v.lang : '');
+              }}
+              style={{
+                padding: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: "600",
+                    color: theme.colors.black,
+                  }}
+                >
+                  {v.name}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.colors.gray }}>
+                  {v.desc}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => previewVoice(v)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={{ paddingHorizontal: 10 }}
+              >
+                <Ionicons name="play-circle-outline" size={26} color={theme.colors.gray} />
+              </TouchableOpacity>
+              {deviceVoiceId === v.id && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color={theme.colors.success}
+                />
+              )}
+            </TouchableOpacity>
+            {idx < deviceVoiceOptions.length - 1 && <Divider />}
           </React.Fragment>
         ))}
       </View>

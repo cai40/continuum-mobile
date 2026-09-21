@@ -90,6 +90,11 @@ export const AppProvider = ({ children }) => {
   const [slackToken, setSlackToken] = useState("");
   const [slackWorkspace, setSlackWorkspace] = useState("");
   const [selectedVoice, setSelectedVoice] = useState("en-US-AvaNeural");
+  // On-device (platform) TTS voice. '' means "let the phone choose for the reply's
+  // language". Voice mode speaks through Speech.speak, so this — not selectedVoice,
+  // which names a server voice the app never requests — is what is actually heard.
+  const [deviceVoiceId, setDeviceVoiceId] = useState("");
+  const [deviceVoiceLang, setDeviceVoiceLang] = useState("");
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
@@ -278,6 +283,8 @@ export const AppProvider = ({ children }) => {
           "@provider",
           "@auto_model_routing",
           "@selected_voice",
+          "@device_voice_id",
+          "@device_voice_lang",
           "@chat_history",
           CHAT_HISTORY_CLEARED_AT_KEY,
           "@persona",
@@ -326,6 +333,8 @@ export const AppProvider = ({ children }) => {
           }
           if (key === "@auto_model_routing") setAutoModelRoutingState(value !== "false");
           if (key === "@selected_voice") setSelectedVoice(value);
+          if (key === "@device_voice_id") setDeviceVoiceId(value);
+          if (key === "@device_voice_lang") setDeviceVoiceLang(value);
           if (key === "@persona") setPersona(value);
           if (key === "@stt_lang") setSttLang(value);
           if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
@@ -522,6 +531,8 @@ export const AppProvider = ({ children }) => {
         ["@slack_token", slackToken.trim()],
         ["@slack_workspace", slackWorkspace.trim()],
         ["@selected_voice", selectedVoice],
+        ["@device_voice_id", deviceVoiceId],
+        ["@device_voice_lang", deviceVoiceLang],
         ["@provider", activeProvider],
         ["@auto_model_routing", autoModelRouting ? "true" : "false"],
         ["@persona", persona],
@@ -705,6 +716,10 @@ export const AppProvider = ({ children }) => {
         setSlackWorkspace,
         selectedVoice,
         setSelectedVoice,
+        deviceVoiceId,
+        setDeviceVoiceId,
+        deviceVoiceLang,
+        setDeviceVoiceLang,
         persona,
         setPersona,
         sttLang,

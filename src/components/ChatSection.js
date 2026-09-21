@@ -152,6 +152,8 @@ const ChatSection = () => {
     slackToken,
     persona,
     sttLang,
+    deviceVoiceId,
+    deviceVoiceLang,
     activeTab,
     user,
     session,
@@ -612,8 +614,14 @@ const ChatSection = () => {
     const ttsLang = (sttLang && sttLang !== 'auto')
       ? sttLang
       : (detectLangFromText(spoken) || lastSttLangRef.current || 'en-US');
+    // Honour the voice chosen in Settings, but only when it speaks the reply's own
+    // language — a Chinese pick must not start reading English replies.
+    const primaryLang = (tag) => String(tag || '').split('-')[0].toLowerCase();
+    const useDeviceVoice = !!deviceVoiceId && !!deviceVoiceLang
+      && primaryLang(deviceVoiceLang) === primaryLang(ttsLang);
     Speech.speak(spoken, {
       language: ttsLang,
+      ...(useDeviceVoice ? { voice: deviceVoiceId } : {}),
       rate: 0.96,
       onDone: () => {
         setIsSpeaking(false);
@@ -629,7 +637,7 @@ const ChatSection = () => {
         }
       },
     });
-  }, [activeTab, isVoiceMode, sttLang]);
+  }, [activeTab, isVoiceMode, sttLang, deviceVoiceId, deviceVoiceLang]);
   speakAssistantReplyRef.current = speakAssistantReply;
 
   const resumePendingEmailJob = useCallback(async () => {
