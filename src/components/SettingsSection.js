@@ -470,16 +470,29 @@ const SettingsSection = (props) => {
     || a.lang.localeCompare(b.lang)
     || a.name.localeCompare(b.name);
 
+  // Robotic-sounding voices are exactly the Standard (Compact) tier, so they are hidden
+  // from the list. The voice already saved in Settings stays visible even when it is
+  // Standard: otherwise a saved choice would render as a checkmark with no row behind it,
+  // and could never be changed.
+  const isSelectedDeviceVoice = (v) => !!v.id && v.id === deviceVoiceId;
+  const visibleDeviceVoices = mappedDeviceVoices.filter((v) => v.natural || isSelectedDeviceVoice(v));
+  const hiddenStandardCount = mappedDeviceVoices.length - visibleDeviceVoices.length;
+
+  // Counts are taken before hiding, so the guidance can tell "no Chinese voice installed"
+  // apart from "every installed Chinese voice is robotic" — different problems with
+  // different remedies.
+  const installedChineseVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) === 'zh');
+  const naturalChineseVoiceCount = installedChineseVoices.filter((v) => v.natural).length;
+
   // Chinese voices are listed first on purpose: they speak the replies this user reads
   // Chinese in, and plain alphabetical order sorts zh-* below every English voice —
   // which is exactly how a voice someone wanted ended up looking "missing".
-  const chineseVoices = mappedDeviceVoices
+  const chineseVoices = visibleDeviceVoices
     .filter((v) => langPrimary(v.lang) === 'zh')
     .sort(byQualityThenLangThenName);
-  const otherVoices = mappedDeviceVoices
+  const otherVoices = visibleDeviceVoices
     .filter((v) => langPrimary(v.lang) !== 'zh')
     .sort(byQualityThenLangThenName);
-  const naturalChineseVoices = chineseVoices.filter((v) => v.natural);
 
   // A sentence per language so a voice can be auditioned before it is chosen.
   const VOICE_SAMPLES = {
@@ -1324,9 +1337,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       ? [{
         kind: 'header',
         key: 'chinese-header',
-        label: naturalChineseVoices.length
-          ? `CHINESE VOICES (${chineseVoices.length} · ${naturalChineseVoices.length} natural)`
-          : `CHINESE VOICES (${chineseVoices.length})`,
+        label: naturalChineseVoiceCount
+          ? `CHINESE VOICES (${installedChineseVoices.length} · ${naturalChineseVoiceCount} natural)`
+          : `CHINESE VOICES (${installedChineseVoices.length})`,
         listenAll: chineseVoices,
       }]
       : []),
@@ -1391,7 +1404,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         Hands-free replies are spoken by your phone, not by Continuum, so this is the
         voice you actually hear. A voice must be downloaded first — iOS Settings →
         Accessibility → Read &amp; Speak → Voices (called Spoken Content before iOS 26).
-        Tap the speaker to hear one.
+        Tap the speaker to hear one. Robotic-sounding voices are hidden.
       </Text>
       <View style={styles.groupedCard}>
         {deviceVoiceRows.map((item, idx) => (
@@ -1430,26 +1443,37 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       </View>
 
       {chineseVoices.length === 0 ? (
+        installedChineseVoices.length === 0 ? (
+          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
+            No Chinese voice is installed on this phone, so Chinese replies fall back to the
+            system default. To add one, open iOS Settings → Accessibility → Read &amp; Speak
+            (Spoken Content before iOS 26) → Voices → Chinese, download a voice, then reopen
+            Continuum.
+          </Text>
+        ) : (
+          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
+            All {installedChineseVoices.length} Chinese voices on this phone are the{" "}
+            <Text style={{ fontWeight: "700" }}>Standard</Text> tier — the robotic-sounding kind — so
+            they are hidden. Apple ships only Standard voices by default. Open iOS Settings →
+            Accessibility → Read &amp; Speak (Spoken Content before iOS 26) → Voices → Chinese, tap
+            a voice marked <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
+            <Text style={{ fontWeight: "700" }}>Premium</Text>, download it, then reopen Continuum.
+          </Text>
+        )
+      ) : naturalChineseVoiceCount === 0 ? (
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-          No Chinese voice is installed on this phone, so Chinese replies fall back to the
-          system default. To add one, open iOS Settings → Accessibility → Read &amp; Speak
-          (Spoken Content before iOS 26) → Voices → Chinese, download a voice, then
-          reopen Continuum.
-        </Text>
-      ) : naturalChineseVoices.length === 0 ? (
-        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-          Every Chinese voice on this phone is the <Text style={{ fontWeight: "700" }}>Standard</Text> tier,
-          which is the mechanical-sounding kind — Apple ships only Standard voices by default.
-          For a natural voice, open iOS Settings → Accessibility → Read &amp; Speak
-          (Spoken Content before iOS 26) → Voices → Chinese, tap a voice marked{" "}
-          <Text style={{ fontWeight: "700" }}>Enhanced</Text>, download it,
-          then reopen Continuum. Enhanced voices appear here named the same but labelled Enhanced.
+          Your currently selected Chinese voice is shown so you can change it. To get a
+          natural-sounding one, open iOS Settings → Accessibility → Read &amp; Speak
+          (Spoken Content before iOS 26) → Voices → Chinese, download a voice marked{" "}
+          <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
+          <Text style={{ fontWeight: "700" }}>Premium</Text>, then reopen Continuum.
         </Text>
       ) : (
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-          Voices marked <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
-          <Text style={{ fontWeight: "700" }}>Premium</Text> are the natural-sounding ones and are listed
-          first. Standard-tier voices are the mechanical-sounding ones.
+          Standard-tier (robotic) voices are hidden, except a current selection if it is one.
+          {hiddenStandardCount > 0 ? ` ${hiddenStandardCount} Standard-tier voice${hiddenStandardCount === 1 ? '' : 's'} hidden.` : ''} To add more natural
+          voices, download an <Text style={{ fontWeight: "700" }}>Enhanced</Text> one in iOS
+          Settings → Accessibility → Read &amp; Speak → Voices.
         </Text>
       )}
 
