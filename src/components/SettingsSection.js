@@ -433,8 +433,23 @@ const SettingsSection = (props) => {
     id: '',
     lang: '',
     name: 'System default',
-    desc: 'Let the phone pick a voice for each language',
+    desc: 'Let the phone pick — normally a Standard-tier voice',
   };
+
+  // iOS ships only Default-quality (Compact) voices preinstalled, and those are the
+  // formant-sounding ones people describe as mechanical. Enhanced/Premium voices are
+  // neural and must be downloaded, so rank by tier and label it rather than leaving the
+  // tier invisible — otherwise "most voices sound robotic" is unexplainable in the UI.
+  const voiceQualityRank = (quality) => {
+    const q = String(quality || '').toLowerCase();
+    if (q === 'premium') return 0;
+    if (q === 'enhanced') return 1;
+    return 2;
+  };
+  const VOICE_QUALITY_LABELS = { premium: 'Premium', enhanced: 'Enhanced', default: 'Standard' };
+  const voiceQualityLabel = (quality) =>
+    VOICE_QUALITY_LABELS[String(quality || '').toLowerCase()] || 'Standard';
+  const isNaturalVoice = (quality) => voiceQualityRank(quality) < 2;
 
   const mappedDeviceVoices = deviceVoices
     .filter((v) => DEVICE_VOICE_LANGS.includes(langPrimary(v.language)))
@@ -442,18 +457,29 @@ const SettingsSection = (props) => {
       key: v.identifier,
       id: v.identifier,
       lang: v.language,
+      quality: v.quality,
+      natural: isNaturalVoice(v.quality),
       name: v.name,
-      desc: [voiceLangLabel(v.language), v.quality && v.quality !== 'Default' ? v.quality : '']
-        .filter(Boolean)
-        .join(' · '),
+      desc: [voiceLangLabel(v.language), voiceQualityLabel(v.quality)].filter(Boolean).join(' · '),
     }));
-  const byLangThenName = (a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name);
+
+  // Best-sounding first within each group, so the natural voices are reachable without
+  // scrolling past the mechanical ones; then language, then name for stable order.
+  const byQualityThenLangThenName = (a, b) =>
+    voiceQualityRank(a.quality) - voiceQualityRank(b.quality)
+    || a.lang.localeCompare(b.lang)
+    || a.name.localeCompare(b.name);
 
   // Chinese voices are listed first on purpose: they speak the replies this user reads
   // Chinese in, and plain alphabetical order sorts zh-* below every English voice —
   // which is exactly how a voice someone wanted ended up looking "missing".
-  const chineseVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) === 'zh').sort(byLangThenName);
-  const otherVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) !== 'zh').sort(byLangThenName);
+  const chineseVoices = mappedDeviceVoices
+    .filter((v) => langPrimary(v.lang) === 'zh')
+    .sort(byQualityThenLangThenName);
+  const otherVoices = mappedDeviceVoices
+    .filter((v) => langPrimary(v.lang) !== 'zh')
+    .sort(byQualityThenLangThenName);
+  const naturalChineseVoices = chineseVoices.filter((v) => v.natural);
 
   // A sentence per language so a voice can be auditioned before it is chosen.
   const VOICE_SAMPLES = {
@@ -1295,7 +1321,14 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
   const deviceVoiceRows = [
     { kind: 'voice', option: systemVoiceOption },
     ...(chineseVoices.length
-      ? [{ kind: 'header', key: 'chinese-header', label: `CHINESE VOICES (${chineseVoices.length})`, listenAll: chineseVoices }]
+      ? [{
+        kind: 'header',
+        key: 'chinese-header',
+        label: naturalChineseVoices.length
+          ? `CHINESE VOICES (${chineseVoices.length} · ${naturalChineseVoices.length} natural)`
+          : `CHINESE VOICES (${chineseVoices.length})`,
+        listenAll: chineseVoices,
+      }]
       : []),
     ...chineseVoices.map((option) => ({ kind: 'voice', option })),
     ...otherVoices.map((option) => ({ kind: 'voice', option })),
@@ -1395,11 +1428,25 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         ))}
       </View>
 
-      {chineseVoices.length === 0 && (
+      {chineseVoices.length === 0 ? (
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
           No Chinese voice is installed on this phone, so Chinese replies fall back to the
           system default. To add one, open iOS Settings → Accessibility → Spoken Content
           → Voices → Chinese, download a voice, then reopen Continuum.
+        </Text>
+      ) : naturalChineseVoices.length === 0 ? (
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
+          Every Chinese voice on this phone is the <Text style={{ fontWeight: "700" }}>Standard</Text> tier,
+          which is the mechanical-sounding kind — Apple ships only Standard voices by default.
+          For a natural voice, open iOS Settings → Accessibility → Spoken Content → Voices
+          → Chinese, tap a voice marked <Text style={{ fontWeight: "700" }}>Enhanced</Text>, download it,
+          then reopen Continuum. Enhanced voices appear here named the same but labelled Enhanced.
+        </Text>
+      ) : (
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
+          Voices marked <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
+          <Text style={{ fontWeight: "700" }}>Premium</Text> are the natural-sounding ones and are listed
+          first. Standard-tier voices are the mechanical-sounding ones.
         </Text>
       )}
 
