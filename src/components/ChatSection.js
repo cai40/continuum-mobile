@@ -609,11 +609,13 @@ const ChatSection = () => {
       soundRef.current = null;
     }
     setIsSpeaking(true);
-    // In Auto mode there is no fixed locale, so speak the reply in the language its own
-    // script is written in (a Chinese reply must not be read by an English voice).
-    const ttsLang = (sttLang && sttLang !== 'auto')
-      ? sttLang
-      : (detectLangFromText(spoken) || lastSttLangRef.current || 'en-US');
+    // The reply's own script decides first: a Chinese reply must never be read by an
+    // English voice, even when the listening language is pinned to English — the
+    // language you *spoke* in and the language of the *reply* are not the same thing,
+    // and the previous order (listening language first) silently overrode this. A
+    // concrete listening language still applies to any reply that is not CJK-dominant.
+    const ttsLang = detectLangFromText(spoken)
+      || ((sttLang && sttLang !== 'auto') ? sttLang : (lastSttLangRef.current || 'en-US'));
     // Honour the voice chosen in Settings, but only when it speaks the reply's own
     // language — a Chinese pick must not start reading English replies.
     const primaryLang = (tag) => String(tag || '').split('-')[0].toLowerCase();
