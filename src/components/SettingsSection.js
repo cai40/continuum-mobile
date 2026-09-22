@@ -1390,7 +1390,8 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <Text style={{ fontSize: 12, color: theme.colors.gray, marginBottom: 8, paddingHorizontal: 4 }}>
         Hands-free replies are spoken by your phone, not by Continuum, so this is the
         voice you actually hear. A voice must be downloaded first — iOS Settings →
-        Accessibility → Spoken Content → Voices. Tap the speaker to hear one.
+        Accessibility → Read &amp; Speak → Voices (called Spoken Content before iOS 26).
+        Tap the speaker to hear one.
       </Text>
       <View style={styles.groupedCard}>
         {deviceVoiceRows.map((item, idx) => (
@@ -1431,15 +1432,17 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       {chineseVoices.length === 0 ? (
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
           No Chinese voice is installed on this phone, so Chinese replies fall back to the
-          system default. To add one, open iOS Settings → Accessibility → Spoken Content
-          → Voices → Chinese, download a voice, then reopen Continuum.
+          system default. To add one, open iOS Settings → Accessibility → Read &amp; Speak
+          (Spoken Content before iOS 26) → Voices → Chinese, download a voice, then
+          reopen Continuum.
         </Text>
       ) : naturalChineseVoices.length === 0 ? (
         <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
           Every Chinese voice on this phone is the <Text style={{ fontWeight: "700" }}>Standard</Text> tier,
           which is the mechanical-sounding kind — Apple ships only Standard voices by default.
-          For a natural voice, open iOS Settings → Accessibility → Spoken Content → Voices
-          → Chinese, tap a voice marked <Text style={{ fontWeight: "700" }}>Enhanced</Text>, download it,
+          For a natural voice, open iOS Settings → Accessibility → Read &amp; Speak
+          (Spoken Content before iOS 26) → Voices → Chinese, tap a voice marked{" "}
+          <Text style={{ fontWeight: "700" }}>Enhanced</Text>, download it,
           then reopen Continuum. Enhanced voices appear here named the same but labelled Enhanced.
         </Text>
       ) : (
