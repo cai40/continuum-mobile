@@ -168,6 +168,9 @@ export const AppProvider = ({ children }) => {
   };
 
   const isHistoryLoaded = useRef(false);
+  // Guards the device-voice auto-save below so the initial empty state can never be
+  // written back over a stored selection before the vault has been read.
+  const isVaultLoaded = useRef(false);
 
   // Persistence: Auth Handshake
   useEffect(() => {
@@ -351,6 +354,7 @@ export const AppProvider = ({ children }) => {
           }
         });
         isHistoryLoaded.current = true;
+        isVaultLoaded.current = true;
       } catch (e) {
         console.warn("Vault load error:", e);
       }
@@ -358,6 +362,18 @@ export const AppProvider = ({ children }) => {
     loadVault();
     fetchAnalytics();
   }, []);
+
+  // Persistence: Auto-Save Device Voice
+  // The voice picker writes state only, and saveKeys runs solely when the user taps
+  // "Secure All Keys" — so without this a selection silently reverted to the system
+  // default on the next launch, which reads as "the app ignores my chosen voice".
+  useEffect(() => {
+    if (!isVaultLoaded.current) return;
+    AsyncStorage.multiSet([
+      ["@device_voice_id", deviceVoiceId],
+      ["@device_voice_lang", deviceVoiceLang],
+    ]).catch((e) => console.warn("Device voice persist failed:", e));
+  }, [deviceVoiceId, deviceVoiceLang]);
 
   // Persistence: Auto-Save History
   useEffect(() => {
