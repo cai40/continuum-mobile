@@ -763,6 +763,42 @@ const ChatSection = () => {
     }
   };
 
+  // Camera capture. Kept separate from the library picker because iOS presents them as
+  // two different sheets and the camera is single-shot — there is nothing to
+  // multi-select. The usage string (NSCameraUsageDescription) is already in app.json, so
+  // this needs no native change.
+  const takePhoto = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          "Permission Denied",
+          "Continuum needs camera access to take a photo. Enable it for Continuum in iOS Settings, then try again.",
+        );
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        const asset = result.assets?.[0];
+        if (!asset) return;
+        addAttachments([{
+          uri: asset.uri,
+          name: asset.fileName || `photo_${Date.now()}.jpg`,
+          type: asset.mimeType || 'image/jpeg',
+        }]);
+      }
+    } catch (err) {
+      console.warn("Camera Error:", err);
+      Alert.alert("Camera Unavailable", "Could not open the camera on this device.");
+    }
+  };
+
   const pickDocument = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
@@ -2317,6 +2353,7 @@ const ChatSection = () => {
             }
             const buttons = [
               { text: "Cancel", style: "cancel" },
+              { text: "Take Photo", onPress: takePhoto },
               { text: "Photo Library", onPress: pickImage },
               { text: "Browse Documents", onPress: pickDocument },
             ];
