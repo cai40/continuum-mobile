@@ -533,6 +533,11 @@ const SettingsSection = (props) => {
   // different remedies.
   const installedChineseVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) === 'zh');
   const naturalChineseVoiceCount = installedChineseVoices.filter((v) => v.natural).length;
+  // Counted for the same reason as the Chinese pair above: so the guidance can say
+  // "all your English/Spanish voices are Standard" rather than claiming none is
+  // installed. On the reporting device every en-*/es-* voice is Compact, super-compact,
+  // Eloquence or novelty tier, so both languages end up with an empty group.
+  const installedOtherVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) !== 'zh');
 
   // Chinese voices are listed first on purpose: they speak the replies this user reads
   // Chinese in, and plain alphabetical order sorts zh-* below every English voice —
@@ -1561,6 +1566,25 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           {hiddenStandardCount > 0 ? ` ${hiddenStandardCount} Standard-tier voice${hiddenStandardCount === 1 ? '' : 's'} hidden.` : ''} To add more natural
           voices, download an <Text style={{ fontWeight: "700" }}>Enhanced</Text> one in iOS
           Settings → Accessibility → Read &amp; Speak → Voices.
+        </Text>
+      )}
+
+      {/* English/Spanish get the same explanation Chinese has. Without it the picker
+          showed a lone CHINESE VOICES group with no hint that the other two languages
+          were empty on purpose, which reads as "the app dropped my languages" — the
+          exact question that was asked. The Siri line matters most: Siri voices are
+          never shared with apps (Apple: "Siri voices not available through API"), so a
+          downloaded Siri voice can never appear here however many times it is fetched. */}
+      {otherVoices.length === 0 && (
+        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
+          {installedOtherVoices.length > 0
+            ? `All ${installedOtherVoices.length} English and Spanish voices on this phone are the Standard tier, so neither language has a natural voice to choose.`
+            : 'No English or Spanish voice is installed on this phone.'}{" "}
+          To add one, open iOS Settings → Accessibility → Read &amp; Speak (Spoken Content
+          before iOS 26) → Voices → English, tap a voice marked{" "}
+          <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
+          <Text style={{ fontWeight: "700" }}>Premium</Text>, download it, then reopen
+          Continuum. Siri voices will never appear here — iOS does not share those with apps.
         </Text>
       )}
 
