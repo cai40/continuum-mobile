@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import * as Clipboard from "expo-clipboard";
 import {
   View,
   Text,
@@ -525,26 +524,6 @@ const SettingsSection = (props) => {
   const isSelectedDeviceVoice = (v) => !!v.id && v.id === deviceVoiceId;
   const visibleDeviceVoices = mappedDeviceVoices.filter((v) => v.natural || isSelectedDeviceVoice(v));
   const hiddenStandardCount = mappedDeviceVoices.length - visibleDeviceVoices.length;
-
-  // TEMPORARY DIAGNOSTIC (delete with the report block in renderVoiceSettings).
-  const [reportCopied, setReportCopied] = useState(false);
-  const voiceReportText =
-    "VOICE REPORT (temporary)\n"
-    + `exposed ${deviceVoices.length} · in-app ${mappedDeviceVoices.length} · shown ${visibleDeviceVoices.length} · hidden ${hiddenStandardCount}\n`
-    + deviceVoices
-      .map((v) => `${voiceTier(v)} | ${v.language} | ${v.name} | ${v.identifier} | q=${v.quality}`)
-      .join("\n");
-
-  const copyVoiceReport = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      await Clipboard.setStringAsync(voiceReportText);
-      setReportCopied(true);
-      setTimeout(() => setReportCopied(false), 2500);
-    } catch (e) {
-      console.warn("Voice report copy failed:", e);
-    }
-  };
 
   // Counts are taken before hiding, so the guidance can tell "no Chinese voice installed"
   // apart from "every installed Chinese voice is robotic" — different problems with
@@ -1490,31 +1469,6 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         Accessibility → Read &amp; Speak → Voices (called Spoken Content before iOS 26).
         Tap the speaker to hear one. Robotic-sounding voices are hidden.
       </Text>
-
-      {/* TEMPORARY DIAGNOSTIC. Reports exactly what expo-speech exposes on this device —
-          name, identifier, quality and language for every voice — so Apple's identifier
-          families can be pinned from the real list rather than inferred (inferring has
-          been wrong twice). Tap to copy, because the list is far too long to select or
-          screenshot. Delete once the identifier question is closed. */}
-      <TouchableOpacity
-        onPress={copyVoiceReport}
-        activeOpacity={0.7}
-        style={{
-          paddingHorizontal: 12,
-          paddingVertical: 10,
-          marginBottom: 10,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: theme.colors.gray,
-        }}
-      >
-        <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.primary, marginBottom: 6 }}>
-          {reportCopied ? "Copied — now paste it to me" : "Tap here to copy the voice report"}
-        </Text>
-        <Text selectable style={{ fontSize: 10, color: theme.colors.gray }}>
-          {voiceReportText}
-        </Text>
-      </TouchableOpacity>
 
       <View style={styles.groupedCard}>
         {deviceVoiceRows.map((item, idx) => (
