@@ -444,14 +444,29 @@ const SettingsSection = (props) => {
   // `voice.quality == .enhanced ? "Enhanced" : "Default"`, so an iOS *Premium* voice
   // arrives as "Default" and is indistinguishable from a Compact one. Trusting that
   // string is what hid the user's downloaded Premium voice — Lilian was enumerated by
-  // iOS, labelled "Standard", and filtered out, leaving only "System default". The
-  // identifier does separate them (Apple's robotic families are the Compact and
-  // Eloquence voices), and anything unrecognised counts as usable, so a downloaded
-  // voice is never hidden because of a string we cannot rely on.
+  // iOS, labelled "Standard", and filtered out, leaving only "System default".
+  //
+  // The families below are taken from real device dumps rather than guessed, because a
+  // guessed pattern is what missed them the first time:
+  //   com.apple.voice.compact.<lang>.<Name>       built-in Compact
+  //   com.apple.ttsbundle.<Name>-compact          legacy Compact bundle
+  //   com.apple.ttsbundle.siri_<Name>_<lang>_compact
+  //   com.apple.eloquence.<lang>.<Name>           Eloquence (Sandy, Grandma, Reed...)
+  //   com.apple.speech.synthesis.voice.<Name>     novelty/legacy (Bells, Boing, Bahh...)
+  // Downloaded neural voices are com.apple.voice.{premium,enhanced}.* and, on older
+  // layouts, com.apple.ttsbundle.<Name>-premium, so neither carries "compact" and both
+  // are matched as usable below. The novelty match spells out `.synthesis.voice.`
+  // deliberately: "com.apple.speech.voice.Alex" is a real Enhanced voice and must stay.
+  // Anything still unrecognised stays *visible*, so a mis-guess can only ever show too
+  // much, never hide a voice the user went and downloaded.
   const voiceTier = (v) => {
     const id = String(v.identifier || '').toLowerCase();
     const q = String(v.quality || '').toLowerCase();
-    if (id.includes('eloquence') || id.includes('compact')) return 'standard';
+    if (
+      id.includes('compact')
+      || id.includes('eloquence')
+      || id.includes('com.apple.speech.synthesis.voice.')
+    ) return 'standard';
     if (id.includes('premium') || q === 'premium') return 'premium';
     if (id.includes('enhanced') || q === 'enhanced') return 'enhanced';
     return 'unknown';
