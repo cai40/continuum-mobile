@@ -405,6 +405,11 @@ const SettingsSection = (props) => {
   // on iOS only voices already downloaded appear (Settings → Accessibility → Spoken
   // Content → Voices), so a missing voice means it has not been downloaded yet.
   const [deviceVoices, setDeviceVoices] = useState([]);
+  // Re-reads the list when incremented. iOS reports a newly downloaded voice only after
+  // the list is fetched again, and the fetch below used to run exactly once per mount —
+  // so downloading a voice with the app open appeared to do nothing at all, which is
+  // precisely how it was reported.
+  const [voicesReloadToken, setVoicesReloadToken] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -412,7 +417,7 @@ const SettingsSection = (props) => {
       .then((list) => { if (alive) setDeviceVoices(Array.isArray(list) ? list : []); })
       .catch(() => { if (alive) setDeviceVoices([]); });
     return () => { alive = false; };
-  }, []);
+  }, [voicesReloadToken]);
 
   // Keep the list to the languages the app can actually ask for (STT offers
   // auto/en-US/zh-CN/es-ES, and reply-language detection only resolves CJK), so the
@@ -463,13 +468,26 @@ const SettingsSection = (props) => {
   const voiceTier = (v) => {
     const id = String(v.identifier || '').toLowerCase();
     const q = String(v.quality || '').toLowerCase();
+    // Quality is tested FIRST, before any identifier pattern. It is reported accurately
+    // once a voice has actually been downloaded, and a downloaded voice must never be
+    // hidden — that is the one failure mode that matters. Apple gives a download its own
+    // entry but does not always move it out of the "-compact" family (a downloaded
+    // "Samantha (Enhanced)" is reported as com.apple.ttsbundle.Samantha-premium, while
+    // other downloads keep their family), so an identifier-first check would classify a
+    // freshly installed voice as robotic and hide it.
+    //
+    // Only "Default" is ambiguous — expo-speech reports iOS *Premium* as "Default"
+    // (`voice.quality == .enhanced ? "Enhanced" : "Default"`), which is what hid the
+    // user's Premium voice earlier — so the identifier resolves only that case.
+    if (q === 'premium') return 'premium';
+    if (q === 'enhanced') return 'enhanced';
     if (
       id.includes('compact')
       || id.includes('eloquence')
       || id.includes('com.apple.speech.synthesis.voice.')
     ) return 'standard';
-    if (id.includes('premium') || q === 'premium') return 'premium';
-    if (id.includes('enhanced') || q === 'enhanced') return 'enhanced';
+    if (id.includes('premium')) return 'premium';
+    if (id.includes('enhanced')) return 'enhanced';
     return 'unknown';
   };
   const VOICE_TIER_RANK = { premium: 0, enhanced: 1, unknown: 2, standard: 3 };
@@ -1533,6 +1551,22 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </React.Fragment>
         ))}
       </View>
+
+      {/* iOS reports a newly downloaded voice only after the list is fetched again, and
+          the fetch happens when this screen opens. Without a way to re-read it, a
+          download made with the app running looks like it did nothing. */}
+      <TouchableOpacity
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          setVoicesReloadToken((t) => t + 1);
+        }}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={{ alignSelf: "flex-start", marginTop: 10, paddingHorizontal: 4 }}
+      >
+        <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.primary }}>
+          Just downloaded a voice? Tap to reload the list
+        </Text>
+      </TouchableOpacity>
 
       {chineseVoices.length === 0 ? (
         installedChineseVoices.length === 0 ? (
