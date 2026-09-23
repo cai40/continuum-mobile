@@ -1373,6 +1373,17 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       }]
       : []),
     ...chineseVoices.map((option) => ({ kind: 'voice', option })),
+    // English/Spanish voices get the same titled group as Chinese. Without it they
+    // rendered as bare rows appended to the Chinese list with no label at all, so a
+    // newly downloaded English voice appeared to belong to the Chinese group.
+    ...(otherVoices.length
+      ? [{
+        kind: 'header',
+        key: 'other-header',
+        label: `OTHER VOICES (${otherVoices.length})`,
+        listenAll: otherVoices,
+      }]
+      : []),
     ...otherVoices.map((option) => ({ kind: 'voice', option })),
   ];
 
