@@ -1446,6 +1446,20 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         Accessibility → Read &amp; Speak → Voices (called Spoken Content before iOS 26).
         Tap the speaker to hear one. Robotic-sounding voices are hidden.
       </Text>
+
+      {/* TEMPORARY DIAGNOSTIC. Lists exactly what expo-speech exposes on this device —
+          name, identifier, quality and language for every voice, plus the tier this
+          build assigns it. Added because inferring Apple's identifier families from
+          documentation has been wrong twice; this settles it with the real list.
+          Delete once the identifier question is closed. */}
+      <Text style={{ fontSize: 10, color: theme.colors.gray, paddingHorizontal: 4, marginBottom: 10 }}>
+        {"VOICE REPORT (temporary — screenshot this and send it to me)\n"
+          + `phone exposes ${deviceVoices.length} voices · in-app ${mappedDeviceVoices.length} · shown ${visibleDeviceVoices.length} · hidden ${hiddenStandardCount}\n`
+          + deviceVoices
+            .map((v) => `${voiceTier(v)} | ${v.language} | ${v.name} | ${v.identifier} | q=${v.quality}`)
+            .join("\n")}
+      </Text>
+
       <View style={styles.groupedCard}>
         {deviceVoiceRows.map((item, idx) => (
           <React.Fragment key={item.kind === 'header' ? item.key : item.option.key}>
