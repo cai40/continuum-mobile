@@ -437,36 +437,50 @@ const SettingsSection = (props) => {
   };
 
   // iOS ships only Default-quality (Compact) voices preinstalled, and those are the
-  // formant-sounding ones people describe as mechanical. Enhanced/Premium voices are
-  // neural and must be downloaded, so rank by tier and label it rather than leaving the
-  // tier invisible — otherwise "most voices sound robotic" is unexplainable in the UI.
-  const voiceQualityRank = (quality) => {
-    const q = String(quality || '').toLowerCase();
-    if (q === 'premium') return 0;
-    if (q === 'enhanced') return 1;
-    return 2;
+  // formant-sounding ones people describe as mechanical, so the tier is ranked and
+  // labelled rather than left invisible.
+  //
+  // The tier must NOT be read from `quality`: expo-speech reports it as
+  // `voice.quality == .enhanced ? "Enhanced" : "Default"`, so an iOS *Premium* voice
+  // arrives as "Default" and is indistinguishable from a Compact one. Trusting that
+  // string is what hid the user's downloaded Premium voice — Lilian was enumerated by
+  // iOS, labelled "Standard", and filtered out, leaving only "System default". The
+  // identifier does separate them (Apple's robotic families are the Compact and
+  // Eloquence voices), and anything unrecognised counts as usable, so a downloaded
+  // voice is never hidden because of a string we cannot rely on.
+  const voiceTier = (v) => {
+    const id = String(v.identifier || '').toLowerCase();
+    const q = String(v.quality || '').toLowerCase();
+    if (id.includes('eloquence') || id.includes('compact')) return 'standard';
+    if (id.includes('premium') || q === 'premium') return 'premium';
+    if (id.includes('enhanced') || q === 'enhanced') return 'enhanced';
+    return 'unknown';
   };
-  const VOICE_QUALITY_LABELS = { premium: 'Premium', enhanced: 'Enhanced', default: 'Standard' };
-  const voiceQualityLabel = (quality) =>
-    VOICE_QUALITY_LABELS[String(quality || '').toLowerCase()] || 'Standard';
-  const isNaturalVoice = (quality) => voiceQualityRank(quality) < 2;
+  const VOICE_TIER_RANK = { premium: 0, enhanced: 1, unknown: 2, standard: 3 };
+  const VOICE_TIER_LABELS = { premium: 'Premium', enhanced: 'Enhanced', standard: 'Standard' };
+  const voiceTierRank = (tier) =>
+    VOICE_TIER_RANK[tier] === undefined ? VOICE_TIER_RANK.unknown : VOICE_TIER_RANK[tier];
+  const voiceTierLabel = (tier) => VOICE_TIER_LABELS[tier] || '';
 
   const mappedDeviceVoices = deviceVoices
     .filter((v) => DEVICE_VOICE_LANGS.includes(langPrimary(v.language)))
-    .map((v) => ({
-      key: v.identifier,
-      id: v.identifier,
-      lang: v.language,
-      quality: v.quality,
-      natural: isNaturalVoice(v.quality),
-      name: v.name,
-      desc: [voiceLangLabel(v.language), voiceQualityLabel(v.quality)].filter(Boolean).join(' · '),
-    }));
+    .map((v) => {
+      const tier = voiceTier(v);
+      return {
+        key: v.identifier,
+        id: v.identifier,
+        lang: v.language,
+        tier,
+        natural: tier !== 'standard',
+        name: v.name,
+        desc: [voiceLangLabel(v.language), voiceTierLabel(tier)].filter(Boolean).join(' · '),
+      };
+    });
 
   // Best-sounding first within each group, so the natural voices are reachable without
   // scrolling past the mechanical ones; then language, then name for stable order.
   const byQualityThenLangThenName = (a, b) =>
-    voiceQualityRank(a.quality) - voiceQualityRank(b.quality)
+    voiceTierRank(a.tier) - voiceTierRank(b.tier)
     || a.lang.localeCompare(b.lang)
     || a.name.localeCompare(b.name);
 
