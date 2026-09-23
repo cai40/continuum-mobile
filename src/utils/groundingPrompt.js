@@ -26,6 +26,20 @@ export const VOICE_MODE_APPEND = [
   'Prefer plain sentences. Spell out emphasis with words when needed.',
 ].join(' ');
 
+/**
+ * Pins the reply to the language the user just used. Hands-free mode needs this because
+ * the spoken voice is chosen from the reply's language: if the model drifts back to the
+ * persona's English, a Chinese or Spanish pick silently stops being used. Returns '' for
+ * an unknown tag so the caller can leave the persona untouched.
+ */
+export const replyLanguageAppend = (langTag) => {
+  const name = { zh: 'Chinese', en: 'English', es: 'Spanish' }[String(langTag || '').split('-')[0].toLowerCase()];
+  if (!name) return '';
+  return `REPLY LANGUAGE: The user's latest message is in ${name}. `
+    + `Write the entire reply in ${name}, even if earlier turns, the persona above, or `
+    + `the app's interface are in another language.`;
+};
+
 export function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);

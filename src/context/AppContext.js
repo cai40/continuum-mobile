@@ -89,17 +89,18 @@ export const AppProvider = ({ children }) => {
   const [braveSearchKey, setBraveSearchKey] = useState("");
   const [slackToken, setSlackToken] = useState("");
   const [slackWorkspace, setSlackWorkspace] = useState("");
-  // On-device (platform) TTS voice for hands-free replies. '' means "let the phone
-  // choose for the reply's language". Voice mode speaks through Speech.speak, so this
-  // is what is actually heard.
-  const [deviceVoiceId, setDeviceVoiceId] = useState("");
-  const [deviceVoiceLang, setDeviceVoiceLang] = useState("");
+  // On-device (platform) TTS voices, one per language, keyed by primary subtag:
+  // { zh: { id, lang }, en: { id, lang }, es: { id, lang } }. Voice mode speaks through
+  // Speech.speak, so these are what is actually heard. A language with no entry falls
+  // back to the phone's own voice for that language, which is why picking is optional
+  // per language rather than all-or-nothing.
+  const [deviceVoices, setDeviceVoices] = useState({});
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
-  // "auto" lets the recognizer's locale be inferred per utterance (see ChatSection),
-  // which is what non-English speakers need; a concrete locale still pins it.
-  const [sttLang, setSttLang] = useState("auto");
+  // Listening is always auto-detect now (see the recognizer setup in ChatSection), so
+  // there is no locale state to persist. The old "@stt_lang" pin is no longer read: with
+  // the picker gone a stale pin could never be cleared, which is the bug this fixes.
   const [renderEmailBridgeSecret, setRenderEmailBridgeSecret] = useState("");
   const [emailLimit, setEmailLimit] = useState(String(DEFAULT_EMAIL_LIMIT));
   const [emailRecent, setEmailRecent] = useState(DEFAULT_EMAIL_RECENT);
@@ -284,12 +285,13 @@ export const AppProvider = ({ children }) => {
           "@slack_workspace",
           "@provider",
           "@auto_model_routing",
+          "@device_voices",
+          // Legacy single-voice keys: read once, only to seed @device_voices.
           "@device_voice_id",
           "@device_voice_lang",
           "@chat_history",
           CHAT_HISTORY_CLEARED_AT_KEY,
           "@persona",
-          "@stt_lang",
           "@render_email_bridge_secret",
           "@render_email_enabled",
           "@email_limit",
@@ -319,6 +321,29 @@ export const AppProvider = ({ children }) => {
         if (emailDeleteSaved) setEmailDeleteEnabled(emailDeleteSaved === "true");
         if (emailJunkSaved) setEmailAutoTrashJunk(emailJunkSaved === "true");
 
+        // One voice per language. An install that predates this stored a single id/lang
+        // pair, so fold it into the map under its own language rather than dropping a
+        // pick the user deliberately made.
+        const voicesSaved = valueFor("@device_voices");
+        if (voicesSaved) {
+          try {
+            const parsed = JSON.parse(voicesSaved);
+            if (parsed && typeof parsed === "object") setDeviceVoices(parsed);
+          } catch (e) {
+            console.warn("Device voices parse failed:", e);
+          }
+        } else {
+          const legacyVoiceId = valueFor("@device_voice_id");
+          const legacyVoiceLang = valueFor("@device_voice_lang");
+          if (legacyVoiceId && legacyVoiceLang) {
+            const primary = String(legacyVoiceLang).split("-")[0].toLowerCase();
+            setDeviceVoices({ [primary]: { id: legacyVoiceId, lang: legacyVoiceLang } });
+            // Folded into @device_voices above; drop the old keys so there is only ever
+            // one source of truth for the chosen voice.
+            AsyncStorage.multiRemove(["@device_voice_id", "@device_voice_lang"]).catch(() => {});
+          }
+        }
+
         keys.forEach(([key, value]) => {
           if (!value) return;
           if (key === "@groq_key") setGroqKey(value);
@@ -333,10 +358,7 @@ export const AppProvider = ({ children }) => {
             setProviderState(normalizeProviderId(value));
           }
           if (key === "@auto_model_routing") setAutoModelRoutingState(value !== "false");
-          if (key === "@device_voice_id") setDeviceVoiceId(value);
-          if (key === "@device_voice_lang") setDeviceVoiceLang(value);
           if (key === "@persona") setPersona(value);
-          if (key === "@stt_lang") setSttLang(value);
           if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
           if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
           if (key === "@chat_history") {
@@ -369,11 +391,25 @@ export const AppProvider = ({ children }) => {
   // default on the next launch, which reads as "the app ignores my chosen voice".
   useEffect(() => {
     if (!isVaultLoaded.current) return;
-    AsyncStorage.multiSet([
-      ["@device_voice_id", deviceVoiceId],
-      ["@device_voice_lang", deviceVoiceLang],
-    ]).catch((e) => console.warn("Device voice persist failed:", e));
-  }, [deviceVoiceId, deviceVoiceLang]);
+    AsyncStorage.setItem("@device_voices", JSON.stringify(deviceVoices))
+      .catch((e) => console.warn("Device voices persist failed:", e));
+  }, [deviceVoices]);
+
+  // Sets (or clears) the voice for one language, leaving the other languages untouched —
+  // that is what lets three languages be picked at once. A voice with no id clears the
+  // slot, handing that language back to the phone's own choice.
+  const setDeviceVoiceForLang = (langTag, voice) => {
+    const primary = String(langTag || "").split("-")[0].toLowerCase();
+    if (!primary) return;
+    setDeviceVoices((prev) => {
+      const next = { ...prev };
+      if (voice && voice.id) next[primary] = { id: voice.id, lang: voice.lang || "" };
+      else delete next[primary];
+      return next;
+    });
+  };
+
+  const clearDeviceVoices = () => setDeviceVoices({});
 
   // Persistence: Auto-Save History
   useEffect(() => {
@@ -543,12 +579,10 @@ export const AppProvider = ({ children }) => {
         ["@brave_search_key", braveSearchKey.trim()],
         ["@slack_token", slackToken.trim()],
         ["@slack_workspace", slackWorkspace.trim()],
-        ["@device_voice_id", deviceVoiceId],
-        ["@device_voice_lang", deviceVoiceLang],
+        ["@device_voices", JSON.stringify(deviceVoices)],
         ["@provider", activeProvider],
         ["@auto_model_routing", autoModelRouting ? "true" : "false"],
         ["@persona", persona],
-        ["@stt_lang", sttLang],
       ];
       await AsyncStorage.multiSet(keyData);
       Alert.alert(
@@ -726,14 +760,11 @@ export const AppProvider = ({ children }) => {
         setSlackToken,
         slackWorkspace,
         setSlackWorkspace,
-        deviceVoiceId,
-        setDeviceVoiceId,
-        deviceVoiceLang,
-        setDeviceVoiceLang,
+        deviceVoices,
+        setDeviceVoiceForLang,
+        clearDeviceVoices,
         persona,
         setPersona,
-        sttLang,
-        setSttLang,
         renderEmailBridgeSecret,
         setRenderEmailBridgeSecret,
         emailLimit,

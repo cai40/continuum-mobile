@@ -69,10 +69,9 @@ const SettingsSection = (props) => {
     setDeepseekKey,
     braveSearchKey,
     setBraveSearchKey,
-    deviceVoiceId,
-    setDeviceVoiceId,
-    deviceVoiceLang,
-    setDeviceVoiceLang,
+    deviceVoices,
+    setDeviceVoiceForLang,
+    clearDeviceVoices,
     saveKeys,
     logout,
     clearLocalHistory,
@@ -96,8 +95,6 @@ const SettingsSection = (props) => {
     setCloudWakingUp,
     persona,
     setPersona,
-    sttLang,
-    setSttLang,
     subscriptionTier,
     isSuperUser,
     serverVersion,
@@ -403,7 +400,9 @@ const SettingsSection = (props) => {
   // and not something the server can choose. Enumerate what this device has installed —
   // on iOS only voices already downloaded appear (Settings → Accessibility → Spoken
   // Content → Voices), so a missing voice means it has not been downloaded yet.
-  const [deviceVoices, setDeviceVoices] = useState([]);
+  // Named availableVoices to keep it distinct from the context's `deviceVoices`, which
+  // holds the voices the user has *picked* for each language.
+  const [availableVoices, setAvailableVoices] = useState([]);
   // Re-reads the list when incremented. iOS reports a newly downloaded voice only after
   // the list is fetched again, and the fetch below used to run exactly once per mount —
   // so downloading a voice with the app open appeared to do nothing at all, which is
@@ -413,14 +412,14 @@ const SettingsSection = (props) => {
   useEffect(() => {
     let alive = true;
     Speech.getAvailableVoicesAsync()
-      .then((list) => { if (alive) setDeviceVoices(Array.isArray(list) ? list : []); })
-      .catch(() => { if (alive) setDeviceVoices([]); });
+      .then((list) => { if (alive) setAvailableVoices(Array.isArray(list) ? list : []); })
+      .catch(() => { if (alive) setAvailableVoices([]); });
     return () => { alive = false; };
   }, [voicesReloadToken]);
 
-  // Keep the list to the languages the app can actually ask for (STT offers
-  // auto/en-US/zh-CN/es-ES, and reply-language detection only resolves CJK), so the
-  // picker stays short instead of listing every voice on the phone.
+  // Keep the list to the languages the app can actually ask for — the recognizer offers
+  // auto/en-US/zh-CN/es-ES and detection resolves all three — so the picker stays short
+  // instead of listing every voice on the phone.
   const DEVICE_VOICE_LANGS = ['zh', 'en', 'es'];
   const SYSTEM_VOICE_KEY = 'system-default';
   const langPrimary = (lang) => String(lang || '').split('-')[0].toLowerCase();
@@ -433,12 +432,16 @@ const SettingsSection = (props) => {
   };
   const voiceLangLabel = (lang) => VOICE_LANG_LABELS[String(lang || '').toLowerCase()] || lang || '';
 
+  // One chosen voice per language, so Chinese, English and Spanish can all be set at once
+  // and the reply is read by whichever one matches the language it was written in.
+  const LANG_GROUP_LABELS = { zh: 'CHINESE', en: 'ENGLISH', es: 'SPANISH' };
+
   const systemVoiceOption = {
     key: SYSTEM_VOICE_KEY,
     id: '',
     lang: '',
     name: 'System default',
-    desc: 'Let the phone pick — normally a Standard-tier voice',
+    desc: 'Clear all three picks — the phone chooses a voice per language',
   };
 
   // iOS ships only Default-quality (Compact) voices preinstalled, and those are the
@@ -495,7 +498,7 @@ const SettingsSection = (props) => {
     VOICE_TIER_RANK[tier] === undefined ? VOICE_TIER_RANK.unknown : VOICE_TIER_RANK[tier];
   const voiceTierLabel = (tier) => VOICE_TIER_LABELS[tier] || '';
 
-  const mappedDeviceVoices = deviceVoices
+  const mappedDeviceVoices = availableVoices
     .filter((v) => DEVICE_VOICE_LANGS.includes(langPrimary(v.language)))
     .map((v) => {
       const tier = voiceTier(v);
@@ -518,33 +521,30 @@ const SettingsSection = (props) => {
     || a.name.localeCompare(b.name);
 
   // Robotic-sounding voices are exactly the Standard (Compact) tier, so they are hidden
-  // from the list. The voice already saved in Settings stays visible even when it is
+  // from the list. A voice already picked for its language stays visible even when it is
   // Standard: otherwise a saved choice would render as a checkmark with no row behind it,
   // and could never be changed.
-  const isSelectedDeviceVoice = (v) => !!v.id && v.id === deviceVoiceId;
+  const isSelectedDeviceVoice = (v) => !!v.id && deviceVoices[langPrimary(v.lang)]?.id === v.id;
   const visibleDeviceVoices = mappedDeviceVoices.filter((v) => v.natural || isSelectedDeviceVoice(v));
   const hiddenStandardCount = mappedDeviceVoices.length - visibleDeviceVoices.length;
 
-  // Counts are taken before hiding, so the guidance can tell "no Chinese voice installed"
-  // apart from "every installed Chinese voice is robotic" — different problems with
-  // different remedies.
-  const installedChineseVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) === 'zh');
-  const naturalChineseVoiceCount = installedChineseVoices.filter((v) => v.natural).length;
-  // Counted for the same reason as the Chinese pair above: so the guidance can say
-  // "all your English/Spanish voices are Standard" rather than claiming none is
-  // installed. On the reporting device every en-*/es-* voice is Compact, super-compact,
-  // Eloquence or novelty tier, so both languages end up with an empty group.
-  const installedOtherVoices = mappedDeviceVoices.filter((v) => langPrimary(v.lang) !== 'zh');
-
-  // Chinese voices are listed first on purpose: they speak the replies this user reads
-  // Chinese in, and plain alphabetical order sorts zh-* below every English voice —
-  // which is exactly how a voice someone wanted ended up looking "missing".
-  const chineseVoices = visibleDeviceVoices
-    .filter((v) => langPrimary(v.lang) === 'zh')
-    .sort(byQualityThenLangThenName);
-  const otherVoices = visibleDeviceVoices
-    .filter((v) => langPrimary(v.lang) !== 'zh')
-    .sort(byQualityThenLangThenName);
+  // Voices are grouped by language, one pick each, so the three languages read as three
+  // independent choices. Counts are taken from the full installed list (not just the
+  // visible one) so the guidance can tell "no English voice installed" apart from "every
+  // English voice is robotic" — different problems with different remedies. On the
+  // reporting device every en-*/es-* voice was Compact, Eloquence or novelty tier, so
+  // both groups were empty until natural voices were downloaded.
+  const voicesByLang = {};
+  DEVICE_VOICE_LANGS.forEach((key) => {
+    const installed = mappedDeviceVoices.filter((v) => langPrimary(v.lang) === key);
+    voicesByLang[key] = {
+      installedCount: installed.length,
+      naturalCount: installed.filter((v) => v.natural).length,
+      listed: visibleDeviceVoices
+        .filter((v) => langPrimary(v.lang) === key)
+        .sort(byQualityThenLangThenName),
+    };
+  });
 
   // A sentence per language so a voice can be auditioned before it is chosen.
   const VOICE_SAMPLES = {
@@ -1381,41 +1381,52 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
     </ScrollView>
   );
 
-  // A row is either a voice or the Chinese group header, so the header can sit inside
-  // the same card while dividers stay correct (rendered before each item but the first).
+  // Rows are voices, language group headers, or a one-line note for a language with no
+  // natural voice yet — all inside the same card so dividers stay correct (rendered
+  // before each item but the first). Languages sort Chinese, English, Spanish so each
+  // pick is a separate, clearly-labelled choice.
   const deviceVoiceRows = [
     { kind: 'voice', option: systemVoiceOption },
-    ...(chineseVoices.length
-      ? [{
+    ...DEVICE_VOICE_LANGS.flatMap((key) => {
+      const group = voicesByLang[key];
+      const header = {
         kind: 'header',
-        key: 'chinese-header',
-        label: naturalChineseVoiceCount
-          ? `CHINESE VOICES (${installedChineseVoices.length} · ${naturalChineseVoiceCount} natural)`
-          : `CHINESE VOICES (${installedChineseVoices.length})`,
-        listenAll: chineseVoices,
-      }]
-      : []),
-    ...chineseVoices.map((option) => ({ kind: 'voice', option })),
-    // English/Spanish voices get the same titled group as Chinese. Without it they
-    // rendered as bare rows appended to the Chinese list with no label at all, so a
-    // newly downloaded English voice appeared to belong to the Chinese group.
-    ...(otherVoices.length
-      ? [{
-        kind: 'header',
-        key: 'other-header',
-        label: `OTHER VOICES (${otherVoices.length})`,
-        listenAll: otherVoices,
-      }]
-      : []),
-    ...otherVoices.map((option) => ({ kind: 'voice', option })),
+        key: `${key}-header`,
+        label: group.naturalCount
+          ? `${LANG_GROUP_LABELS[key]} VOICES (${group.installedCount} · ${group.naturalCount} natural)`
+          : `${LANG_GROUP_LABELS[key]} VOICES (${group.installedCount})`,
+        listenAll: group.listed,
+      };
+      // No natural voice: say so in place of the rows rather than showing an empty
+      // heading, which reads as a rendering fault instead of a missing download.
+      const body = group.listed.length
+        ? group.listed.map((option) => ({ kind: 'voice', option }))
+        : [{
+          kind: 'note',
+          key: `${key}-note`,
+          label: group.installedCount
+            ? `All ${group.installedCount} ${LANG_GROUP_LABELS[key].toLowerCase()} voices on this phone are robotic (Standard tier), so there is none to pick.`
+            : `No ${LANG_GROUP_LABELS[key].toLowerCase()} voice is installed on this phone.`,
+        }];
+      return [header, ...body];
+    }),
   ];
 
-  const renderDeviceVoiceRow = (v) => (
+  const renderDeviceVoiceRow = (v) => {
+    // The "System default" row has no voice, so it clears every language pick.
+    const isSystemRow = !v.id;
+    const langKey = langPrimary(v.lang);
+    const isPicked = isSystemRow
+      ? DEVICE_VOICE_LANGS.every((key) => !deviceVoices[key]?.id)
+      : deviceVoices[langKey]?.id === v.id;
+    return (
     <TouchableOpacity
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        setDeviceVoiceId(v.id);
-        setDeviceVoiceLang(v.id ? v.lang : '');
+        // Each row only ever writes its own language, which is what allows Chinese,
+        // English and Spanish to be picked at the same time.
+        if (isSystemRow) clearDeviceVoices();
+        else setDeviceVoiceForLang(langKey, { id: v.id, lang: v.lang });
       }}
       style={{
         padding: 16,
@@ -1449,7 +1460,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           color={previewingKey === v.key ? theme.colors.primary : theme.colors.gray}
         />
       </TouchableOpacity>
-      {deviceVoiceId === v.id && (
+      {isPicked && (
         <Ionicons
           name="checkmark-circle"
           size={24}
@@ -1457,22 +1468,25 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         />
       )}
     </TouchableOpacity>
-  );
+    );
+  };
 
   const renderVoiceSettings = () => (
     <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
       {renderHeader("Neural Voice")}
-      <Text style={categoryTitleStyle}>SPOKEN VOICE (THIS DEVICE)</Text>
+      <Text style={categoryTitleStyle}>SPOKEN VOICES (THIS DEVICE)</Text>
       <Text style={{ fontSize: 12, color: theme.colors.gray, marginBottom: 8, paddingHorizontal: 4 }}>
-        Hands-free replies are spoken by your phone, not by Continuum, so this is the
-        voice you actually hear. A voice must be downloaded first — iOS Settings →
-        Accessibility → Read &amp; Speak → Voices (called Spoken Content before iOS 26).
-        Tap the speaker to hear one. Robotic-sounding voices are hidden.
+        Hands-free replies are spoken by your phone, not by Continuum, so these are the
+        voices you actually hear. Pick one voice per language — Chinese, English and
+        Spanish can all be set at once, and replies switch to whichever matches the
+        language being spoken, on their own. A voice must be downloaded first — iOS
+        Settings → Accessibility → Read &amp; Speak → Voices (called Spoken Content
+        before iOS 26). Tap the speaker to hear one. Robotic-sounding voices are hidden.
       </Text>
 
       <View style={styles.groupedCard}>
         {deviceVoiceRows.map((item, idx) => (
-          <React.Fragment key={item.kind === 'header' ? item.key : item.option.key}>
+          <React.Fragment key={item.kind === 'voice' ? item.option.key : item.key}>
             {idx > 0 && <Divider />}
             {item.kind === 'header' ? (
               <View
@@ -1488,6 +1502,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.gray, letterSpacing: 0.5 }}>
                   {item.label}
                 </Text>
+                {item.listenAll.length > 0 && (
                 <TouchableOpacity
                   onPress={() => previewAll(item.listenAll)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1498,7 +1513,12 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                     Listen to all
                   </Text>
                 </TouchableOpacity>
+                )}
               </View>
+            ) : item.kind === 'note' ? (
+              <Text style={{ paddingHorizontal: 16, paddingVertical: 12, fontSize: 12, color: theme.colors.gray }}>
+                {item.label}
+              </Text>
             ) : (
               renderDeviceVoiceRow(item.option)
             )}
@@ -1522,101 +1542,25 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         </Text>
       </TouchableOpacity>
 
-      {chineseVoices.length === 0 ? (
-        installedChineseVoices.length === 0 ? (
-          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-            No Chinese voice is installed on this phone, so Chinese replies fall back to the
-            system default. To add one, open iOS Settings → Accessibility → Read &amp; Speak
-            (Spoken Content before iOS 26) → Voices → Chinese, download a voice, then reopen
-            Continuum.
-          </Text>
-        ) : (
-          <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-            All {installedChineseVoices.length} Chinese voices on this phone are the{" "}
-            <Text style={{ fontWeight: "700" }}>Standard</Text> tier — the robotic-sounding kind — so
-            they are hidden. Apple ships only Standard voices by default. Open iOS Settings →
-            Accessibility → Read &amp; Speak (Spoken Content before iOS 26) → Voices → Chinese, tap
-            a voice marked <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
-            <Text style={{ fontWeight: "700" }}>Premium</Text>, download it, then reopen Continuum.
-          </Text>
-        )
-      ) : naturalChineseVoiceCount === 0 ? (
-        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-          Your currently selected Chinese voice is shown so you can change it. To get a
-          natural-sounding one, open iOS Settings → Accessibility → Read &amp; Speak
-          (Spoken Content before iOS 26) → Voices → Chinese, download a voice marked{" "}
-          <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
-          <Text style={{ fontWeight: "700" }}>Premium</Text>, then reopen Continuum.
-        </Text>
-      ) : (
-        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-          Standard-tier (robotic) voices are hidden, except a current selection if it is one.
-          {hiddenStandardCount > 0 ? ` ${hiddenStandardCount} Standard-tier voice${hiddenStandardCount === 1 ? '' : 's'} hidden.` : ''} To add more natural
-          voices, download an <Text style={{ fontWeight: "700" }}>Enhanced</Text> one in iOS
-          Settings → Accessibility → Read &amp; Speak → Voices.
-        </Text>
-      )}
+      {/* One explanation covering all three languages. The old block branched per
+          language and only knew about Chinese and English/Spanish, so it could not say
+          anything sensible once each language became an independent choice. The Siri line
+          matters most: Siri voices are never shared with apps (Apple: "Siri voices not
+          available through API"), so a downloaded Siri voice can never appear here
+          however many times the list is fetched. */}
+      <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
+        To add a natural voice, open iOS Settings → Accessibility → Read &amp; Speak
+        (Spoken Content before iOS 26) → Voices, choose a language, tap a voice marked{" "}
+        <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
+        <Text style={{ fontWeight: "700" }}>Premium</Text>, download it, then reopen
+        Continuum. Standard-tier (robotic) voices are hidden, except a voice currently
+        picked.{hiddenStandardCount > 0 ? ` ${hiddenStandardCount} Standard-tier voice${hiddenStandardCount === 1 ? '' : 's'} hidden.` : ''}{" "}
+        Siri voices will never appear here — iOS does not share those with apps.
+      </Text>
 
-      {/* English/Spanish get the same explanation Chinese has. Without it the picker
-          showed a lone CHINESE VOICES group with no hint that the other two languages
-          were empty on purpose, which reads as "the app dropped my languages" — the
-          exact question that was asked. The Siri line matters most: Siri voices are
-          never shared with apps (Apple: "Siri voices not available through API"), so a
-          downloaded Siri voice can never appear here however many times it is fetched. */}
-      {otherVoices.length === 0 && (
-        <Text style={{ fontSize: 12, color: theme.colors.gray, marginTop: 8, paddingHorizontal: 4 }}>
-          {installedOtherVoices.length > 0
-            ? `All ${installedOtherVoices.length} English and Spanish voices on this phone are the Standard tier, so neither language has a natural voice to choose.`
-            : 'No English or Spanish voice is installed on this phone.'}{" "}
-          To add one, open iOS Settings → Accessibility → Read &amp; Speak (Spoken Content
-          before iOS 26) → Voices → English, tap a voice marked{" "}
-          <Text style={{ fontWeight: "700" }}>Enhanced</Text> or{" "}
-          <Text style={{ fontWeight: "700" }}>Premium</Text>, download it, then reopen
-          Continuum. Siri voices will never appear here — iOS does not share those with apps.
-        </Text>
-      )}
-
-      <Text style={[categoryTitleStyle, {marginTop: 24}]}>LISTENING LANGUAGE (STT)</Text>
-      <View style={styles.groupedCard}>
-        {[
-          { id: 'auto', label: '🌐 Auto-detect', desc: 'Detects your spoken language automatically' },
-          { id: 'en-US', label: '🇺🇸 English (US)', desc: 'Optimized for North American speech' },
-          { id: 'zh-CN', label: '🇨🇳 Chinese (Mainland)', desc: 'Optimized for Mandarin speech' },
-          { id: 'es-ES', label: '🇪🇸 Spanish (Spain)', desc: 'Optimized for Castilian speech' }
-        ].map((lang, idx) => (
-          <React.Fragment key={lang.id}>
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setSttLang(lang.id);
-              }}
-              style={{
-                padding: 16,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <View>
-                <Text style={{ fontSize: 15, fontWeight: "600", color: theme.colors.black }}>
-                  {lang.label}
-                </Text>
-                <Text style={{ fontSize: 12, color: theme.colors.gray }}>
-                  {lang.desc}
-                </Text>
-              </View>
-              {sttLang === lang.id && (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={24}
-                  color={theme.colors.success}
-                />
-              )}
-            </TouchableOpacity>
-            {idx < 1 && <Divider />}
-          </React.Fragment>
-        ))}
-      </View>
+      {/* The listening-language picker was removed on request: the recognizer now always
+          auto-detects, so a pinned locale had no UI to change it and would have stranded
+          the user in one language. See the recognizer setup in ChatSection. */}
     </ScrollView>
   );
 

@@ -26,7 +26,7 @@ import {
   documentIconName,
   normalizePickedAsset,
 } from '../utils/documentTypes';
-import { appendGroundingPersona, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
+import { appendGroundingPersona, replyLanguageAppend, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
@@ -129,12 +129,31 @@ const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
 const AUTO_LANGS = ['en-US', 'zh-CN', 'es-ES'];
 const STT_CAPTURE_FILE = 'stt_capture.wav';
 
-// Returns a locale when the text is clearly CJK-dominant, else '' (leave to default).
+// Spanish and English share the Latin alphabet, so script cannot separate them; frequent
+// function words can, and a real sentence always has several. CJK stays a pure script
+// test because it is unambiguous. Returns '' when the text is too short or too mixed to
+// call, leaving the caller to fall back to the language last heard rather than guess — a
+// wrong answer here would pick the wrong voice.
+//
+// Every word below is deliberately accent-free: JavaScript's \b is ASCII-only, so
+// /\bestá\b/ can never match "está" (the char after á is not a word char, so there is no
+// boundary to find). Accents are counted separately instead — and only worth 1, so an
+// English sentence that happens to mention "café" cannot be read as Spanish on its own.
+// The two lists share no word, so no word can score for both languages.
+const ES_MARK_RE = /[ñ¿¡áéíóúü]/i;
+const ES_WORD_RE = /\b(el|la|los|las|un|una|unos|unas|es|esta|estan|soy|eres|hola|gracias|por|para|con|sin|que|como|muy|pero|tambien|puedo|puedes|quiero|necesito|mi|mis|tu|tus|de|del|en|y|si|donde|cuando|ayuda|ayudame|buenos|buenas|dias|tardes)\b/gi;
+const EN_WORD_RE = /\b(the|and|you|your|yours|is|are|was|were|of|to|for|with|without|this|that|these|those|what|when|where|how|can|could|would|should|please|thanks|thank|i|my|we|our|they|their|it|its|do|does|did|have|has|had|help|want|there|here|about|from|good|morning|afternoon|evening|in|on|at|as|not|but|if|so|out|just|like|get|need|sorry|yes)\b/gi;
+
 const detectLangFromText = (text) => {
   const t = String(text || '');
   const cjk = (t.match(CJK_RE) || []).length;
   const latin = (t.match(/[A-Za-z]/g) || []).length;
-  return cjk >= 2 && cjk >= latin ? 'zh-CN' : '';
+  if (cjk >= 2 && cjk >= latin) return 'zh-CN';
+  const es = (t.match(ES_WORD_RE) || []).length + (ES_MARK_RE.test(t) ? 1 : 0);
+  const en = (t.match(EN_WORD_RE) || []).length;
+  if (es >= 2 && es > en) return 'es-ES';
+  if (en >= 2 && en > es) return 'en-US';
+  return '';
 };
 const hasLatin = (text) => /[A-Za-z]/.test(String(text || ''));
 
@@ -151,9 +170,7 @@ const ChatSection = () => {
     braveSearchKey,
     slackToken,
     persona,
-    sttLang,
-    deviceVoiceId,
-    deviceVoiceLang,
+    deviceVoices,
     activeTab,
     user,
     session,
@@ -418,11 +435,12 @@ const ChatSection = () => {
     const transcript = event.results[0]?.transcript || '';
     transcriptRef.current = transcript;
     setLocalTranscript(transcript);
-    // Auto mode: learn the spoken language from the transcript script so the next
-    // utterance starts in the right locale (helps iOS, which emits no detection event).
-    if (sttLang === 'auto' && transcript) {
-      const zh = detectLangFromText(transcript);
-      if (zh) lastSttLangRef.current = zh;
+    // Learn the spoken language from the transcript script so the next utterance starts
+    // in the right locale, the reply is written in the language just spoken, and the
+    // matching voice is used (iOS emits no detection event of its own).
+    if (transcript) {
+      const heard = detectLangFromText(transcript);
+      if (heard) lastSttLangRef.current = heard;
       else if (hasLatin(transcript)) lastSttLangRef.current = 'en-US';
     }
   });
@@ -609,21 +627,19 @@ const ChatSection = () => {
       soundRef.current = null;
     }
     setIsSpeaking(true);
-    // The reply's own script decides first: a Chinese reply must never be read by an
-    // English voice, even when the listening language is pinned to English — the
-    // language you *spoke* in and the language of the *reply* are not the same thing,
-    // and the previous order (listening language first) silently overrode this. A
-    // concrete listening language still applies to any reply that is not CJK-dominant.
-    const ttsLang = detectLangFromText(spoken)
-      || ((sttLang && sttLang !== 'auto') ? sttLang : (lastSttLangRef.current || 'en-US'));
-    // Honour the voice chosen in Settings, but only when it speaks the reply's own
-    // language — a Chinese pick must not start reading English replies.
+    // The reply's own language decides both the spoken voice and its locale. The reply is
+    // written in the language the user just spoke (see REPLY LANGUAGE in the persona), so
+    // this is what routes a Chinese turn to the Chinese pick, a Spanish turn to the
+    // Spanish pick, and an English turn to the English pick — one selection per language,
+    // switched automatically, with no need to re-pick between turns.
+    const ttsLang = detectLangFromText(spoken) || lastSttLangRef.current || 'en-US';
     const primaryLang = (tag) => String(tag || '').split('-')[0].toLowerCase();
-    const useDeviceVoice = !!deviceVoiceId && !!deviceVoiceLang
-      && primaryLang(deviceVoiceLang) === primaryLang(ttsLang);
+    // Only the voice chosen for this reply's language is used; a language with no pick
+    // simply falls through to the phone's own voice for that locale.
+    const pickedVoice = deviceVoices[primaryLang(ttsLang)];
     Speech.speak(spoken, {
       language: ttsLang,
-      ...(useDeviceVoice ? { voice: deviceVoiceId } : {}),
+      ...(pickedVoice?.id ? { voice: pickedVoice.id } : {}),
       rate: 0.96,
       onDone: () => {
         setIsSpeaking(false);
@@ -639,7 +655,7 @@ const ChatSection = () => {
         }
       },
     });
-  }, [activeTab, isVoiceMode, sttLang, deviceVoiceId, deviceVoiceLang]);
+  }, [activeTab, isVoiceMode, deviceVoices]);
   speakAssistantReplyRef.current = speakAssistantReply;
 
   const resumePendingEmailJob = useCallback(async () => {
@@ -859,14 +875,16 @@ const ChatSection = () => {
         if (prev.exists) prev.delete();
       } catch (e) { /* best effort */ }
 
-      // Resolve the recognition locale. In Auto mode prefer the language we last
-      // observed; otherwise infer it from the current conversation, else English.
+      // Resolve the recognition locale: always the language last heard, else inferred
+      // from the current conversation, else English. There is no pin any more — the
+      // recognizer is set up to switch languages mid-conversation, and a pinned locale
+      // is what previously made a Chinese or Spanish utterance transcribe as English.
       const resolveBaseLang = () => {
         if (lastSttLangRef.current) return lastSttLangRef.current;
         const last = messages[messages.length - 1];
         return detectLangFromText(last?.content) || 'en-US';
       };
-      const baseLang = (sttLang && sttLang !== 'auto') ? sttLang : resolveBaseLang();
+      const baseLang = resolveBaseLang();
       const startOptions = { lang: baseLang, interimResults: true };
       if (Platform.OS === 'android') {
         // Always allow the Android recognizer to auto-detect/switch language, even
@@ -1375,7 +1393,14 @@ const ChatSection = () => {
         chatMessage = `${recallStatus}${chatMessage}`;
       }
 
+      // Ask for the reply in the language just used, so the voice picked to speak it (see
+      // speakAssistantReply) is the one chosen for that language. Derived from the
+      // outgoing text, so a turn carrying only audio adds nothing and the model simply
+      // mirrors whatever it transcribes — never a stale language from an earlier turn.
+      const replyLangAppend = replyLanguageAppend(detectLangFromText(finalInput));
+
       const personaExtras = [
+        ...(replyLangAppend ? [replyLangAppend] : []),
         ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
         ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
         ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
@@ -1761,6 +1786,7 @@ const ChatSection = () => {
           message: bridgeMessage,
           provider: resolvedProvider,
           persona: appendGroundingPersona(persona, [
+            ...(replyLangAppend ? [replyLangAppend] : []),
             ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
             ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
             ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),

@@ -42,8 +42,6 @@ const AppShell = () => {
     activeResolvedProvider,
     serverStatus,
     isInitializing,
-    sttLang,
-    setSttLang,
   } = useAppContext();
 
   if (isInitializing) {
@@ -106,20 +104,6 @@ const AppShell = () => {
   const providerLabel = providerDisplayLabel(badgeProvider);
   const providerColor = providerBadgeColor(badgeProvider, theme.colors);
 
-  const cycleSttLang = () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      // Auto leads the cycle: it is the default now, and with it missing a tap
-      // from "auto" fell through indexOf(-1) to English and could never return.
-      const cycle = ['auto', 'en-US', 'zh-CN', 'es-ES'];
-      const currentIndex = cycle.indexOf(sttLang);
-      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % cycle.length;
-      setSttLang(cycle[nextIndex]);
-    } catch (e) {}
-  };
-
-  const langLabel = sttLang ? sttLang.split('-')[0].toUpperCase() : 'EN';
-
   return (
     <SafeAreaView style={styles.container}>
       {/* GLOBAL HEADER */}
@@ -147,12 +131,6 @@ const AppShell = () => {
             <HeaderBadge label="CLOUD" color={theme.colors.success} />
 
             <StatusIndicator status={serverStatus} />
-
-            <HeaderBadge
-              label={langLabel}
-              color={theme.colors.primary}
-              onPress={cycleSttLang}
-            />
           </View>
         </View>
       </View>
