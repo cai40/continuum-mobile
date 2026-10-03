@@ -81,13 +81,37 @@ const coreConfidence = (row) => {
  * Returns '' when there is nothing to say so the caller can leave the persona untouched.
  */
 export const coreMemoryAppend = (pins = [], profile = []) => {
+  const { pinLines, identityLines, factLines } = coreMemorySelection(pins, profile);
+
+  const sections = [];
+  if (pinLines.length) sections.push('PINNED BY THE USER (highest priority):', ...pinLines.map((c) => `- ${c}`));
+  if (identityLines.length) sections.push('WHO THE USER IS (identity profile):', ...identityLines.map((c) => `- ${c}`));
+  if (factLines.length) sections.push('ALWAYS-ON BACKGROUND (ranked by how often relied on):', ...factLines.map((c) => `- ${c}`));
+  if (!sections.length) return '';
+
+  return [
+    'CORE MEMORY (always present):',
+    'These facts the user cares about are always in context. Treat them as already known:',
+    'refer to them naturally without being asked, and never say you do not know them or',
+    'need to look them up.',
+    ...sections,
+  ].join('\n');
+};
+
+/**
+ * The same selection `coreMemoryAppend` renders, returned as data so the UI can show what is
+ * actually always present. Setup's "L1" metric counts only the hand-pinned rows, which
+ * understates the block by an order of magnitude — the rest is selected from L3 here, at
+ * prompt-build time, so it is not stored as rows anywhere and cannot be counted in a table.
+ */
+export const coreMemorySelection = (pins = [], profile = []) => {
   let chars = 0;
   const seen = new Set();
 
   const take = (rows, maxItems, guard = true) => {
-    const lines = [];
+    const kept = [];
     for (const row of (Array.isArray(rows) ? rows : [])) {
-      if (lines.length >= maxItems) break;
+      if (kept.length >= maxItems) break;
       const content = String(row?.content ?? row?.text ?? '').trim();
       if (!content) continue;
       if (guard && CORE_EXCLUDE_RE.test(content)) continue;
@@ -100,9 +124,9 @@ export const coreMemoryAppend = (pins = [], profile = []) => {
       if (chars + cost > CORE_MEMORY_MAX_CHARS) continue;
       seen.add(key);
       chars += cost;
-      lines.push(`- ${content}`);
+      kept.push(content);
     }
-    return lines;
+    return kept;
   };
 
   // Pins go first, so `seen` already excludes anything the selector would repeat. Identity
@@ -120,19 +144,12 @@ export const coreMemoryAppend = (pins = [], profile = []) => {
   const identityLines = take(identity, CORE_IDENTITY_MAX_ITEMS);
   const factLines = take(facts, CORE_FACT_MAX_ITEMS);
 
-  const sections = [];
-  if (pinLines.length) sections.push('PINNED BY THE USER (highest priority):', ...pinLines);
-  if (identityLines.length) sections.push('WHO THE USER IS (identity profile):', ...identityLines);
-  if (factLines.length) sections.push('ALWAYS-ON BACKGROUND (ranked by how often relied on):', ...factLines);
-  if (!sections.length) return '';
-
-  return [
-    'CORE MEMORY (always present):',
-    'These facts the user cares about are always in context. Treat them as already known:',
-    'refer to them naturally without being asked, and never say you do not know them or',
-    'need to look them up.',
-    ...sections,
-  ].join('\n');
+  return {
+    pinLines,
+    identityLines,
+    factLines,
+    total: pinLines.length + identityLines.length + factLines.length,
+  };
 };
 
 export function appendGroundingPersona(persona, extraBlocks = []) {

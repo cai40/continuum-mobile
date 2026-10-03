@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -39,6 +39,7 @@ import {
   memoryItemText,
   MEMORY_DEFAULT_VISIBLE,
 } from "../utils/memoryDisplay";
+import { coreMemorySelection } from "../utils/groundingPrompt";
 import MemoryFragmentCard from "./shared/MemoryFragmentCard";
 import { MemorySearchPanel } from "./shared/MemorySearchPanel";
 import { cleanUpPhotoAlbum, loadLastPhotoCleanupRun } from "../utils/photoAlbumCleanup";
@@ -227,7 +228,24 @@ const SettingsSection = (props) => {
   const questionLogCount = countInteractionOnlyMatches(memoryLayers, memorySearchQuery);
   const hasMemorySearch = String(memorySearchQuery || '').trim().length > 0;
 
-  const renderMemoryLayerItems = (items, layer, borderColor, emptyText) => {
+  // L1 is the always-on set: the hand-pinned rows plus the identity rows and ranked facts
+  // the prompt block actually carries every turn. The extras are selected at prompt-build
+  // time and are not rows in a table, so the block's real size can only come from the
+  // selector — counting `pinnedMemories` alone reported 13 while 400+ rode every turn.
+  const alwaysOn = useMemo(
+    () => coreMemorySelection(pinnedMemories, semanticProfile),
+    [pinnedMemories, semanticProfile],
+  );
+  const alwaysOnItems = useMemo(
+    () => [
+      ...alwaysOn.pinLines.map((content) => ({ id: `pin:${content}`, content, _layer: 'l1' })),
+      ...alwaysOn.identityLines.map((content) => ({ id: `id:${content}`, content, _layer: 'l1' })),
+      ...alwaysOn.factLines.map((content) => ({ id: `fact:${content}`, content, _layer: 'l1' })),
+    ],
+    [alwaysOn],
+  );
+
+  const renderMemoryLayerItems = (items, layer, borderColor, emptyText, readOnly = false) => {
     const filtered = filterMemoryList(items, layer, memorySearchQuery);
     if (hasMemorySearch && filtered.length === 0) {
       return (
@@ -264,7 +282,7 @@ const SettingsSection = (props) => {
               kind={kind}
               expanded={!!expandedMemoryIds[key]}
               onToggle={() => toggleMemoryExpanded(key)}
-              onDelete={() => handleDeleteMemory(layer, item)}
+              onDelete={readOnly ? undefined : () => handleDeleteMemory(layer, item)}
               borderColor={kind === 'evidence' ? theme.colors.success : borderColor}
             />
           );
@@ -1694,7 +1712,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       <Text style={categoryTitleStyle}>ACTIVE INTELLIGENCE REPOSITORY</Text>
       <View style={[styles.groupedCard, { padding: 18, backgroundColor: theme.colors.white, marginBottom: 24 }]}>
         <View style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }}>
-          <MetricItem label="L1: PINNED" value={trueCounts.l1} color={theme.colors.primary} />
+          <MetricItem label="L1: ALWAYS-ON" value={alwaysOn.total} color={theme.colors.primary} />
           <MetricItem label="L2: EPISODIC" value={trueCounts.l2} color={theme.colors.gray} />
           <MetricItem label="L3: SEMANTIC" value={trueCounts.l3} color={theme.colors.success} />
           <MetricItem label="L4: TEMPORAL" value={trueCounts.l4} color={theme.colors.secondary} />
@@ -1933,7 +1951,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Ionicons name={expandedLayers.l1 ? "chevron-down" : "chevron-forward"} size={16} color={theme.colors.primary} style={{ marginRight: 8 }} />
             <Text style={{ fontWeight: "800", fontSize: 13, color: theme.colors.black }}>
-              LAYER 1: CORE TRUTHS ({trueCounts.l1})
+              LAYER 1: ALWAYS-ON ({alwaysOn.total})
             </Text>
           </View>
           <TouchableOpacity onPress={() => setShowAddCore(!showAddCore)}>
@@ -1986,7 +2004,12 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               </View>
             )}
 
-            {renderMemoryLayerItems(pinnedMemories, 'l1', theme.colors.primary, 'No pinned truths yet.')}
+            <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 10 }}>
+              Injected into every turn — {alwaysOn.pinLines.length} hand-pinned (always guaranteed)
+              {" + "}{alwaysOn.identityLines.length} identity{" + "}{alwaysOn.factLines.length} ranked.
+              Remove a memory from the layer it belongs to below.
+            </Text>
+            {renderMemoryLayerItems(alwaysOnItems, 'l1', theme.colors.primary, 'No always-on memories yet.', true)}
           </View>
         )}
 
