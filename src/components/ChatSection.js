@@ -132,14 +132,33 @@ const STT_CAPTURE_FILE = 'stt_capture.wav';
 // mid-sentence pause no longer ends the turn (the engine's own 3s non-continuous
 // timer and its early "final-like" reset both cut sentences short), and the turn is
 // closed here instead, after the user's chosen pause budget (see VOICE_PAUSE_OPTIONS)
-// of sustained silence. VOICE_SILENCE_LEVEL follows the library's own guidance for
-// metering — the value runs -2…10 and "anything below 0" is inaudible — which is the
-// conservative end of the range and keeps a soft-spoken pause from being mistaken for a
-// finished sentence. The Android service reports raw rmsdB on the same range. If the
-// level is misjudged, the pause never auto-sends and the user taps instead; it does not
-// truncate, which is the failure this replaces.
-const VOICE_SILENCE_LEVEL = 0;
+// of sustained silence.
+//
+// Silence is judged RELATIVE to a rolling ambient floor, never against a fixed level. The
+// metered value runs -2…10 (the Android service reports raw rmsdB on the same range), and an
+// absolute test — the previous `level >= 0` — only works in a quiet room: in a car the
+// ambient floor sits above 0 permanently, so no sample ever counted as silence, the pause
+// timer never armed, and the turn stayed open until the cabin went quiet. Taking the quiet
+// fifth of recent samples folds driving noise into the floor, so even a soft voice still has
+// to clear it. Two margins, not one, so noise hovering between them cannot hold the turn
+// open by itself.
+const VOICE_SPEECH_MARGIN = 5;    // above the floor: the turn is being spoken
+const VOICE_SILENCE_MARGIN = 2;   // near the floor: quiet enough to time the pause
+const VOICE_FLOOR_WINDOW = 20;    // ~6s of samples, so a new environment is learned
+const VOICE_FLOOR_PERCENTILE = 0.2;
 const VOICE_METER_INTERVAL_MS = 300;
+
+/**
+ * Ambient noise floor: the quiet fifth of the recent samples. A percentile rather than an
+ * average, because an average is dragged up by the very speech we need to detect, and rather
+ * than a running minimum, which latches onto one unusually quiet sample and never recovers.
+ */
+const ambientFloor = (levels) => {
+  if (!levels.length) return -2;
+  const sorted = [...levels].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * VOICE_FLOOR_PERCENTILE));
+  return sorted[idx];
+};
 
 // Spanish and English share the Latin alphabet, so script cannot separate them; frequent
 // function words can, and a real sentence always has several. CJK stays a pure script
@@ -275,6 +294,12 @@ const ChatSection = () => {
   // so silence *before* any speech is ever heard cannot send an empty turn.
   const voicePauseTimerRef = useRef(null);
   const voiceSpeechSeenRef = useRef(false);
+  // Rolling meter history for the ambient noise floor (see ambientFloor). Deliberately NOT
+  // reset per turn: a cold window would start from the first sample, and if that sample was
+  // speech the floor would sit at speech level and the next pause would send early.
+  const voiceLevelsRef = useRef([]);
+  // Last transcript seen by the metering loop, so a growing transcript counts as "speaking".
+  const lastHeardTranscriptRef = useRef('');
   const sendMessageRef = useRef(null);
   const speakAssistantReplyRef = useRef(null);
 
@@ -456,6 +481,7 @@ const ChatSection = () => {
     voiceAudioEndRef.current = false;
     voiceFinalizedRef.current = false;
     voiceSpeechSeenRef.current = false;
+    lastHeardTranscriptRef.current = '';
     if (voiceEndTimerRef.current) { clearTimeout(voiceEndTimerRef.current); voiceEndTimerRef.current = null; }
     if (voicePauseTimerRef.current) { clearTimeout(voicePauseTimerRef.current); voicePauseTimerRef.current = null; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -497,12 +523,27 @@ const ChatSection = () => {
   // Slow-speech endpointing. Recognition now runs continuously, so nothing else ends the
   // turn — it is closed here after the user's chosen pause budget of sustained quiet.
   // Only armed once speech has actually been heard, so the silence before a first word
-  // can never send an empty turn, and cleared the moment the level rises again, which is
-  // what makes a long mid-sentence pause safe while a genuinely finished sentence sends.
+  // can never send an empty turn, and cleared the moment speech resumes, which is what makes
+  // a long mid-sentence pause safe while a genuinely finished sentence sends. Quiet is
+  // measured against the ambient floor rather than a fixed level, so this works in a car.
   useSpeechRecognitionEvent('volumechange', (event) => {
     if (voiceFinalizedRef.current) return;
     const level = typeof event?.value === 'number' ? event.value : 0;
-    if (level >= VOICE_SILENCE_LEVEL) {
+
+    // Track the room/car, not a fixed level, so noise raises the bar for silence.
+    const history = voiceLevelsRef.current;
+    history.push(level);
+    if (history.length > VOICE_FLOOR_WINDOW) history.shift();
+    const floor = ambientFloor(history);
+
+    // A growing transcript is the most reliable "still speaking" signal, and it also covers
+    // a voice the floor test under-calls — a soft voice in a loud cabin, where trusting the
+    // meter alone would end the turn mid-sentence.
+    const transcript = transcriptRef.current;
+    const stillTranscribing = transcript !== lastHeardTranscriptRef.current;
+    if (stillTranscribing) lastHeardTranscriptRef.current = transcript;
+
+    if (stillTranscribing || level > floor + VOICE_SPEECH_MARGIN) {
       voiceSpeechSeenRef.current = true;
       if (voicePauseTimerRef.current) {
         clearTimeout(voicePauseTimerRef.current);
@@ -510,6 +551,10 @@ const ChatSection = () => {
       }
       return;
     }
+    // Between the two margins: neither speaking nor quiet, so the timer is left untouched.
+    // This is what stops fluctuating noise from clearing the pause indefinitely.
+    if (level > floor + VOICE_SILENCE_MARGIN) return;
+
     if (!voiceSpeechSeenRef.current || voicePauseTimerRef.current) return;
     voicePauseTimerRef.current = setTimeout(() => {
       voicePauseTimerRef.current = null;
