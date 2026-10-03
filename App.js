@@ -119,13 +119,13 @@ const AppShell = () => {
         marginTop: Platform.OS === 'ios' ? 0 : 30 // Extra Android safe area if needed
       }}>
         <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flex: 1}}>
-          <View style={{flexDirection: 'row', alignItems: 'center'}}>
-            <Text style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', flexShrink: 1}}>
+            <Text numberOfLines={1} style={{color: theme.colors.black, fontSize: 18, fontWeight: '800'}}>
               {headerTitle}
             </Text>
           </View>
           
-          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end'}}>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'flex-end'}}>
             <HeaderBadge label={providerLabel} color={providerColor} />
 
             <HeaderBadge label="CLOUD" color={theme.colors.success} />

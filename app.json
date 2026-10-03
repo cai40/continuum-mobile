@@ -54,7 +54,7 @@
       }
     },
     "owner": "yongyaocai",
-    "runtimeVersion": "continuum-live-1",
+    "runtimeVersion": "exposdk:54.0.0",
     "updates": {
       "url": "https://u.expo.dev/72c2f736-f17d-4c5d-8037-44bd9ff2e341",
       "checkAutomatically": "ON_LOAD",
