@@ -244,10 +244,17 @@ export const fetchMemories = async (
         onStatusUpdate,
         authToken,
       ).catch(() => []),
-      fetchBrainAnalytics(onStatusUpdate, authToken).catch(() => ({})),
+      fetchBrainAnalytics(onStatusUpdate, authToken).catch(() => null),
       loadLocalPinnedMemories(userId),
       loadHiddenMemories(userId),
     ]);
+    // `pulseFetch` THROWS when /memories fails (503 "UPSTREAM_WAKING" or the 60s timeout, after
+    // its retries) and the `.catch` above turns that into null; the backend signals an internal
+    // failure as `{error}`. Neither may be read as "every layer is empty": the caller would then
+    // overwrite good state with zeros, which collapses L1 to the local pins and shows 0 for
+    // L2-L5 until the next successful refresh. `layeredData: null` means "keep what you have".
+    const layersReceived = rawLayerData != null && !rawLayerData.error;
+
     const mergedPins = mergePinnedMemories(pinData, localPins);
     const filterHidden = (items, layer) =>
       filterHiddenMemoryList(items, layer, hiddenMemories, memoryItemText);
@@ -286,24 +293,20 @@ export const fetchMemories = async (
     }
 
     return {
-      layeredData: processedLayeredData,
+      layeredData: layersReceived ? processedLayeredData : null,
       pinData: Array.isArray(visiblePins) ? visiblePins : [],
-      analytics: analytics || {},
+      // null (not {}) when analytics failed, so the caller skips setBrainStats: an empty object
+      // is truthy and would zero every layer count through its trueCounts fallback.
+      analytics: analytics ?? null,
     };
   } catch (e) {
     console.warn("Memory Fetch Failed:", e);
     const localPins = await loadLocalPinnedMemories(userId);
     if (localPins.length) {
       return {
-        layeredData: {
-          semanticProfile: [],
-          temporalEvents: [],
-          episodicSegments: [],
-          knowledgeBase: [],
-          trueCounts: { l1: localPins.length, l2: 0, l3: 0, l4: 0, l5: 0 },
-        },
+        layeredData: null,
         pinData: localPins,
-        analytics: {},
+        analytics: null,
       };
     }
     throw e;
