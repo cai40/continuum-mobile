@@ -26,7 +26,7 @@ import {
   documentTypeLabel,
   normalizePickedAsset,
 } from "../utils/documentTypes";
-import { API_URL, BUILD_ID, GIT_COMMIT } from "../constants/Config";
+import { API_URL, BUILD_ID, GIT_COMMIT, VOICE_PAUSE_OPTIONS } from "../constants/Config";
 import { styles, theme } from "../styles/theme";
 import { formatFullDate, getImportanceColor } from "../utils/helpers";
 import {
@@ -72,6 +72,8 @@ const SettingsSection = (props) => {
     deviceVoices,
     setDeviceVoiceForLang,
     clearDeviceVoices,
+    voicePauseMs,
+    setVoicePauseMs,
     saveKeys,
     logout,
     clearLocalHistory,
@@ -1561,6 +1563,64 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       {/* The listening-language picker was removed on request: the recognizer now always
           auto-detects, so a pinned locale had no UI to change it and would have stranded
           the user in one language. See the recognizer setup in ChatSection. */}
+
+      <Text style={[categoryTitleStyle, { marginTop: 32 }]}>
+        PAUSE BEFORE SENDING
+      </Text>
+      <Text style={{ fontSize: 12, color: theme.colors.gray, marginBottom: 8, paddingHorizontal: 4 }}>
+        How long you may pause mid-sentence before hands-free voice sends what you have
+        said so far. This only affects how long a silence ends your turn — there is no
+        limit on how long you can speak. Pick the longest pause you are willing to wait
+        through: anything shorter than your own thinking pause will cut you off.
+      </Text>
+
+      <View style={styles.groupedCard}>
+        {VOICE_PAUSE_OPTIONS.map((opt, idx) => (
+          <React.Fragment key={opt.value}>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setVoicePauseMs(opt.value);
+              }}
+              style={{
+                padding: 16,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: 15,
+                    fontWeight: "700",
+                    color: theme.colors.black,
+                  }}
+                >
+                  {opt.label}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: theme.colors.gray,
+                    marginTop: 2,
+                  }}
+                >
+                  {opt.desc}
+                </Text>
+              </View>
+              {voicePauseMs === opt.value && (
+                <Ionicons
+                  name="checkmark-circle"
+                  size={24}
+                  color={theme.colors.success}
+                />
+              )}
+            </TouchableOpacity>
+            {idx < VOICE_PAUSE_OPTIONS.length - 1 && <Divider />}
+          </React.Fragment>
+        ))}
+      </View>
     </ScrollView>
   );
 

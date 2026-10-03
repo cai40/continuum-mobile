@@ -24,6 +24,18 @@ export const SYNC_COOLDOWN = 30000; // 30s
 export const SILENCE_THRESHOLD = -35; // dB
 export const SHORT_SILENCE_TIMEOUT = 2000; // 2s
 export const LONG_SILENCE_TIMEOUT = 10000; // 10s
+// How long a pause in speech may last before hands-free voice mode treats the turn as
+// finished and sends it. The recognizer used to end the turn by itself after a second or
+// two of quiet, which cut slow speakers off mid-sentence, so the turn is ended by this
+// pause budget instead. User-adjustable in Setup → Voice & Audio.
+export const VOICE_PAUSE_DEFAULT_MS = 4000;
+export const VOICE_PAUSE_OPTIONS = [
+  { value: 2000, label: '2 seconds', desc: 'Quickest — sends soon after you stop speaking' },
+  { value: 3000, label: '3 seconds', desc: 'A short pause' },
+  { value: 4000, label: '4 seconds', desc: 'Default — a comfortable pause mid-sentence' },
+  { value: 6000, label: '6 seconds', desc: 'Relaxed — for slower, deliberate speech' },
+  { value: 10000, label: '10 seconds', desc: 'Longest — for slow speech with thinking pauses' },
+];
 export const BUILD_ID = "3.4.105-CloudSchemaFix";
 export const APP_VERSION = "3.4.105";
 export const GIT_COMMIT = '072707c';

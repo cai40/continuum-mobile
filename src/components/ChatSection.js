@@ -17,7 +17,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
 import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt, fetchChatHistory, backfillChatHistory } from '../services/apiService';
-import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT } from '../constants/Config';
+import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT, VOICE_PAUSE_DEFAULT_MS } from '../constants/Config';
 import { resolveRenderEmailBridgeSecret, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/emailBridge';
 import { resolveEmailFetchPayload } from '../utils/emailOptions';
 import {
@@ -131,13 +131,13 @@ const STT_CAPTURE_FILE = 'stt_capture.wav';
 // End-of-turn tuning for slow speech. Recognition runs in continuous mode so a
 // mid-sentence pause no longer ends the turn (the engine's own 3s non-continuous
 // timer and its early "final-like" reset both cut sentences short), and the turn is
-// closed here instead, after this much sustained silence. VOICE_SILENCE_LEVEL follows
-// the library's own guidance for metering — the value runs -2…10 and "anything below 0"
-// is inaudible — which is the conservative end of the range and keeps a soft-spoken
-// pause from being mistaken for a finished sentence. The Android service reports raw
-// rmsdB on the same range. If the level is misjudged, the pause never auto-sends and the
-// user taps instead; it does not truncate, which is the failure this replaces.
-const VOICE_PAUSE_MS = 4000;
+// closed here instead, after the user's chosen pause budget (see VOICE_PAUSE_OPTIONS)
+// of sustained silence. VOICE_SILENCE_LEVEL follows the library's own guidance for
+// metering — the value runs -2…10 and "anything below 0" is inaudible — which is the
+// conservative end of the range and keeps a soft-spoken pause from being mistaken for a
+// finished sentence. The Android service reports raw rmsdB on the same range. If the
+// level is misjudged, the pause never auto-sends and the user taps instead; it does not
+// truncate, which is the failure this replaces.
 const VOICE_SILENCE_LEVEL = 0;
 const VOICE_METER_INTERVAL_MS = 300;
 
@@ -183,6 +183,7 @@ const ChatSection = () => {
     slackToken,
     persona,
     deviceVoices,
+    voicePauseMs: voicePauseMsSetting,
     activeTab,
     user,
     session,
@@ -205,6 +206,11 @@ const ChatSection = () => {
     markServerHealthy,
     onRefreshMemories,
   } = useAppContext();
+
+  // The user's chosen pause budget, guarded so a missing or blank value can never end a
+  // turn instantly. Read fresh on every render: useEventListener refreshes its listener
+  // ref each render, so the volumechange handler below always sees the current setting.
+  const voicePauseMs = voicePauseMsSetting || VOICE_PAUSE_DEFAULT_MS;
 
   const [input, setInput] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -465,10 +471,10 @@ const ChatSection = () => {
   });
 
   // Slow-speech endpointing. Recognition now runs continuously, so nothing else ends the
-  // turn — it is closed here after VOICE_PAUSE_MS of sustained quiet. Only armed once
-  // speech has actually been heard, so the silence before a first word can never send an
-  // empty turn, and cleared the moment the level rises again, which is what makes a long
-  // mid-sentence pause safe while a genuinely finished sentence still sends.
+  // turn — it is closed here after the user's chosen pause budget of sustained quiet.
+  // Only armed once speech has actually been heard, so the silence before a first word
+  // can never send an empty turn, and cleared the moment the level rises again, which is
+  // what makes a long mid-sentence pause safe while a genuinely finished sentence sends.
   useSpeechRecognitionEvent('volumechange', (event) => {
     if (voiceFinalizedRef.current) return;
     const level = typeof event?.value === 'number' ? event.value : 0;
@@ -484,7 +490,7 @@ const ChatSection = () => {
     voicePauseTimerRef.current = setTimeout(() => {
       voicePauseTimerRef.current = null;
       if (stopRecordingRef.current) stopRecordingRef.current();
-    }, VOICE_PAUSE_MS);
+    }, voicePauseMs);
   });
 
   useSpeechRecognitionEvent('error', (error) => {
@@ -988,8 +994,8 @@ const ChatSection = () => {
           EXTRA_ENABLE_LANGUAGE_SWITCH: 'balanced',
           EXTRA_LANGUAGE_SWITCH_ALLOWED_LANGUAGES: AUTO_LANGS,
           EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES: AUTO_LANGS,
-          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: VOICE_PAUSE_MS,
-          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: VOICE_PAUSE_MS,
+          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: voicePauseMs,
+          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: voicePauseMs,
         };
       }
       // Persist the raw audio so a failed on-device attempt can be re-transcribed

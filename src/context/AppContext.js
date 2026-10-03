@@ -18,7 +18,7 @@ import {
   fetchSystemVersion,
   setBridgeAuthToken
 } from "../services/apiService";
-import { API_URL, DEFAULT_EMAIL_LIMIT, LEGACY_DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT } from "../constants/Config";
+import { API_URL, DEFAULT_EMAIL_LIMIT, LEGACY_DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT, VOICE_PAUSE_DEFAULT_MS, VOICE_PAUSE_OPTIONS } from "../constants/Config";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
 import { sanitizeUserVisibleContent } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
@@ -95,6 +95,9 @@ export const AppProvider = ({ children }) => {
   // back to the phone's own voice for that language, which is why picking is optional
   // per language rather than all-or-nothing.
   const [deviceVoices, setDeviceVoices] = useState({});
+  // Pause tolerance for hands-free voice mode, in ms. Lives here rather than in
+  // ChatSection so the setting survives a restart and Setup can write it.
+  const [voicePauseMs, setVoicePauseMsState] = useState(VOICE_PAUSE_DEFAULT_MS);
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
@@ -289,6 +292,7 @@ export const AppProvider = ({ children }) => {
           // Legacy single-voice keys: read once, only to seed @device_voices.
           "@device_voice_id",
           "@device_voice_lang",
+          "@voice_pause_ms",
           "@chat_history",
           CHAT_HISTORY_CLEARED_AT_KEY,
           "@persona",
@@ -358,6 +362,12 @@ export const AppProvider = ({ children }) => {
             setProviderState(normalizeProviderId(value));
           }
           if (key === "@auto_model_routing") setAutoModelRoutingState(value !== "false");
+          if (key === "@voice_pause_ms") {
+            const parsed = parseInt(value, 10);
+            // Only values that are still on the menu are accepted, so a hand-edited or
+            // stale value cannot leave voice mode with an unusable pause budget.
+            if (VOICE_PAUSE_OPTIONS.some((o) => o.value === parsed)) setVoicePauseMsState(parsed);
+          }
           if (key === "@persona") setPersona(value);
           if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
           if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
@@ -555,6 +565,17 @@ export const AppProvider = ({ children }) => {
     });
   };
 
+  // Persisted on selection, following setAutoModelRouting — the pause setting is a plain
+  // preference, so it takes effect immediately rather than waiting for "Secure All Keys".
+  const setVoicePauseMs = (value) => {
+    const parsed = parseInt(value, 10);
+    if (!VOICE_PAUSE_OPTIONS.some((o) => o.value === parsed)) return;
+    setVoicePauseMsState(parsed);
+    AsyncStorage.setItem("@voice_pause_ms", String(parsed)).catch((e) => {
+      console.warn("Voice pause persist failed:", e);
+    });
+  };
+
   const setProvider = (nextProvider) => {
     const normalized = normalizeProviderId(nextProvider);
     setProviderState(normalized);
@@ -582,6 +603,7 @@ export const AppProvider = ({ children }) => {
         ["@device_voices", JSON.stringify(deviceVoices)],
         ["@provider", activeProvider],
         ["@auto_model_routing", autoModelRouting ? "true" : "false"],
+        ["@voice_pause_ms", String(voicePauseMs)],
         ["@persona", persona],
       ];
       await AsyncStorage.multiSet(keyData);
@@ -763,6 +785,8 @@ export const AppProvider = ({ children }) => {
         deviceVoices,
         setDeviceVoiceForLang,
         clearDeviceVoices,
+        voicePauseMs,
+        setVoicePauseMs,
         persona,
         setPersona,
         renderEmailBridgeSecret,
