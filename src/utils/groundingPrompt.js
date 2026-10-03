@@ -40,6 +40,41 @@ export const replyLanguageAppend = (langTag) => {
     + `the app's interface are in another language.`;
 };
 
+/** Bound the always-on block so a large pin set cannot crowd out the turn's own context. */
+export const CORE_MEMORY_MAX_ITEMS = 20;
+export const CORE_MEMORY_MAX_CHARS = 4000;
+
+/**
+ * L1 pinned memories are the user's own curated, lasting facts, so they must ride along on
+ * EVERY turn — not only when the user asks to "look up memory". Previously the pins lived
+ * in the Memory UI and reached the model only through similarity search, so a fact the user
+ * had explicitly pinned (children, family, key history) was silently absent from an ordinary
+ * turn and the app appeared to forget it. Returns '' when there is nothing to say so the
+ * caller can leave the persona untouched.
+ */
+export const coreMemoryAppend = (pins = []) => {
+  const lines = [];
+  let chars = 0;
+  for (const pin of (Array.isArray(pins) ? pins : [])) {
+    if (lines.length >= CORE_MEMORY_MAX_ITEMS) break;
+    const content = String(pin?.content ?? pin?.text ?? '').trim();
+    if (!content) continue;
+    // Long pins (e.g. pinned email evidence) are skipped whole rather than truncated,
+    // so the block stays a set of readable facts and never a partial sentence.
+    if (chars + content.length > CORE_MEMORY_MAX_CHARS) continue;
+    chars += content.length;
+    lines.push(`- ${content}`);
+  }
+  if (!lines.length) return '';
+  return [
+    'CORE MEMORY (L1 - always present):',
+    'These are facts the user pinned as their own lasting context. Treat them as always',
+    'true and already known: refer to them naturally without being asked, and never say you',
+    'do not know them or need to look them up.',
+    ...lines,
+  ].join('\n');
+};
+
 export function appendGroundingPersona(persona, extraBlocks = []) {
   const base = persona || '';
   const extras = extraBlocks.filter(Boolean);

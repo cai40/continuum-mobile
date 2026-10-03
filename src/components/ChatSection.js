@@ -26,7 +26,7 @@ import {
   documentIconName,
   normalizePickedAsset,
 } from '../utils/documentTypes';
-import { appendGroundingPersona, replyLanguageAppend, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
+import { appendGroundingPersona, replyLanguageAppend, coreMemoryAppend, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
@@ -182,6 +182,7 @@ const ChatSection = () => {
     braveSearchKey,
     slackToken,
     persona,
+    pinnedMemories,
     deviceVoices,
     voicePauseMs: voicePauseMsSetting,
     activeTab,
@@ -1507,8 +1508,13 @@ const ChatSection = () => {
       // mirrors whatever it transcribes — never a stale language from an earlier turn.
       const replyLangAppend = replyLanguageAppend(detectLangFromText(finalInput));
 
+      // L1 pins ride on every turn so pinned facts (family, children, key history) are
+      // always in context instead of surfacing only on an explicit memory lookup.
+      const coreMemoryBlock = coreMemoryAppend(pinnedMemories);
+
       const personaExtras = [
         ...(replyLangAppend ? [replyLangAppend] : []),
+        ...(coreMemoryBlock ? [coreMemoryBlock] : []),
         ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
         ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
         ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
@@ -1895,6 +1901,7 @@ const ChatSection = () => {
           provider: resolvedProvider,
           persona: appendGroundingPersona(persona, [
             ...(replyLangAppend ? [replyLangAppend] : []),
+            ...(coreMemoryBlock ? [coreMemoryBlock] : []),
             ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
             ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
             ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
