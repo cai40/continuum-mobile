@@ -132,33 +132,15 @@ const STT_CAPTURE_FILE = 'stt_capture.wav';
 // mid-sentence pause no longer ends the turn (the engine's own 3s non-continuous
 // timer and its early "final-like" reset both cut sentences short), and the turn is
 // closed here instead, after the user's chosen pause budget (see VOICE_PAUSE_OPTIONS)
-// of sustained silence.
+// with no new voice.
 //
-// Silence is judged RELATIVE to a rolling ambient floor, never against a fixed level. The
-// metered value runs -2…10 (the Android service reports raw rmsdB on the same range), and an
-// absolute test — the previous `level >= 0` — only works in a quiet room: in a car the
-// ambient floor sits above 0 permanently, so no sample ever counted as silence, the pause
-// timer never armed, and the turn stayed open until the cabin went quiet. Taking the quiet
-// fifth of recent samples folds driving noise into the floor, so even a soft voice still has
-// to clear it. Two margins, not one, so noise hovering between them cannot hold the turn
-// open by itself.
-const VOICE_SPEECH_MARGIN = 5;    // above the floor: the turn is being spoken
-const VOICE_SILENCE_MARGIN = 2;   // near the floor: quiet enough to time the pause
-const VOICE_FLOOR_WINDOW = 20;    // ~6s of samples, so a new environment is learned
-const VOICE_FLOOR_PERCENTILE = 0.2;
+// The end of the turn is decided by RECOGNIZED VOICE, not by loudness. Two earlier designs
+// keyed off the meter and both failed in a car: an absolute test (`level >= 0`) counted every
+// cabin sample as speech so the turn never closed until the cabin went quiet, and a
+// noise-relative floor still treated sustained road noise as something to wait out. What
+// actually signals "the user is still talking" is new words arriving from the recognizer; if
+// none arrive for the pause budget, the turn is over — whatever the background is doing.
 const VOICE_METER_INTERVAL_MS = 300;
-
-/**
- * Ambient noise floor: the quiet fifth of the recent samples. A percentile rather than an
- * average, because an average is dragged up by the very speech we need to detect, and rather
- * than a running minimum, which latches onto one unusually quiet sample and never recovers.
- */
-const ambientFloor = (levels) => {
-  if (!levels.length) return -2;
-  const sorted = [...levels].sort((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.floor(sorted.length * VOICE_FLOOR_PERCENTILE));
-  return sorted[idx];
-};
 
 // Spanish and English share the Latin alphabet, so script cannot separate them; frequent
 // function words can, and a real sentence always has several. CJK stays a pure script
@@ -294,11 +276,8 @@ const ChatSection = () => {
   // so silence *before* any speech is ever heard cannot send an empty turn.
   const voicePauseTimerRef = useRef(null);
   const voiceSpeechSeenRef = useRef(false);
-  // Rolling meter history for the ambient noise floor (see ambientFloor). Deliberately NOT
-  // reset per turn: a cold window would start from the first sample, and if that sample was
-  // speech the floor would sit at speech level and the next pause would send early.
-  const voiceLevelsRef = useRef([]);
-  // Last transcript seen by the metering loop, so a growing transcript counts as "speaking".
+  // Last transcript the endpointing loop saw. New words are the only evidence that voice
+  // arrived, so this is what keeps the turn open — the meter is not consulted at all.
   const lastHeardTranscriptRef = useRef('');
   const sendMessageRef = useRef(null);
   const speakAssistantReplyRef = useRef(null);
@@ -520,41 +499,29 @@ const ChatSection = () => {
     }
   });
 
-  // Slow-speech endpointing. Recognition now runs continuously, so nothing else ends the
-  // turn — it is closed here after the user's chosen pause budget of sustained quiet.
-  // Only armed once speech has actually been heard, so the silence before a first word
-  // can never send an empty turn, and cleared the moment speech resumes, which is what makes
-  // a long mid-sentence pause safe while a genuinely finished sentence sends. Quiet is
-  // measured against the ambient floor rather than a fixed level, so this works in a car.
-  useSpeechRecognitionEvent('volumechange', (event) => {
+  // End-of-turn: the turn is over once no new words have arrived for the pause budget.
+  // Recognition runs continuously, so nothing else closes it — this replaces the engine's own
+  // non-continuous timers, which cut slow speech short. The meter is deliberately unused: it
+  // reports loudness, and loudness cannot tell speech from a car, so any level test either
+  // ends the turn at the first quiet moment or waits out the noise. New words can.
+  useSpeechRecognitionEvent('volumechange', () => {
     if (voiceFinalizedRef.current) return;
-    const level = typeof event?.value === 'number' ? event.value : 0;
 
-    // Track the room/car, not a fixed level, so noise raises the bar for silence.
-    const history = voiceLevelsRef.current;
-    history.push(level);
-    if (history.length > VOICE_FLOOR_WINDOW) history.shift();
-    const floor = ambientFloor(history);
-
-    // A growing transcript is the most reliable "still speaking" signal, and it also covers
-    // a voice the floor test under-calls — a soft voice in a loud cabin, where trusting the
-    // meter alone would end the turn mid-sentence.
     const transcript = transcriptRef.current;
-    const stillTranscribing = transcript !== lastHeardTranscriptRef.current;
-    if (stillTranscribing) lastHeardTranscriptRef.current = transcript;
-
-    if (stillTranscribing || level > floor + VOICE_SPEECH_MARGIN) {
-      voiceSpeechSeenRef.current = true;
+    if (transcript !== lastHeardTranscriptRef.current) {
+      // Words arrived: voice is being received. Keep listening and restart the budget. The
+      // `transcript` guard means the empty initial value cannot arm a turn on its own.
+      lastHeardTranscriptRef.current = transcript;
+      if (transcript) voiceSpeechSeenRef.current = true;
       if (voicePauseTimerRef.current) {
         clearTimeout(voicePauseTimerRef.current);
         voicePauseTimerRef.current = null;
       }
       return;
     }
-    // Between the two margins: neither speaking nor quiet, so the timer is left untouched.
-    // This is what stops fluctuating noise from clearing the pause indefinitely.
-    if (level > floor + VOICE_SILENCE_MARGIN) return;
 
+    // No new words this tick. Arm the budget once and let it run: because only new words can
+    // clear it, background noise can no longer hold the turn open.
     if (!voiceSpeechSeenRef.current || voicePauseTimerRef.current) return;
     voicePauseTimerRef.current = setTimeout(() => {
       voicePauseTimerRef.current = null;
@@ -1051,8 +1018,8 @@ const ChatSection = () => {
       // iOS 18 reports an end-of-utterance — which truncates slow speech. The turn is
       // closed by the metering pause timer in the volumechange listener instead.
       const startOptions = { lang: baseLang, interimResults: true, continuous: true };
-      // Metering drives that pause timer; it is also what lets a quiet stretch be told
-      // apart from a finished sentence.
+      // Metering now serves only as the ~300ms tick that checks for new words; the level
+      // itself is not used, because loudness cannot separate speech from road noise.
       startOptions.volumeChangeEventOptions = {
         enabled: true,
         intervalMillis: VOICE_METER_INTERVAL_MS,
