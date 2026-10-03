@@ -236,16 +236,19 @@ const SettingsSection = (props) => {
     () => coreMemorySelection(pinnedMemories, semanticProfile),
     [pinnedMemories, semanticProfile],
   );
+  // Each item carries the layer that OWNS its row, so deleting routes to the right place:
+  // pins are pinned_memories (l1), while both identity rows and ranked facts live in the L3
+  // profile. Without this the delete would be applied to the wrong store and silently fail.
   const alwaysOnItems = useMemo(
     () => [
-      ...alwaysOn.pinLines.map((content) => ({ id: `pin:${content}`, content, _layer: 'l1' })),
-      ...alwaysOn.identityLines.map((content) => ({ id: `id:${content}`, content, _layer: 'l1' })),
-      ...alwaysOn.factLines.map((content) => ({ id: `fact:${content}`, content, _layer: 'l1' })),
+      ...alwaysOn.pinLines.map((row) => ({ ...row, _layer: 'l1' })),
+      ...alwaysOn.identityLines.map((row) => ({ ...row, _layer: 'l3' })),
+      ...alwaysOn.factLines.map((row) => ({ ...row, _layer: 'l3' })),
     ],
     [alwaysOn],
   );
 
-  const renderMemoryLayerItems = (items, layer, borderColor, emptyText, readOnly = false) => {
+  const renderMemoryLayerItems = (items, layer, borderColor, emptyText) => {
     const filtered = filterMemoryList(items, layer, memorySearchQuery);
     if (hasMemorySearch && filtered.length === 0) {
       return (
@@ -282,7 +285,10 @@ const SettingsSection = (props) => {
               kind={kind}
               expanded={!!expandedMemoryIds[key]}
               onToggle={() => toggleMemoryExpanded(key)}
-              onDelete={readOnly ? undefined : () => handleDeleteMemory(layer, item)}
+              // Route to the layer that owns the row: always-on items span stores, so a
+              // fixed layer would delete from the wrong one. Everything else is untagged
+              // and falls back to its own layer, unchanged.
+              onDelete={() => handleDeleteMemory(item._layer || layer, item)}
               borderColor={kind === 'evidence' ? theme.colors.success : borderColor}
             />
           );
@@ -2007,9 +2013,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             <Text style={{ fontSize: 11, color: theme.colors.gray, marginBottom: 10 }}>
               Injected into every turn — {alwaysOn.pinLines.length} hand-pinned (always guaranteed)
               {" + "}{alwaysOn.identityLines.length} identity{" + "}{alwaysOn.factLines.length} ranked.
-              Remove a memory from the layer it belongs to below.
+              Use the bin to remove any memory; pinned rows delete here, the rest from L3.
             </Text>
-            {renderMemoryLayerItems(alwaysOnItems, 'l1', theme.colors.primary, 'No always-on memories yet.', true)}
+            {renderMemoryLayerItems(alwaysOnItems, 'l1', theme.colors.primary, 'No always-on memories yet.')}
           </View>
         )}
 

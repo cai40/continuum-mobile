@@ -84,9 +84,9 @@ export const coreMemoryAppend = (pins = [], profile = []) => {
   const { pinLines, identityLines, factLines } = coreMemorySelection(pins, profile);
 
   const sections = [];
-  if (pinLines.length) sections.push('PINNED BY THE USER (highest priority):', ...pinLines.map((c) => `- ${c}`));
-  if (identityLines.length) sections.push('WHO THE USER IS (identity profile):', ...identityLines.map((c) => `- ${c}`));
-  if (factLines.length) sections.push('ALWAYS-ON BACKGROUND (ranked by how often relied on):', ...factLines.map((c) => `- ${c}`));
+  if (pinLines.length) sections.push('PINNED BY THE USER (highest priority):', ...pinLines.map((e) => `- ${e.content}`));
+  if (identityLines.length) sections.push('WHO THE USER IS (identity profile):', ...identityLines.map((e) => `- ${e.content}`));
+  if (factLines.length) sections.push('ALWAYS-ON BACKGROUND (ranked by how often relied on):', ...factLines.map((e) => `- ${e.content}`));
   if (!sections.length) return '';
 
   return [
@@ -100,9 +100,13 @@ export const coreMemoryAppend = (pins = [], profile = []) => {
 
 /**
  * The same selection `coreMemoryAppend` renders, returned as data so the UI can show what is
- * actually always present. Setup's "L1" metric counts only the hand-pinned rows, which
- * understates the block by an order of magnitude — the rest is selected from L3 here, at
- * prompt-build time, so it is not stored as rows anywhere and cannot be counted in a table.
+ * actually always present and let the user delete a row. Setup's "L1" metric counts only the
+ * hand-pinned rows, which understates the block by an order of magnitude — the rest is
+ * selected from L3 here, at prompt-build time, so it is not stored as rows anywhere and
+ * cannot be counted in a table.
+ *
+ * Each entry keeps the source row's `id` (plus its content), because a delete has to target
+ * the row that actually holds the memory; the selected content alone is not enough to find it.
  */
 export const coreMemorySelection = (pins = [], profile = []) => {
   let chars = 0;
@@ -124,7 +128,7 @@ export const coreMemorySelection = (pins = [], profile = []) => {
       if (chars + cost > CORE_MEMORY_MAX_CHARS) continue;
       seen.add(key);
       chars += cost;
-      kept.push(content);
+      kept.push({ id: row?.id ?? null, content });
     }
     return kept;
   };
