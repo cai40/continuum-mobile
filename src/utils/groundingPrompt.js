@@ -41,12 +41,22 @@ export const replyLanguageAppend = (langTag) => {
 };
 
 /** Bound the always-on block so it cannot crowd out the turn's own context. */
-export const CORE_PIN_MAX_ITEMS = 60;        // user-chosen, so in practice all of them
-export const CORE_FACT_MAX_ITEMS = 300;      // auto-selected always-on background
-export const CORE_MEMORY_MAX_CHARS = 48000;  // combined cap, sized so 300 facts fit
+export const CORE_PIN_MAX_ITEMS = 60;         // user-chosen, so in practice all of them
+export const CORE_IDENTITY_MAX_ITEMS = 150;   // L3 identity rows (they describe who the user is)
+export const CORE_FACT_MAX_ITEMS = 300;       // backend-ranked by ACT-R activation
+export const CORE_MEMORY_MAX_CHARS = 60000;   // combined, sized so all of the above fit
 
 /** Case/whitespace-insensitive key, so a hand-pinned fact is not repeated by the selector. */
 const coreKey = (text) => String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Explicit/intimate recollections are kept out of the always-on block. They stay
+ * retrievable through normal RAG when a conversation is actually about them; what they
+ * must not do is ride along on every unrelated turn. Applied to auto-derived identity rows
+ * and ranked facts, but NOT to pins — those the user chose by hand. Mirrors
+ * ALWAYS_ON_EXCLUDE_RE in continuum-core/memory_engine.py; keep the term lists in sync.
+ */
+export const CORE_EXCLUDE_RE = /(sexual|sex|intimat|erotic|orgasm|ejaculat|masturbat|porn|fetish|libido|arous|roleplay|nsfw)/i;
 
 /**
  * Identity rows carry a real `confidence`; conversation facts carry `importance_score`,
@@ -74,12 +84,13 @@ export const coreMemoryAppend = (pins = [], profile = []) => {
   let chars = 0;
   const seen = new Set();
 
-  const take = (rows, maxItems) => {
+  const take = (rows, maxItems, guard = true) => {
     const lines = [];
     for (const row of (Array.isArray(rows) ? rows : [])) {
       if (lines.length >= maxItems) break;
       const content = String(row?.content ?? row?.text ?? '').trim();
       if (!content) continue;
+      if (guard && CORE_EXCLUDE_RE.test(content)) continue;
       const key = coreKey(content);
       if (!key || seen.has(key)) continue;
       // Over-long entries (e.g. pinned email evidence) are skipped whole rather than
@@ -94,21 +105,25 @@ export const coreMemoryAppend = (pins = [], profile = []) => {
     return lines;
   };
 
-  // Pins go first, so `seen` already excludes anything the selector would repeat.
-  const pinLines = take(pins, CORE_PIN_MAX_ITEMS);
+  // Pins go first, so `seen` already excludes anything the selector would repeat. Identity
+  // rows and ranked facts get SEPARATE budgets: a shared cap let the 124 identity rows eat
+  // most of the fact budget, so only ~176 of the backend's 300 ranked facts were used.
+  const pinLines = take(pins, CORE_PIN_MAX_ITEMS, false);
 
-  // Identity rows lead by confidence; conversation facts keep their newest-first order.
+  // Identity rows lead by confidence; the facts arrive already ranked by ACT-R activation.
   const identity = [];
   const facts = [];
   for (const row of (Array.isArray(profile) ? profile : [])) {
     (row?.confidence != null ? identity : facts).push(row);
   }
   identity.sort((a, b) => coreConfidence(b) - coreConfidence(a));
-  const factLines = take([...identity, ...facts], CORE_FACT_MAX_ITEMS);
+  const identityLines = take(identity, CORE_IDENTITY_MAX_ITEMS);
+  const factLines = take(facts, CORE_FACT_MAX_ITEMS);
 
   const sections = [];
   if (pinLines.length) sections.push('PINNED BY THE USER (highest priority):', ...pinLines);
-  if (factLines.length) sections.push('ALWAYS-ON BACKGROUND (from memory):', ...factLines);
+  if (identityLines.length) sections.push('WHO THE USER IS (identity profile):', ...identityLines);
+  if (factLines.length) sections.push('ALWAYS-ON BACKGROUND (ranked by how often relied on):', ...factLines);
   if (!sections.length) return '';
 
   return [
