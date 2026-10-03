@@ -128,6 +128,18 @@ const FULL_FOLDER_PERSONA_APPEND = [
 const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
 const AUTO_LANGS = ['en-US', 'zh-CN', 'es-ES'];
 const STT_CAPTURE_FILE = 'stt_capture.wav';
+// End-of-turn tuning for slow speech. Recognition runs in continuous mode so a
+// mid-sentence pause no longer ends the turn (the engine's own 3s non-continuous
+// timer and its early "final-like" reset both cut sentences short), and the turn is
+// closed here instead, after this much sustained silence. VOICE_SILENCE_LEVEL follows
+// the library's own guidance for metering — the value runs -2…10 and "anything below 0"
+// is inaudible — which is the conservative end of the range and keeps a soft-spoken
+// pause from being mistaken for a finished sentence. The Android service reports raw
+// rmsdB on the same range. If the level is misjudged, the pause never auto-sends and the
+// user taps instead; it does not truncate, which is the failure this replaces.
+const VOICE_PAUSE_MS = 4000;
+const VOICE_SILENCE_LEVEL = 0;
+const VOICE_METER_INTERVAL_MS = 300;
 
 // Spanish and English share the Latin alphabet, so script cannot separate them; frequent
 // function words can, and a real sentence always has several. CJK stays a pure script
@@ -229,6 +241,10 @@ const ChatSection = () => {
   const voiceAudioEndRef = useRef(false);
   const voiceFinalizedRef = useRef(false);
   const voiceEndTimerRef = useRef(null);
+  // Slow-speech support: the metering-driven pause timer that ends the turn, and a flag
+  // so silence *before* any speech is ever heard cannot send an empty turn.
+  const voicePauseTimerRef = useRef(null);
+  const voiceSpeechSeenRef = useRef(false);
   const sendMessageRef = useRef(null);
   const speakAssistantReplyRef = useRef(null);
 
@@ -409,7 +425,9 @@ const ChatSection = () => {
     audioUriRef.current = null;
     voiceAudioEndRef.current = false;
     voiceFinalizedRef.current = false;
+    voiceSpeechSeenRef.current = false;
     if (voiceEndTimerRef.current) { clearTimeout(voiceEndTimerRef.current); voiceEndTimerRef.current = null; }
+    if (voicePauseTimerRef.current) { clearTimeout(voicePauseTimerRef.current); voicePauseTimerRef.current = null; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   });
 
@@ -439,20 +457,46 @@ const ChatSection = () => {
     // in the right locale, the reply is written in the language just spoken, and the
     // matching voice is used (iOS emits no detection event of its own).
     if (transcript) {
+      voiceSpeechSeenRef.current = true;
       const heard = detectLangFromText(transcript);
       if (heard) lastSttLangRef.current = heard;
       else if (hasLatin(transcript)) lastSttLangRef.current = 'en-US';
     }
   });
 
+  // Slow-speech endpointing. Recognition now runs continuously, so nothing else ends the
+  // turn — it is closed here after VOICE_PAUSE_MS of sustained quiet. Only armed once
+  // speech has actually been heard, so the silence before a first word can never send an
+  // empty turn, and cleared the moment the level rises again, which is what makes a long
+  // mid-sentence pause safe while a genuinely finished sentence still sends.
+  useSpeechRecognitionEvent('volumechange', (event) => {
+    if (voiceFinalizedRef.current) return;
+    const level = typeof event?.value === 'number' ? event.value : 0;
+    if (level >= VOICE_SILENCE_LEVEL) {
+      voiceSpeechSeenRef.current = true;
+      if (voicePauseTimerRef.current) {
+        clearTimeout(voicePauseTimerRef.current);
+        voicePauseTimerRef.current = null;
+      }
+      return;
+    }
+    if (!voiceSpeechSeenRef.current || voicePauseTimerRef.current) return;
+    voicePauseTimerRef.current = setTimeout(() => {
+      voicePauseTimerRef.current = null;
+      if (stopRecordingRef.current) stopRecordingRef.current();
+    }, VOICE_PAUSE_MS);
+  });
+
   useSpeechRecognitionEvent('error', (error) => {
     console.warn("Speech Error:", error);
+    if (voicePauseTimerRef.current) { clearTimeout(voicePauseTimerRef.current); voicePauseTimerRef.current = null; }
     setRecording(false);
     // Silent fail or alert based on severity
   });
 
   useSpeechRecognitionEvent('end', () => {
     setRecording(false);
+    if (voicePauseTimerRef.current) { clearTimeout(voicePauseTimerRef.current); voicePauseTimerRef.current = null; }
     if (voiceAudioEndRef.current) {
       finishVoice();
     } else {
@@ -470,6 +514,7 @@ const ChatSection = () => {
     if (voiceFinalizedRef.current) return;
     voiceFinalizedRef.current = true;
     if (voiceEndTimerRef.current) { clearTimeout(voiceEndTimerRef.current); voiceEndTimerRef.current = null; }
+    if (voicePauseTimerRef.current) { clearTimeout(voicePauseTimerRef.current); voicePauseTimerRef.current = null; }
     const said = (transcriptRef.current || '').trim();
     let uri = audioUriRef.current;
     audioUriRef.current = null;
@@ -921,16 +966,30 @@ const ChatSection = () => {
         return detectLangFromText(last?.content) || 'en-US';
       };
       const baseLang = resolveBaseLang();
-      const startOptions = { lang: baseLang, interimResults: true };
+      // continuous keeps the session open through mid-sentence pauses. Without it the
+      // engine ends the turn itself — a 3s no-result timer, plus an early teardown when
+      // iOS 18 reports an end-of-utterance — which truncates slow speech. The turn is
+      // closed by the metering pause timer in the volumechange listener instead.
+      const startOptions = { lang: baseLang, interimResults: true, continuous: true };
+      // Metering drives that pause timer; it is also what lets a quiet stretch be told
+      // apart from a finished sentence.
+      startOptions.volumeChangeEventOptions = {
+        enabled: true,
+        intervalMillis: VOICE_METER_INTERVAL_MS,
+      };
       if (Platform.OS === 'android') {
         // Always allow the Android recognizer to auto-detect/switch language, even
         // when the user picked a specific language (e.g. "en") — so switching to
-        // Chinese mid-utterance still works.
+        // Chinese mid-utterance still works. The silence extras widen Android's own
+        // endpointer to the same pause budget: COMPLETE ends the session, POSSIBLY_COMPLETE
+        // is the one documented to stop "very short mid-speech pauses" cutting it off.
         startOptions.androidIntentOptions = {
           EXTRA_ENABLE_LANGUAGE_DETECTION: true,
           EXTRA_ENABLE_LANGUAGE_SWITCH: 'balanced',
           EXTRA_LANGUAGE_SWITCH_ALLOWED_LANGUAGES: AUTO_LANGS,
           EXTRA_LANGUAGE_DETECTION_ALLOWED_LANGUAGES: AUTO_LANGS,
+          EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS: VOICE_PAUSE_MS,
+          EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS: VOICE_PAUSE_MS,
         };
       }
       // Persist the raw audio so a failed on-device attempt can be re-transcribed
@@ -962,7 +1021,14 @@ const ChatSection = () => {
           await ExpoSpeechRecognitionModule.start({ ...startOptions, lang: 'en-US' });
         } catch (retryErr) {
           console.warn("Engine start failed even with a fallback locale; retrying without audio capture:", retryErr);
-          const minimal = { lang: baseLang, interimResults: true };
+          // Keep the pause tolerance and metering even in the degraded path: dropping
+          // `continuous` here would silently restore the sentence-truncating behaviour.
+          const minimal = {
+            lang: baseLang,
+            interimResults: true,
+            continuous: true,
+            volumeChangeEventOptions: startOptions.volumeChangeEventOptions,
+          };
           // Keep Android's detection extras even when audio capture can't be enabled, so
           // auto-detect still works on-device; only the server-side STT fallback is lost.
           if (startOptions.androidIntentOptions) {
