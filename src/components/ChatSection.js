@@ -183,6 +183,7 @@ const ChatSection = () => {
     slackToken,
     persona,
     pinnedMemories,
+    semanticProfile,
     deviceVoices,
     voicePauseMs: voicePauseMsSetting,
     activeTab,
@@ -1508,9 +1509,10 @@ const ChatSection = () => {
       // mirrors whatever it transcribes — never a stale language from an earlier turn.
       const replyLangAppend = replyLanguageAppend(detectLangFromText(finalInput));
 
-      // L1 pins ride on every turn so pinned facts (family, children, key history) are
-      // always in context instead of surfacing only on an explicit memory lookup.
-      const coreMemoryBlock = coreMemoryAppend(pinnedMemories);
+      // Pins and the top L3 facts ride on every turn so the facts the user cares about
+      // (family, children, identity, key history) are always in context instead of
+      // surfacing only on an explicit memory lookup.
+      const coreMemoryBlock = coreMemoryAppend(pinnedMemories, semanticProfile);
 
       const personaExtras = [
         ...(replyLangAppend ? [replyLangAppend] : []),

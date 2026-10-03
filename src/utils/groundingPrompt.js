@@ -40,38 +40,83 @@ export const replyLanguageAppend = (langTag) => {
     + `the app's interface are in another language.`;
 };
 
-/** Bound the always-on block so a large pin set cannot crowd out the turn's own context. */
-export const CORE_MEMORY_MAX_ITEMS = 20;
-export const CORE_MEMORY_MAX_CHARS = 4000;
+/** Bound the always-on block so it cannot crowd out the turn's own context. */
+export const CORE_PIN_MAX_ITEMS = 60;        // user-chosen, so in practice all of them
+export const CORE_FACT_MAX_ITEMS = 300;      // auto-selected always-on background
+export const CORE_MEMORY_MAX_CHARS = 48000;  // combined cap, sized so 300 facts fit
+
+/** Case/whitespace-insensitive key, so a hand-pinned fact is not repeated by the selector. */
+const coreKey = (text) => String(text || '').toLowerCase().replace(/\s+/g, ' ').trim();
 
 /**
- * L1 pinned memories are the user's own curated, lasting facts, so they must ride along on
- * EVERY turn — not only when the user asks to "look up memory". Previously the pins lived
- * in the Memory UI and reached the model only through similarity search, so a fact the user
- * had explicitly pinned (children, family, key history) was silently absent from an ordinary
- * turn and the app appeared to forget it. Returns '' when there is nothing to say so the
- * caller can leave the persona untouched.
+ * Identity rows carry a real `confidence`; conversation facts carry `importance_score`,
+ * which has no spread in this corpus (median and max are both 1.0), so it cannot rank
+ * them — those keep the newest-first order /memories already returns.
  */
-export const coreMemoryAppend = (pins = []) => {
-  const lines = [];
+const coreConfidence = (row) => {
+  const raw = row?.confidence ?? row?.importance_score;
+  let n = Number(raw);
+  if (!Number.isFinite(n)) return 0;
+  if (n > 1) n = n / 10; // tolerate the legacy 0-10 scale
+  return Math.max(0, Math.min(1, n));
+};
+
+/**
+ * Pinned (L1) memories and the most valuable L3 facts must ride on EVERY turn — not only
+ * when the user asks to "look up memory". Previously both could be missing from an ordinary
+ * turn: the backend function written to inject the pins (PinnedMemory.format_for_prompt)
+ * was dead code, and the client recall block only ran on an explicit memory ask, so a
+ * pinned fact (the children, family, key history) was silently absent and the app appeared
+ * to forget it. Pins lead, then identity rows by confidence, then conversation facts.
+ * Returns '' when there is nothing to say so the caller can leave the persona untouched.
+ */
+export const coreMemoryAppend = (pins = [], profile = []) => {
   let chars = 0;
-  for (const pin of (Array.isArray(pins) ? pins : [])) {
-    if (lines.length >= CORE_MEMORY_MAX_ITEMS) break;
-    const content = String(pin?.content ?? pin?.text ?? '').trim();
-    if (!content) continue;
-    // Long pins (e.g. pinned email evidence) are skipped whole rather than truncated,
-    // so the block stays a set of readable facts and never a partial sentence.
-    if (chars + content.length > CORE_MEMORY_MAX_CHARS) continue;
-    chars += content.length;
-    lines.push(`- ${content}`);
+  const seen = new Set();
+
+  const take = (rows, maxItems) => {
+    const lines = [];
+    for (const row of (Array.isArray(rows) ? rows : [])) {
+      if (lines.length >= maxItems) break;
+      const content = String(row?.content ?? row?.text ?? '').trim();
+      if (!content) continue;
+      const key = coreKey(content);
+      if (!key || seen.has(key)) continue;
+      // Over-long entries (e.g. pinned email evidence) are skipped whole rather than
+      // truncated, so the block stays readable facts and never a partial sentence.
+      // Charge the "- " prefix and newline too, so the cap reflects the real block.
+      const cost = content.length + 3;
+      if (chars + cost > CORE_MEMORY_MAX_CHARS) continue;
+      seen.add(key);
+      chars += cost;
+      lines.push(`- ${content}`);
+    }
+    return lines;
+  };
+
+  // Pins go first, so `seen` already excludes anything the selector would repeat.
+  const pinLines = take(pins, CORE_PIN_MAX_ITEMS);
+
+  // Identity rows lead by confidence; conversation facts keep their newest-first order.
+  const identity = [];
+  const facts = [];
+  for (const row of (Array.isArray(profile) ? profile : [])) {
+    (row?.confidence != null ? identity : facts).push(row);
   }
-  if (!lines.length) return '';
+  identity.sort((a, b) => coreConfidence(b) - coreConfidence(a));
+  const factLines = take([...identity, ...facts], CORE_FACT_MAX_ITEMS);
+
+  const sections = [];
+  if (pinLines.length) sections.push('PINNED BY THE USER (highest priority):', ...pinLines);
+  if (factLines.length) sections.push('ALWAYS-ON BACKGROUND (from memory):', ...factLines);
+  if (!sections.length) return '';
+
   return [
-    'CORE MEMORY (L1 - always present):',
-    'These are facts the user pinned as their own lasting context. Treat them as always',
-    'true and already known: refer to them naturally without being asked, and never say you',
-    'do not know them or need to look them up.',
-    ...lines,
+    'CORE MEMORY (always present):',
+    'These facts the user cares about are always in context. Treat them as already known:',
+    'refer to them naturally without being asked, and never say you do not know them or',
+    'need to look them up.',
+    ...sections,
   ].join('\n');
 };
 
