@@ -22,7 +22,7 @@ const {
 } = sandbox.module.exports;
 
 assert.strictEqual(MAX_IMAGE_ATTACHMENT_BYTES, 20 * 1024 * 1024);
-assert.strictEqual(MAX_ATTACHMENT_BYTES, 1024 * 1024);
+assert.strictEqual(MAX_ATTACHMENT_BYTES, 20 * 1024 * 1024);
 assert.strictEqual(attachmentSizeLimitBytes({ type: 'image/jpeg' }), MAX_IMAGE_ATTACHMENT_BYTES);
 assert.strictEqual(attachmentSizeLimitBytes({ type: 'application/pdf' }), MAX_ATTACHMENT_BYTES);
 assert.strictEqual(formatAttachmentBytes(20 * 1024 * 1024), '20MB');

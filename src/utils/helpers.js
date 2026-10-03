@@ -77,8 +77,8 @@ export { safeJsonStringify };
 
 /** Chat history JSON field should stay under the server multipart part limit. */
 export const MAX_CHAT_UPLOAD_PART_BYTES = 900 * 1024;
-/** Non-image chat attachments (docs / other files). */
-export const MAX_ATTACHMENT_BYTES = 1024 * 1024;
+/** Non-image chat attachments (docs / other files) — match the server's 20MB document cap. */
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 /** Image chat attachments — gallery pick + upload. */
 export const MAX_IMAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 
