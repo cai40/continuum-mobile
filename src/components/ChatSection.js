@@ -169,6 +169,26 @@ const detectLangFromText = (text) => {
 };
 const hasLatin = (text) => /[A-Za-z]/.test(String(text || ''));
 
+// Voice conversation only. The reply should stay in the language the user has mostly been
+// speaking, so an utterance too short or mixed for detectLangFromText to call ("OK", "对",
+// "gracias") does not drop the reply back to the persona's default English. A confident
+// per-turn detection still wins outright, so an intentional language switch takes effect on
+// the first clear sentence; this only supplies the fallback. Bounded, so a user who switches
+// for good is followed within a few turns instead of being outvoted by their history.
+const VOICE_LANG_WINDOW = 6;
+const dominantVoiceLang = (history) => {
+  const counts = new Map();
+  for (const tag of history) counts.set(tag, (counts.get(tag) || 0) + 1);
+  let best = '';
+  let bestN = 0;
+  // Iterating newest-first with a strict `>` makes the most recent language win a tie.
+  for (const tag of history) {
+    const n = counts.get(tag);
+    if (n > bestN) { best = tag; bestN = n; }
+  }
+  return best;
+};
+
 // Register the server-side excerpt fetcher so profile lookups run on the
 // Render bridge (LinkedIn's ~800KB pages OOM the phone if fetched on-device).
 setBridgeExcerptFetcher((bridgeSecret, url) => fetchBridgeExcerpt(bridgeSecret, url));
@@ -244,6 +264,8 @@ const ChatSection = () => {
   // locale is fixed, so the recorded WAV is uploaded and re-transcribed (with
   // language auto-detection) whenever the on-device transcript is unusable.
   const lastSttLangRef = useRef('');
+  // Confident voice detections this session, newest first (see dominantVoiceLang).
+  const voiceLangHistoryRef = useRef([]);
   const transcriptRef = useRef('');
   const audioUriRef = useRef(null);
   const voiceAudioEndRef = useRef(false);
@@ -684,8 +706,13 @@ const ChatSection = () => {
     // written in the language the user just spoke (see REPLY LANGUAGE in the persona), so
     // this is what routes a Chinese turn to the Chinese pick, a Spanish turn to the
     // Spanish pick, and an English turn to the English pick — one selection per language,
-    // switched automatically, with no need to re-pick between turns.
-    const ttsLang = detectLangFromText(spoken) || lastSttLangRef.current || 'en-US';
+    // switched automatically, with no need to re-pick between turns. A reply too short to
+    // call falls back to the language the user has mostly been speaking, so Chinese text is
+    // never read aloud by the English voice.
+    const ttsLang = detectLangFromText(spoken)
+      || dominantVoiceLang(voiceLangHistoryRef.current)
+      || lastSttLangRef.current
+      || 'en-US';
     const primaryLang = (tag) => String(tag || '').split('-')[0].toLowerCase();
     // Only the voice chosen for this reply's language is used; a language with no pick
     // simply falls through to the phone's own voice for that locale.
@@ -1504,10 +1531,19 @@ const ChatSection = () => {
       }
 
       // Ask for the reply in the language just used, so the voice picked to speak it (see
-      // speakAssistantReply) is the one chosen for that language. Derived from the
-      // outgoing text, so a turn carrying only audio adds nothing and the model simply
-      // mirrors whatever it transcribes — never a stale language from an earlier turn.
-      const replyLangAppend = replyLanguageAppend(detectLangFromText(finalInput));
+      // speakAssistantReply) is the one chosen for that language. A confident detection
+      // wins immediately, which is what makes switching language mid-conversation work.
+      const heardLang = detectLangFromText(finalInput);
+      if (isFromVoice && heardLang) {
+        voiceLangHistoryRef.current = [heardLang, ...voiceLangHistoryRef.current].slice(0, VOICE_LANG_WINDOW);
+      }
+      // When the utterance is too short or mixed to call, answer in the language the user
+      // has mostly been speaking rather than dropping the instruction: passing '' straight
+      // through removed the REPLY LANGUAGE block entirely, so a mostly-Chinese voice
+      // conversation fell back to the persona's English on a short turn ("OK", "对").
+      const spokenLang = heardLang
+        || (isFromVoice ? dominantVoiceLang(voiceLangHistoryRef.current) : '');
+      const replyLangAppend = replyLanguageAppend(spokenLang);
 
       // Pins and the top L3 facts ride on every turn so the facts the user cares about
       // (family, children, identity, key history) are always in context instead of
