@@ -426,6 +426,26 @@ export async function deleteMemoryItem(layer, item, authToken, userId = null) {
   return { cloudDeleted, hidden: !cloudDeleted };
 }
 
+/**
+ * Apply a clarification the user gave in chat: keep the claim they chose (or the text they
+ * typed) and dispose of each memory they rejected. Dispositions are per item, so the caller
+ * sends archive (recoverable) or delete (permanent) with every rejected id.
+ */
+export async function resolveMemoryConflict(payload, authToken) {
+  if (!authToken) throw new Error('Not signed in');
+  const res = await pulseFetch(
+    `${API_URL}/memories/clarify`,
+    { method: 'POST', body: JSON.stringify(payload || {}) },
+    1,
+    null,
+    authToken,
+  );
+  if (!res || res.error) {
+    throw new Error((res && res.error) || 'Could not save the clarification.');
+  }
+  return res;
+}
+
 /** Remove duplicate items in one layer (keeps newest per normalized content). */
 export async function dedupeMemoryLayer(layer, items, authToken, userId = null) {
   const layerKey = String(layer || '').toLowerCase();

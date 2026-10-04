@@ -145,6 +145,23 @@ export function attachPinOfferToMessages(messages, pinBody) {
   return out;
 }
 
+/**
+ * Attach a clarification payload to the last assistant bubble, mirroring the pin offer. The
+ * backend streams the question as a normal turn and then this payload, so the two always land
+ * on the same bubble.
+ */
+export function attachClarifyOfferToMessages(messages, clarifyOffer) {
+  if (!clarifyOffer?.claims?.length || !Array.isArray(messages) || !messages.length) return messages;
+  const out = messages.map((m) => ({ ...m }));
+  for (let i = out.length - 1; i >= 0; i -= 1) {
+    if (out[i]?.role === 'assistant') {
+      out[i] = { ...out[i], clarifyOffer };
+      return out;
+    }
+  }
+  return out;
+}
+
 export function memoryItemText(item, layer) {
   if (!item) return '';
   if (layer === 'l4') return String(item.event_description || '');

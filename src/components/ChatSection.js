@@ -16,7 +16,7 @@ import {
 } from 'expo-speech-recognition';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppContext } from '../context/AppContext';
-import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt, fetchChatHistory, backfillChatHistory } from '../services/apiService';
+import { chatStream, renderEmailChatStream, fetchDailyCleanupLatest, fetchMemories, pinCoreMemory, deepseekChatStream, fetchBridgeExcerpt, fetchChatHistory, backfillChatHistory, resolveMemoryConflict } from '../services/apiService';
 import { API_URL, SILENCE_THRESHOLD, SHORT_SILENCE_TIMEOUT, LONG_SILENCE_TIMEOUT, VOICE_PAUSE_DEFAULT_MS } from '../constants/Config';
 import { resolveRenderEmailBridgeSecret, findPriorEmailUserMessage, buildEmailConfirmPayloadMessage } from '../utils/emailBridge';
 import { resolveEmailFetchPayload } from '../utils/emailOptions';
@@ -29,6 +29,7 @@ import {
 import { appendGroundingPersona, replyLanguageAppend, coreMemoryAppend, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
+import MemoryClarifyCard from './shared/MemoryClarifyCard';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
 import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline, isProfileFollowUp, getCachedProfileContext, setBridgeExcerptFetcher } from '../utils/webSearch';
@@ -76,7 +77,7 @@ import { wantsSlackRead, wantsSlackPost, extractSlackChannel, extractSlackPostTe
 import { slackListChannels, slackReadMessages, slackPostMessage, slackIngestChannel } from '../services/apiService';
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch, needsFullMinFolderRefetch } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
-import { extractEmailEvidenceForPin, attachPinOfferToMessages, shouldOfferEmailEvidencePin } from '../utils/memoryDisplay';
+import { extractEmailEvidenceForPin, attachPinOfferToMessages, shouldOfferEmailEvidencePin, attachClarifyOfferToMessages } from '../utils/memoryDisplay';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -288,6 +289,9 @@ const ChatSection = () => {
   // foreground reconcile swap it for the transcript that was actually stored rather
   // than leaving a bubble the server never had.
   const streamTurnRef = useRef(null);
+  // Set by the `clarify` stream event and consumed when the turn is appended, so the
+  // contradiction card lands on the same bubble as the question it belongs to.
+  const clarifyOfferRef = useRef(null);
   const reconcileInFlightRef = useRef(false);
   const reconcileRef = useRef(null);
   // Guards the one-time lost-turn backfill so it runs at most once per app launch.
@@ -411,6 +415,42 @@ const ChatSection = () => {
       Alert.alert('Pin failed', e?.message || 'Could not save to Core Memory.');
     }
   }, [session?.access_token, user?.id, onRefreshMemories]);
+
+  /**
+   * Apply the user's answer to a contradiction raised in chat.
+   *
+   * The backend keeps the claim they chose (or stores the text they typed) and archives or
+   * deletes every memory they rejected, so a refresh is what removes the wrong rows from the
+   * layer lists — archived rows fall out of `/memories` because it only returns `status=active`.
+   */
+  const handleResolveConflict = useCallback(async (item, payload) => {
+    const activeToken = session?.access_token?.trim();
+    if (!activeToken) throw new Error('Not signed in');
+    const res = await resolveMemoryConflict(payload, activeToken);
+    setMessages((prev) => prev.map((m) => (m.id === item.id
+      ? {
+        ...m,
+        clarifyResult: {
+          applied: res?.applied || {},
+          correctId: payload?.correct_id || null,
+          correctText: payload?.correct_text || '',
+        },
+      }
+      : m)));
+    try {
+      await onRefreshMemories?.(activeToken);
+    } catch {
+      // The correction is already stored; a failed refresh just leaves the lists stale.
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    return res;
+  }, [session?.access_token, onRefreshMemories]);
+
+  const handleDismissConflict = useCallback((item) => {
+    // Hide the card only. The question stays in the transcript, and the backend will not ask
+    // about this same pair again, so "Not now" means "not now" rather than "ask me again".
+    setMessages((prev) => prev.map((m) => (m.id === item.id ? { ...m, clarifyDismissed: true } : m)));
+  }, []);
 
   useEffect(() => {
     if (activeTab !== 'chat') {
@@ -1421,6 +1461,7 @@ const ChatSection = () => {
       // switch cannot have its late callbacks append the same reply a second time.
       const activeTurn = { ids: new Set([userMsg.id]), reconciled: false };
       streamTurnRef.current = activeTurn;
+      clarifyOfferRef.current = null;
 
       if (isVoiceMode) {
         try {
@@ -1750,6 +1791,12 @@ const ChatSection = () => {
           if (offerPin) {
             aiMsgs = attachPinOfferToMessages(aiMsgs, pinBody);
           }
+          // The clarification the backend raised instead of answering: the card rides the same
+          // bubble as the question. Consumed once so a later turn cannot inherit it.
+          if (clarifyOfferRef.current) {
+            aiMsgs = attachClarifyOfferToMessages(aiMsgs, clarifyOfferRef.current);
+            clarifyOfferRef.current = null;
+          }
           if (isFromVoice) {
             return prev.map(m => {
               if (m.id === userMsg.id && m.content.includes("Transcribing...")) {
@@ -1910,6 +1957,10 @@ const ChatSection = () => {
               m.id === userMsg.id ? { ...m, content: sanitizeUserVisibleContent(transcript) } : m
             ));
           }
+        } else if (event === 'clarify') {
+          // The backend refused to guess between two contradicting memories: it streamed the
+          // question as this turn's text, and this payload becomes the card on the same bubble.
+          if (json?.claims?.length) clarifyOfferRef.current = json;
         } else if (event === 'nospeech') {
           // Server-side STT heard no speech: drop the placeholder and resume listening
           // rather than leaving a bubble the user never said.
@@ -2302,6 +2353,14 @@ const ChatSection = () => {
                   Pin to L1
                 </Text>
               </TouchableOpacity>
+            ) : null}
+            {item.clarifyOffer && !item.clarifyDismissed ? (
+              <MemoryClarifyCard
+                offer={item.clarifyOffer}
+                result={item.clarifyResult}
+                onResolve={(payload) => handleResolveConflict(item, payload)}
+                onDismiss={() => handleDismissConflict(item)}
+              />
             ) : null}
             {item.role === 'assistant' && item.continuumProviderLabel ? (
               <Text style={{ marginTop: 8, fontSize: 9, fontWeight: '700', color: theme.colors.gray }}>
