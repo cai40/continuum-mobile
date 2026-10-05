@@ -22,9 +22,36 @@ export const WEB_SEARCH_APPEND = [
 export const VOICE_MODE_APPEND = [
   'VOICE MODE: This reply will be spoken aloud.',
   'Write in clear spoken prose with short paragraphs.',
+  'LANGUAGE MATCHING: Always reply in the exact same language that the user spoke to you in their latest message.',
+  'If the user speaks Chinese, reply entirely in Chinese. If the user speaks Spanish, reply entirely in Spanish. If the user speaks English, reply entirely in English.',
+  'Never reply in English when the user addresses you in Chinese or another language.',
   'Do NOT use markdown emphasis markers (asterisks *, underscores _), headings (#), bullet/numbered list markers, code fences, or table pipe syntax.',
   'Prefer plain sentences. Spell out emphasis with words when needed.',
 ].join(' ');
+
+export const CJK_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/g;
+export const ES_MARK_RE = /[ñ¿¡áéíóúü]/i;
+export const ES_WORD_RE = /\b(el|la|los|las|un|una|unos|unas|es|esta|estan|soy|eres|hola|gracias|por|para|con|sin|que|como|muy|pero|tambien|puedo|puedes|quiero|necesito|mi|mis|tu|tus|de|del|en|y|si|donde|cuando|ayuda|ayudame|buenos|buenas|dias|tardes)\b/gi;
+export const EN_WORD_RE = /\b(the|and|you|your|yours|is|are|was|were|of|to|for|with|without|this|that|these|those|what|when|where|how|can|could|would|should|please|thanks|thank|i|my|we|our|they|their|it|its|do|does|did|have|has|had|help|want|there|here|about|from|good|morning|afternoon|evening|in|on|at|as|not|but|if|so|out|just|like|get|need|sorry|yes|hello|hi|ok|okay)\b/gi;
+
+/**
+ * Detect language from text:
+ * - Any CJK character indicates Chinese (standard English/Spanish text never has CJK characters).
+ * - Function words count for Spanish vs English.
+ * - Returns '' when indeterminate so caller can fall back or avoid forcing wrong language.
+ */
+export const detectLangFromText = (text) => {
+  const t = String(text || '');
+  const cjk = (t.match(CJK_RE) || []).length;
+  if (cjk >= 1) return 'zh-CN';
+  const es = (t.match(ES_WORD_RE) || []).length + (ES_MARK_RE.test(t) ? 1 : 0);
+  const en = (t.match(EN_WORD_RE) || []).length;
+  if (es >= 2 && es > en) return 'es-ES';
+  if (en >= 2 && en > es) return 'en-US';
+  return '';
+};
+
+export const hasLatin = (text) => /[A-Za-z]/.test(String(text || ''));
 
 /**
  * Pins the reply to the language the user just used. Hands-free mode needs this because
@@ -33,7 +60,18 @@ export const VOICE_MODE_APPEND = [
  * an unknown tag so the caller can leave the persona untouched.
  */
 export const replyLanguageAppend = (langTag) => {
-  const name = { zh: 'Chinese', en: 'English', es: 'Spanish' }[String(langTag || '').split('-')[0].toLowerCase()];
+  const name = {
+    zh: 'Chinese',
+    en: 'English',
+    es: 'Spanish',
+    ja: 'Japanese',
+    ko: 'Korean',
+    fr: 'French',
+    de: 'German',
+    it: 'Italian',
+    pt: 'Portuguese',
+    ru: 'Russian',
+  }[String(langTag || '').split('-')[0].toLowerCase()];
   if (!name) return '';
   return `REPLY LANGUAGE: The user's latest message is in ${name}. `
     + `Write the entire reply in ${name}, even if earlier turns, the persona above, or `

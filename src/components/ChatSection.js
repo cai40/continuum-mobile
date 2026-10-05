@@ -26,7 +26,7 @@ import {
   documentIconName,
   normalizePickedAsset,
 } from '../utils/documentTypes';
-import { appendGroundingPersona, replyLanguageAppend, coreMemoryAppend, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND } from '../utils/groundingPrompt';
+import { appendGroundingPersona, replyLanguageAppend, coreMemoryAppend, DOCUMENT_ATTACHMENT_APPEND, WEB_SEARCH_APPEND, VOICE_MODE_APPEND, detectLangFromText, hasLatin } from '../utils/groundingPrompt';
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import MemoryClarifyCard from './shared/MemoryClarifyCard';
@@ -142,34 +142,6 @@ const STT_CAPTURE_FILE = 'stt_capture.wav';
 // actually signals "the user is still talking" is new words arriving from the recognizer; if
 // none arrive for the pause budget, the turn is over — whatever the background is doing.
 const VOICE_METER_INTERVAL_MS = 300;
-
-// Spanish and English share the Latin alphabet, so script cannot separate them; frequent
-// function words can, and a real sentence always has several. CJK stays a pure script
-// test because it is unambiguous. Returns '' when the text is too short or too mixed to
-// call, leaving the caller to fall back to the language last heard rather than guess — a
-// wrong answer here would pick the wrong voice.
-//
-// Every word below is deliberately accent-free: JavaScript's \b is ASCII-only, so
-// /\bestá\b/ can never match "está" (the char after á is not a word char, so there is no
-// boundary to find). Accents are counted separately instead — and only worth 1, so an
-// English sentence that happens to mention "café" cannot be read as Spanish on its own.
-// The two lists share no word, so no word can score for both languages.
-const ES_MARK_RE = /[ñ¿¡áéíóúü]/i;
-const ES_WORD_RE = /\b(el|la|los|las|un|una|unos|unas|es|esta|estan|soy|eres|hola|gracias|por|para|con|sin|que|como|muy|pero|tambien|puedo|puedes|quiero|necesito|mi|mis|tu|tus|de|del|en|y|si|donde|cuando|ayuda|ayudame|buenos|buenas|dias|tardes)\b/gi;
-const EN_WORD_RE = /\b(the|and|you|your|yours|is|are|was|were|of|to|for|with|without|this|that|these|those|what|when|where|how|can|could|would|should|please|thanks|thank|i|my|we|our|they|their|it|its|do|does|did|have|has|had|help|want|there|here|about|from|good|morning|afternoon|evening|in|on|at|as|not|but|if|so|out|just|like|get|need|sorry|yes)\b/gi;
-
-const detectLangFromText = (text) => {
-  const t = String(text || '');
-  const cjk = (t.match(CJK_RE) || []).length;
-  const latin = (t.match(/[A-Za-z]/g) || []).length;
-  if (cjk >= 2 && cjk >= latin) return 'zh-CN';
-  const es = (t.match(ES_WORD_RE) || []).length + (ES_MARK_RE.test(t) ? 1 : 0);
-  const en = (t.match(EN_WORD_RE) || []).length;
-  if (es >= 2 && es > en) return 'es-ES';
-  if (en >= 2 && en > es) return 'en-US';
-  return '';
-};
-const hasLatin = (text) => /[A-Za-z]/.test(String(text || ''));
 
 // Voice conversation only. The reply should stay in the language the user has mostly been
 // speaking, so an utterance too short or mixed for detectLangFromText to call ("OK", "对",
@@ -531,11 +503,12 @@ const ChatSection = () => {
     // Learn the spoken language from the transcript script so the next utterance starts
     // in the right locale, the reply is written in the language just spoken, and the
     // matching voice is used (iOS emits no detection event of its own).
+    // Only update if confident — do NOT force 'en-US' merely because hasLatin is true,
+    // as an en-US recognizer listening to Chinese emits Latin phonetic approximations.
     if (transcript) {
       voiceSpeechSeenRef.current = true;
       const heard = detectLangFromText(transcript);
       if (heard) lastSttLangRef.current = heard;
-      else if (hasLatin(transcript)) lastSttLangRef.current = 'en-US';
     }
   });
 
@@ -607,7 +580,13 @@ const ChatSection = () => {
       } catch (e) { /* best effort */ }
     }
     if (uri) {
-      handleVoiceFinished(said, uri);
+      // When audio was captured, prefer server STT unless the on-device recognizer
+      // returned confident Chinese/Spanish text. If on-device text is Latin phonetics
+      // produced by an en-US recognizer listening to non-English speech, passing `said`
+      // would send English phonetic gibberish and force REPLY LANGUAGE: English.
+      const saidLang = detectLangFromText(said);
+      const reliableOnDeviceText = saidLang === 'zh-CN' || saidLang === 'es-ES' ? said : null;
+      handleVoiceFinished(reliableOnDeviceText, uri);
     } else if (said) {
       handleVoiceFinished(said);
     } else {
@@ -1586,16 +1565,20 @@ const ChatSection = () => {
       // Ask for the reply in the language just used, so the voice picked to speak it (see
       // speakAssistantReply) is the one chosen for that language. A confident detection
       // wins immediately, which is what makes switching language mid-conversation work.
+      // However, if this is voice input with audio uploaded for server STT and no confident
+      // on-device non-English detection, do not pin spokenLang to 'en-US' (which would force
+      // the LLM to write in English before the server has even transcribed the audio).
       const heardLang = detectLangFromText(finalInput);
       if (isFromVoice && heardLang) {
         voiceLangHistoryRef.current = [heardLang, ...voiceLangHistoryRef.current].slice(0, VOICE_LANG_WINDOW);
       }
       // When the utterance is too short or mixed to call, answer in the language the user
-      // has mostly been speaking rather than dropping the instruction: passing '' straight
-      // through removed the REPLY LANGUAGE block entirely, so a mostly-Chinese voice
-      // conversation fell back to the persona's English on a short turn ("OK", "对").
+      // has mostly been speaking rather than dropping the instruction.
+      // If voiceUri is present (server transcription in progress), do not force English
+      // unless the history or input is explicitly English.
+      const dominantLang = isFromVoice ? dominantVoiceLang(voiceLangHistoryRef.current) : '';
       const spokenLang = heardLang
-        || (isFromVoice ? dominantVoiceLang(voiceLangHistoryRef.current) : '');
+        || (voiceUri ? (dominantLang === 'en-US' ? '' : dominantLang) : dominantLang);
       const replyLangAppend = replyLanguageAppend(spokenLang);
 
       // Pins and the top L3 facts ride on every turn so the facts the user cares about
@@ -1812,6 +1795,16 @@ const ChatSection = () => {
         activeTurn.reconciled = true;
         streamTurnRef.current = null;
 
+        if (isFromVoice) {
+          const transcriptLang = detectLangFromText(voiceTranscript);
+          const replyLang = detectLangFromText(finalText);
+          const detectedTurnLang = transcriptLang || replyLang;
+          if (detectedTurnLang) {
+            lastSttLangRef.current = detectedTurnLang;
+            voiceLangHistoryRef.current = [detectedTurnLang, ...voiceLangHistoryRef.current.filter(l => l !== detectedTurnLang)].slice(0, VOICE_LANG_WINDOW);
+          }
+        }
+
         if (isVoiceMode) {
           speakAssistantReplyRef.current?.(finalText);
         }
@@ -1956,6 +1949,11 @@ const ChatSection = () => {
             setMessages(prev => prev.map(m =>
               m.id === userMsg.id ? { ...m, content: sanitizeUserVisibleContent(transcript) } : m
             ));
+            const serverLang = detectLangFromText(transcript);
+            if (serverLang) {
+              lastSttLangRef.current = serverLang;
+              voiceLangHistoryRef.current = [serverLang, ...voiceLangHistoryRef.current.filter(l => l !== serverLang)].slice(0, VOICE_LANG_WINDOW);
+            }
           }
         } else if (event === 'clarify') {
           // The backend refused to guess between two contradicting memories: it streamed the
