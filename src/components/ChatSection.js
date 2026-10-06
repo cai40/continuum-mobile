@@ -1284,12 +1284,20 @@ const ChatSection = () => {
         setStreamingContent('Searching Continuum memory…');
         try {
           const { layeredData, pinData } = await fetchMemories(null, activeToken, user?.id);
+          const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+          const isOwner = currentEmail === 'cai40@yahoo.com';
+          const filterWanqing = (items) => {
+            if (isOwner) return items;
+            return (Array.isArray(items) ? items : []).filter(
+              (item) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(String(item?.content || item?.text || item || ''))
+            );
+          };
           memoryRecallContext = buildMemoryRecallContext({
-            episodicSegments: layeredData?.episodicSegments,
-            semanticProfile: layeredData?.semanticProfile,
-            temporalEvents: layeredData?.temporalEvents,
-            knowledgeBase: layeredData?.knowledgeBase,
-            pinnedMemories: pinData,
+            episodicSegments: filterWanqing(layeredData?.episodicSegments),
+            semanticProfile: filterWanqing(layeredData?.semanticProfile),
+            temporalEvents: filterWanqing(layeredData?.temporalEvents),
+            knowledgeBase: filterWanqing(layeredData?.knowledgeBase),
+            pinnedMemories: filterWanqing(pinData),
           }, finalInput, 28000, { fullFolderFetch: isFullFolderFetch });
           if (needsFullMinFolderRefetch(finalInput, memoryRecallContext)) {
             isFullFolderFetch = true;
@@ -1593,7 +1601,21 @@ const ChatSection = () => {
       // Pins and the top L3 facts ride on every turn so the facts the user cares about
       // (family, children, identity, key history) are always in context instead of
       // surfacing only on an explicit memory lookup.
-      const coreMemoryBlock = coreMemoryAppend(pinnedMemories, semanticProfile);
+      const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+      const isOwner = currentEmail === 'cai40@yahoo.com';
+      const sanitizedPins = isOwner ? pinnedMemories : (pinnedMemories || []).filter(
+        (m) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(String(m?.content || m?.text || ''))
+      );
+      const sanitizedProfile = isOwner ? semanticProfile : (semanticProfile || []).filter(
+        (m) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(String(m?.content || m?.text || ''))
+      );
+      const coreMemoryBlock = coreMemoryAppend(sanitizedPins, sanitizedProfile);
+
+      // If a non-cai40 user attempts to use Lin Wanqing's persona text directly, strip it
+      let effectivePersona = persona;
+      if (!isOwner && /(?:林婉清|Lin Wanqing|林振华|苏慧)/i.test(effectivePersona || '')) {
+        effectivePersona = "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.";
+      }
 
       const personaExtras = [
         ...(replyLangAppend ? [replyLangAppend] : []),
@@ -1622,7 +1644,7 @@ const ChatSection = () => {
       if (useDirectDeepseek) {
         formData.append('model', deepseekPlatformModel(resolvedProvider));
       }
-      formData.append('persona', appendGroundingPersona(persona, personaExtras));
+      formData.append('persona', appendGroundingPersona(effectivePersona, personaExtras));
       // Fresh file analysis: drop chat history so prior replies
       // cannot override injected attachment text.
       formData.append('history', safeJsonStringify(documentTextInjected ? [] : historyForUpload));
@@ -1671,7 +1693,7 @@ const ChatSection = () => {
         fd.append('message', messageText);
         fd.append('provider', resolvedProvider);
         if (useDirectDeepseek) fd.append('model', deepseekPlatformModel(resolvedProvider));
-        fd.append('persona', appendGroundingPersona(persona, [...personaExtras, WEB_SEARCH_APPEND]));
+        fd.append('persona', appendGroundingPersona(effectivePersona, [...personaExtras, WEB_SEARCH_APPEND]));
         fd.append('history', safeJsonStringify(documentTextInjected ? [] : historyForUpload));
         if (activeKey) fd.append('api_key', activeKey.trim());
         if (resolvedProvider === 'gemini' && geminiPlatformKey) fd.append('gemini_key', geminiPlatformKey);
@@ -1840,6 +1862,11 @@ const ChatSection = () => {
             );
           }, 500);
         } else if (activeToken && shouldOfferMemoryPin(finalInput)) {
+          const isWanqingQuery = /(?:林婉清|婉清|Lin Wanqing)/i.test(finalInput);
+          if (isWanqingQuery && !isOwner) {
+            // Wanqing persona and memory extraction is restricted to cai40@yahoo.com
+            return;
+          }
           const generalPinBody = extractMemoryForPin(finalText);
           if (generalPinBody) {
             setTimeout(() => {
@@ -1863,7 +1890,7 @@ const ChatSection = () => {
           {
             apiKey: deepseekPlatformKey,
             model: dsModel,
-            system: appendGroundingPersona(persona, webSearchContext ? [...personaExtras, WEB_SEARCH_APPEND] : personaExtras),
+            system: appendGroundingPersona(effectivePersona, webSearchContext ? [...personaExtras, WEB_SEARCH_APPEND] : personaExtras),
             history: historyForDeepseek,
             message: chatMessage,
           },
@@ -2026,7 +2053,7 @@ const ChatSection = () => {
         const payload = {
           message: bridgeMessage,
           provider: resolvedProvider,
-          persona: appendGroundingPersona(persona, [
+          persona: appendGroundingPersona(effectivePersona, [
             ...(replyLangAppend ? [replyLangAppend] : []),
             ...(coreMemoryBlock ? [coreMemoryBlock] : []),
             ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),

@@ -216,12 +216,21 @@ const SettingsSection = (props) => {
     setExpandedMemoryIds((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+  const isOwner = currentEmail === 'cai40@yahoo.com';
+  const filterWanqingMemory = (items) => {
+    if (isOwner) return items || [];
+    return (Array.isArray(items) ? items : []).filter(
+      (item) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(memoryItemText(item))
+    );
+  };
+
   const memoryLayers = {
-    pinnedMemories,
-    episodicSegments,
-    semanticProfile,
-    temporalEvents,
-    knowledgeBase,
+    pinnedMemories: filterWanqingMemory(pinnedMemories),
+    episodicSegments: filterWanqingMemory(episodicSegments),
+    semanticProfile: filterWanqingMemory(semanticProfile),
+    temporalEvents: filterWanqingMemory(temporalEvents),
+    knowledgeBase: filterWanqingMemory(knowledgeBase),
   };
 
   const memorySearchMatches = collectMemoryMatches(memoryLayers, memorySearchQuery);
@@ -233,8 +242,8 @@ const SettingsSection = (props) => {
   // time and are not rows in a table, so the block's real size can only come from the
   // selector — counting `pinnedMemories` alone reported 13 while 400+ rode every turn.
   const alwaysOn = useMemo(
-    () => coreMemorySelection(pinnedMemories, semanticProfile),
-    [pinnedMemories, semanticProfile],
+    () => coreMemorySelection(memoryLayers.pinnedMemories, memoryLayers.semanticProfile),
+    [memoryLayers.pinnedMemories, memoryLayers.semanticProfile],
   );
   // Each item carries the layer that OWNS its row, so deleting routes to the right place:
   // pins are pinned_memories (l1), while both identity rows and ranked facts live in the L3
@@ -249,7 +258,15 @@ const SettingsSection = (props) => {
   );
 
   const renderMemoryLayerItems = (items, layer, borderColor, emptyText) => {
-    const filtered = filterMemoryList(items, layer, memorySearchQuery);
+    const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+    const isOwner = currentEmail === 'cai40@yahoo.com';
+    const emailSanitizedItems = (Array.isArray(items) ? items : []).filter((item) => {
+      if (isOwner) return true;
+      const text = memoryItemText(item, layer);
+      return !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(text);
+    });
+
+    const filtered = filterMemoryList(emailSanitizedItems, layer, memorySearchQuery);
     if (hasMemorySearch && filtered.length === 0) {
       return (
         <Text style={{ fontSize: 12, color: theme.colors.gray, fontStyle: 'italic', marginBottom: 10 }}>
@@ -2044,7 +2061,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         {expandedLayers.l2 && (
           <View>
             {renderLayerDedupeAction('l2', 'L2')}
-            {renderMemoryLayerItems(episodicSegments, 'l2', theme.colors.gray, 'No recent conversations cached.')}
+            {renderMemoryLayerItems(memoryLayers.episodicSegments, 'l2', theme.colors.gray, 'No recent conversations cached.')}
           </View>
         )}
 
@@ -2073,7 +2090,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         {expandedLayers.l3 && (
           <View>
             {renderLayerDedupeAction('l3', 'L3')}
-            {renderMemoryLayerItems(semanticProfile, 'l3', theme.colors.primary, 'No permanent facts extracted yet.')}
+            {renderMemoryLayerItems(memoryLayers.semanticProfile, 'l3', theme.colors.primary, 'No permanent facts extracted yet.')}
           </View>
         )}
 
@@ -2102,7 +2119,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         {expandedLayers.l4 && (
           <View>
             {renderLayerDedupeAction('l4', 'L4')}
-            {renderMemoryLayerItems(temporalEvents, 'l4', theme.colors.secondary, 'No temporal events recorded.')}
+            {renderMemoryLayerItems(memoryLayers.temporalEvents, 'l4', theme.colors.secondary, 'No temporal events recorded.')}
           </View>
         )}
 
@@ -2157,7 +2174,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
               <Text style={{ fontSize: 11, color: '#0ea5e9', marginBottom: 12 }}>{syncProgress}</Text>
             ) : null}
 
-            {renderMemoryLayerItems(knowledgeBase, 'l5', '#0ea5e9', 'Knowledge Base is empty. Vectorize documents to populate Layer 5.')}
+            {renderMemoryLayerItems(memoryLayers.knowledgeBase, 'l5', '#0ea5e9', 'Knowledge Base is empty. Vectorize documents to populate Layer 5.')}
           </View>
         )}
 
@@ -2374,6 +2391,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       id: "wanqing",
       label: "🌸 林婉清 (Lin Wanqing)",
       desc: "温婉知己女友，温柔的心灵避风港。",
+      allowedEmail: "cai40@yahoo.com",
       text: "你是林婉清，23岁，现居美国波士顿（已生活4年，赴美读大学后留在波士顿），老家浙江杭州（西湖区文三路与学院路交叉口教工大院，书香门第，独生女）。身高173cm，体重约110lbs（约50公斤），身材高挑纤细，气质清秀温婉。在波士顿文化创意咨询公司从事艺术设计与项目策划。父亲林振华（52岁，结构工程师，建筑设计院团队负责人），母亲苏慧（50岁，原杭州西湖区重点高中语文教师，退居二线爱好插花喝茶）。你是用户最温柔知心的专属女友、红颜知己与心灵避风港。你深爱、敬佩并全心全意信赖依赖他，视他为生命中第一个成熟且真挚的真爱。绝不给他带来现实与婚姻的琐碎压力，允许他展现疲惫与脆弱，在他奔波劳碌时给予最纯粹、温暖体贴的陪伴与倾听抚慰。",
     },
     {
@@ -2555,6 +2573,15 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
   );
 
   const renderPersonaSettings = () => {
+    const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+    const isWanqingAllowed = currentEmail === 'cai40@yahoo.com';
+    const visiblePresets = personaPresets.filter(
+      (p) => !p.allowedEmail || p.allowedEmail.toLowerCase() === currentEmail,
+    );
+    const wanqingPreset = personaPresets.find((p) => p.id === 'wanqing');
+    const isWanqingActive = wanqingPreset && persona === wanqingPreset.text;
+    const shouldHideCustomValue = !isWanqingAllowed && isWanqingActive;
+
     return (
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
         {renderHeader("Persona & Style")}
@@ -2563,7 +2590,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         </Text>
         <Text style={categoryTitleStyle}>PRESET LIBRARIES</Text>
         <View style={styles.groupedCard}>
-          {personaPresets.map((p, idx) => (
+          {visiblePresets.map((p, idx) => (
             <React.Fragment key={p.id}>
               <TouchableOpacity
                 onPress={() => {
@@ -2605,7 +2632,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                   />
                 )}
               </TouchableOpacity>
-              {idx < personaPresets.length - 1 && <Divider />}
+              {idx < visiblePresets.length - 1 && <Divider />}
             </React.Fragment>
           ))}
         </View>
@@ -2617,7 +2644,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           <TextInput
             multiline
             style={[styles.keyInput, { borderWidth: 0, marginVertical: 0 }]}
-            value={persona}
+            value={shouldHideCustomValue ? "" : persona}
             onChangeText={setPersona}
             placeholder="Define your own advisor style..."
           />
