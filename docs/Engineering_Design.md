@@ -268,3 +268,10 @@ Continuum is a multi-tenant system designed for absolute logical and physical da
 *   **Location Unlock**: Bypassed built-in LLM safety filters to allow the AI to share geographic data with the user.
 *   **Environmental Resilience**: Hardened the weather service with custom User-Agents to bypass cloud-IP blocking on Render.
 *   **Version Sync**: Unified versioning to **v3.4.50** across all Backend, Frontend, and Documentation layers.
+
+### Session 2026-10-06 (v3.4.85): Chat Grounding & Multilingual Intelligence
+*   **Chat Window Grounding (Rule 4 & 13)**: Elevated in-conversation user statements to ground truth and eliminated assistant meta-denials asserting inability to read chat.
+*   **Meta-Denial Sanitization**: Stripped self-reinforcing prior assistant claims regarding missing chat context from recall history payloads.
+*   **Extended Entity-Aware Context**: Extended conversation history retention to 50 turns with CJK and Latin entity preservation across long chats.
+*   **Memory Ingestion & L1 Pinning**: Added Chinese recall keyword detection and enabled direct L1 Core Memory pinning for chat-extracted personas.
+*   **Voice Auto-Language Matching**: Bound audio replies to user's spoken language (Chinese, Spanish, English).

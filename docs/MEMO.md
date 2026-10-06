@@ -28,13 +28,35 @@ This release marks the transition of Continuum 2.0 from a feature-gated prototyp
 *   **Dual Subscription Path**: Redesigned the membership interface to offer "Subscribe Now" and "Free Trial" options for Pro/Elite tiers.
 
 ## 3. Infrastructure Status
-*   **Frontend**: EAS Production Update `v3.4.67` live on all devices.
+*   **Frontend**: EAS Production Update `v3.4.85` live on all devices.
 *   **Backend**: Render Deployment `v3.4.65` live on cloud.
+*   **Email Bridge**: Render Bridge `2026.10.06` live.
 *   **Database**: Schema migrated to support legal audit and capacity tracking.
 
 ## 4. Next Steps
 *   **App Store Submission**: Review the EAS build logs and proceed with final submission to App Store Connect.
 *   **Agentic Roadmap**: Begin preliminary design for "Action Tokens" (Function Calling) to allow the AI to interact with external apps.
+
+---
+
+# Continuum Project Memo: v3.4.85 (Chat Grounding & In-Context Memory)
+**Date**: October 6, 2026
+**Subject**: Anti-Hallucination Grounding, Chat Reading Capabilities, Multilingual Voice Matching
+
+## 1. Summary of Changes
+1. **Chat Window Grounding**:
+   - Updated Grounding Prompt Rules 1, 4, 10, and added Rule 13 to strictly define user inputs in earlier conversation turns as authoritative ground truth.
+   - Forbade assistant disclaimers/meta-denials claiming inability to read the chat window or access past conversation messages.
+2. **Meta-Denial Self-Healing (`sanitizeRecallHistory`)**:
+   - Superseded prior assistant replies that contain reading disclaimers ("无法读取当前聊天窗口", "As an AI I do not have access to current chat") before passing them to the upstream LLM, preventing negative feedback loops.
+3. **Context Length & Entity Retention**:
+   - Expanded message upload limit from 20 to 50 turns.
+   - Implemented entity-aware back-retrieval for older matching messages using CJK and Latin keyword extraction.
+4. **CJK & English Memory Retrieval**:
+   - Added particle-aware segmentation for Chinese recall phrases and persona prompts.
+   - Enabled direct L1 pinning for extracted persona summaries from chat.
+5. **Voice Mode Auto-Language Matching**:
+   - Integrated dynamic language switching ensuring the assistant answers in the exact language spoken by the user.
 
 ---
 *End of Memo*

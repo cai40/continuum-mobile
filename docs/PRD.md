@@ -162,5 +162,6 @@ Continuum chat routes email through **Render cloud email** (`/integrations/email
 *   **Biometric Vault**: ✅ Complete. Smart Autofill operational in v3.4.47.
 *   **Auth Infrastructure**: ✅ Complete. Deep-link verification bridge active.
 *   **Data Sovereignty**: ✅ Complete. RLS-hardened Multi-Tenancy active.
-*   **Yahoo Email Bridge**: ✅ Complete. Date-range fetch, clean-up trash rules, month/year phrases, over-limit permission (`bridge_version` 2026.07.27).
+*   **Yahoo Email Bridge**: ✅ Complete. Date-range fetch, clean-up trash rules, month/year phrases, over-limit permission (`bridge_version` 2026.10.06).
+*   **Chat Grounding & In-Context Memory**: ✅ Complete. Rule 4 & 13 prevent chat reading disclaimers; 50-message context depth with entity preservation; CJK particle-aware memory recall.
 *   **App Store Submission**: In progress. Metadata and screenshots finalized.
