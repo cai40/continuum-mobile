@@ -32,10 +32,10 @@ Continuum has successfully implemented the Dual-Sovereignty Persona-Specific Mem
 8.  **Meta-Denial Self-Healing (`sanitizeRecallHistory`) ✅**: Proactively supersedes prior assistant disclaimers to prevent hallucination feedback loops in subsequent conversation turns.
 9.  **Extended Context Window & Topic Retainment ✅**: Up to 50 turns retained with entity-aware keyword preservation across Chinese and Latin queries.
 10. **Voice Mode Auto-Language Matching ✅**: Hands-free conversation dynamically responds in the exact spoken language (Chinese, Spanish, English).
-11. **Persona Chat Avatar & Headshot Integration ✅**: Added high-definition portrait headshot for 林婉清, displayed beside her chat bubbles in `ChatSection.js`, on the active chat persona banner, in the preset selection list, and on the DSP-CMA sovereign settings panel.
-7.  **Resilient Archiver ✅**: Prioritized L2/L3 digestion via `handle_post_chat_tasks`.
-8.  **Environmental IQ ✅**: Real-time GPS/Weather (`wttr.in`) and Client-Time sync live.
-9.  **Security RLS Framework ✅**: Production-grade policies enabling direct Mobile-to-Cloud vault sync.
+11. **Persona Chat Avatar & Headshot Integration ✅**: Added high-definition portrait headshot for 林婉清 (`wanqing-headshot.jpg`), displayed beside her chat bubbles in `ChatSection.js`, on the active chat persona banner, in the preset selection list, and on the DSP-CMA sovereign settings panel.
+12. **Resilient Archiver ✅**: Prioritized L2/L3 digestion via `handle_post_chat_tasks`.
+13. **Environmental IQ ✅**: Real-time GPS/Weather (`wttr.in`) and Client-Time sync live.
+14. **Security RLS Framework ✅**: Production-grade policies enabling direct Mobile-to-Cloud vault sync.
 
 ## 🚀 Next Steps (Priority)
 1. **Tiered Intelligence Architecture (v3.5)**: Move historical vectors (>60 days) to gzipped JSON storage.
