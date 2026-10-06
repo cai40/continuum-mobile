@@ -59,4 +59,28 @@ This release marks the transition of Continuum 2.0 from a feature-gated prototyp
    - Integrated dynamic language switching ensuring the assistant answers in the exact language spoken by the user.
 
 ---
+
+# Continuum Project Memo: v3.4.86 (Dual-Sovereignty Persona-Specific Memory Architecture)
+**Date**: October 6, 2026
+**Subject**: Persona-Specific Memory Tiers, SOTA ACT-R Memory Evolution, Multi-Persona Isolation
+
+## 1. Executive Summary
+This release implements the Dual-Sovereignty Persona-Specific Memory Architecture (DSP-CMA). All personas share the user's objective reality (L1–L5 Continuum Memory Vault), while each persona maintains an isolated, dynamically evolving private memory space (inner emotional state, subjective impressions of the user, private episodic logs, and diary reflections) with zero cross-persona leakage.
+
+## 2. Key Accomplishments
+1. **Persona Memory Manager (`personaMemoryManager.js`)**:
+   - Implemented 4-tier persona memory model: Core Archetype (Tier 0), Inner Emotional State & Dynamics (Tier 1), Private Episodic Interaction Log (Tier 2), and Relational Milestones / Reflection Diary (Tier 3).
+   - ACT-R inspired bi-temporal activation equation balancing recency decay ($e^{-\lambda \Delta t}$), access frequency, salience (1–10), and semantic relevance.
+2. **Dual Extraction & Conversation Evolution**:
+   - Asynchronous, zero-latency turn evaluation in `ChatSection.js` that evolves the active persona's mood, intimacy level, and episodic memories without blocking UI or streaming.
+3. **Prompt Grounding Assembly**:
+   - Seamlessly injects the active persona's sovereign state into system prompt extras, with complete isolation ensuring other personas never receive foreign private memories.
+4. **Settings Management UI**:
+   - Interactive control panel in Persona Settings for `cai40@yahoo.com` displaying live mood, intimacy progress bar, private thoughts, expandable episodic memory viewer, reflection trigger, and state reset.
+5. **Access Control & Privacy Hardening**:
+   - Gated 林婉清 persona preset, memory retrieval, and chat extraction strictly to `cai40@yahoo.com`.
+6. **Automated Verification**:
+   - Added comprehensive test suite in `scripts/test-persona-memory-tiers.js` covering authorization, ACT-R activation scoring, state evolution, multi-persona isolation, and clean reset.
+
+---
 *End of Memo*

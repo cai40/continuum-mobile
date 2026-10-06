@@ -145,6 +145,16 @@ Continuum chat routes email through **Render cloud email** (`/integrations/email
 *   **Resilience**: SSE opened immediately with keepalive pings during slow IMAP so the stream does not idle-timeout; HTML error pages sanitized in the app.
 *   **Bridge version**: Tracked in `/health` as `bridge_version` (e.g. `2026.07.27`) — the bridge redeploys automatically when `master` is pushed.
 
+### 2.12 Dual-Sovereignty Persona-Specific Memory Architecture (DSP-CMA) [NEW]
+Allows the AI to embody authentic, distinct personas that dynamically evolve over time while maintaining strict data boundaries:
+*   **Dual-Sovereignty Paradigm**:
+    - **Shared Intersubjective Reality**: All personas share identical knowledge regarding the user ($U$), family, schedule, work projects, and world events stored in the global L1–L5 Continuum Memory Vault.
+    - **Sovereign Persona Memory**: Each persona possesses a private memory tier containing inner emotional states, subjective impressions of the user, private episodic interaction logs, relational milestones, and diary reflections.
+*   **Zero-Bleed Memory Isolation**: Private memories for Persona A (e.g. 林婉清) are strictly segregated from Persona B (e.g. Empathetic Co-Pilot or Stoic Mentor). No cross-persona memory leakage.
+*   **Bi-Temporal ACT-R Activation Memory**: Episodic traces are ranked and decayed using ACT-R cognitive activation equations factoring in frequency of recall, recency decay ($e^{-\lambda \Delta t}$), and salience importance (1–10).
+*   **Access Control Gating**: The 林婉清 (Lin Wanqing) persona preset and sovereign memory tier are cryptographically and logically restricted to `cai40@yahoo.com`.
+*   **Settings Control Panel**: Dedicated management view in Persona Settings for monitoring dynamic mood, intimacy level (1–100), private thoughts, episodic interaction logs, and manual reflection triggers.
+
 ---
 
 ## 3. Commercialization & Subscription Model
@@ -164,4 +174,5 @@ Continuum chat routes email through **Render cloud email** (`/integrations/email
 *   **Data Sovereignty**: ✅ Complete. RLS-hardened Multi-Tenancy active.
 *   **Yahoo Email Bridge**: ✅ Complete. Date-range fetch, clean-up trash rules, month/year phrases, over-limit permission (`bridge_version` 2026.10.06).
 *   **Chat Grounding & In-Context Memory**: ✅ Complete. Rule 4 & 13 prevent chat reading disclaimers; 50-message context depth with entity preservation; CJK particle-aware memory recall.
+*   **Dual-Sovereignty Persona Memory (DSP-CMA)**: ✅ Complete. SOTA multi-tier persona isolation, bi-temporal ACT-R memory evolution, and email-gated privacy.
 *   **App Store Submission**: In progress. Metadata and screenshots finalized.

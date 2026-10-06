@@ -78,6 +78,11 @@ import { slackListChannels, slackReadMessages, slackPostMessage, slackIngestChan
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch, needsFullMinFolderRefetch } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
 import {
+  detectPersonaId,
+  buildPersonaGroundingBlock,
+  evolvePersonaState,
+} from '../utils/personaMemoryManager';
+import {
   extractEmailEvidenceForPin,
   extractMemoryForPin,
   attachPinOfferToMessages,
@@ -1617,9 +1622,26 @@ const ChatSection = () => {
         effectivePersona = "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.";
       }
 
+      // Persona-specific sovereign memory tier (DSP-CMA)
+      const activePersonaId = detectPersonaId(effectivePersona);
+      let personaPrivateBlock = '';
+      if (activePersonaId) {
+        try {
+          personaPrivateBlock = await buildPersonaGroundingBlock(
+            activePersonaId,
+            user?.id,
+            currentEmail,
+            chatMessage
+          );
+        } catch (err) {
+          console.warn('[ChatSection] Failed to build persona grounding block:', err);
+        }
+      }
+
       const personaExtras = [
         ...(replyLangAppend ? [replyLangAppend] : []),
         ...(coreMemoryBlock ? [coreMemoryBlock] : []),
+        ...(personaPrivateBlock ? [personaPrivateBlock] : []),
         ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
         ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
         ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
@@ -1845,6 +1867,15 @@ const ChatSection = () => {
           speakAssistantReplyRef.current?.(finalText);
         }
 
+        // Asynchronously evolve persona state and private memory without blocking
+        if (activePersonaId) {
+          evolvePersonaState(activePersonaId, user?.id, {
+            userText: finalInput,
+            assistantText: finalText,
+            userEmail: currentEmail,
+          }).catch((err) => console.warn('[ChatSection] Persona evolution error:', err));
+        }
+
         const pinBodyForAlert = extractEmailEvidenceForPin(finalText)
           || extractEmailEvidenceForPin(finalText.replace(/\*\*/g, ''));
         const offerPinAlert = pinBodyForAlert
@@ -2056,6 +2087,7 @@ const ChatSection = () => {
           persona: appendGroundingPersona(effectivePersona, [
             ...(replyLangAppend ? [replyLangAppend] : []),
             ...(coreMemoryBlock ? [coreMemoryBlock] : []),
+            ...(personaPrivateBlock ? [personaPrivateBlock] : []),
             ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
             ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
             ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),

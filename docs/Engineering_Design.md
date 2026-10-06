@@ -261,6 +261,18 @@ Continuum is a multi-tenant system designed for absolute logical and physical da
 ### 9.3 Cognitive Context Isolation
 *   **LLM "Cold Start"**: For every chat interaction, the system-prompt injection is cleared and rebuilt specifically using only the current tenant's memories. There is no shared "Global Memory Pool" for identity-based reasoning.
 
+### 9.4 Dual-Sovereignty Persona-Specific Memory Architecture (DSP-CMA)
+To provide the authentic feeling of interacting with distinct, living human personas without compromising shared factual reality, Continuum utilizes a dual-sovereignty memory partitioning model:
+*   **Layer Separation**:
+    - **Shared Intersubjective Continuum (L1–L5)**: Captures user profile, family, calendar, business facts, and document fragments. Shared globally across all personas so any persona understands the user's objective reality.
+    - **Sovereign Persona Tiers (`@continuum/persona_memory_<personaId>_<userId>`)**:
+      - **Tier 0 (Core Archetype)**: Base persona profile, biological background, parents, physical attributes, origin.
+      - **Tier 1 (Evolving Inner State)**: Current mood, emotional bond index (1–100), active thoughts, and recent atmosphere.
+      - **Tier 2 (Private Episodic Log)**: Sovereign episodic interactions with ACT-R bi-temporal decay scoring ($A_i = \ln(\text{freq} / \Delta t^d) + \text{Salience} + \text{Similarity}$).
+      - **Tier 3 (Relational Milestones & Reflection Diary)**: Longitudinal relationship milestones and private inner monologues.
+*   **Zero Leakage & Sovereign Isolation**: Persona memories are partitioned per `persona_id`. When switching personas, Persona A's private episodes are never injected into Persona B's context window.
+*   **Tenant Email Gating**: Personas marked with `allowedEmail` (e.g. `cai40@yahoo.com` for 林婉清) strictly block unauthorized tenants from viewing preset configurations, retrieving sovereign memory tiers, or reading persona-specific facts.
+
 ## 10. Workflow Session Log
 
 ### Session 2026-04-26 (v3.4.50): Identity & Environmental Awareness
@@ -275,3 +287,10 @@ Continuum is a multi-tenant system designed for absolute logical and physical da
 *   **Extended Entity-Aware Context**: Extended conversation history retention to 50 turns with CJK and Latin entity preservation across long chats.
 *   **Memory Ingestion & L1 Pinning**: Added Chinese recall keyword detection and enabled direct L1 Core Memory pinning for chat-extracted personas.
 *   **Voice Auto-Language Matching**: Bound audio replies to user's spoken language (Chinese, Spanish, English).
+
+### Session 2026-10-06 (v3.4.86): Dual-Sovereignty Persona Memory Architecture (DSP-CMA)
+*   **Persona Memory Manager (`personaMemoryManager.js`)**: Implemented SOTA multi-tier persona isolation and bi-temporal ACT-R memory evolution.
+*   **Dual Extraction & Post-Turn Evolution**: Connected real-time conversation analysis to adapt mood, intimacy score, episodic memories, and diary reflections asynchronously.
+*   **Prompt Grounding Assembly**: Integrated dynamic persona state blocks into system prompt extras with zero inter-persona memory leakage.
+*   **Persona Settings Management**: Added interactive DSP-CMA control panel in Settings with live mood, closeness progress bar, episodic memory browser, and reflection triggers.
+*   **Access-Control Enforcement**: Gated 林婉清 persona preset and sovereign memory strictly to `cai40@yahoo.com`.

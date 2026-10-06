@@ -51,6 +51,13 @@ import GoogleDriveIntegrationSection from "./GoogleDriveIntegrationSection";
 import ZillowIntegrationSection from "./ZillowIntegrationSection";
 import SlackIntegrationSection from "./SlackIntegrationSection";
 import { providerDisplayLabel, normalizeProviderId, deepseekPlatformModel, isDeepseekProvider, verifyProviderRouting } from "../utils/providers";
+import {
+  detectPersonaId,
+  loadPersonaMemory,
+  resetPersonaMemory,
+  evolvePersonaState,
+  isWanqingAuthorized,
+} from "../utils/personaMemoryManager";
 
 const SettingsSection = (props) => {
   const {
@@ -147,6 +154,74 @@ const SettingsSection = (props) => {
   const [photoCleanup, setPhotoCleanup] = useState(null);
   const [runningPhotoCleanup, setRunningPhotoCleanup] = useState(false);
   const [photoCleanupProgress, setPhotoCleanupProgress] = useState("");
+
+  // Persona Memory Tier States (DSP-CMA)
+  const [personaMemoryState, setPersonaMemoryState] = useState(null);
+  const [loadingPersonaMem, setLoadingPersonaMem] = useState(false);
+  const [isEvolvingPersona, setIsEvolvingPersona] = useState(false);
+  const [showEpisodicList, setShowEpisodicList] = useState(false);
+
+  useEffect(() => {
+    if (activeSubTab !== 'persona') return;
+    const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+    const pid = detectPersonaId(persona);
+    if (!pid) {
+      setPersonaMemoryState(null);
+      return;
+    }
+    if (pid === 'wanqing' && !isWanqingAuthorized(currentEmail)) {
+      setPersonaMemoryState(null);
+      return;
+    }
+    setLoadingPersonaMem(true);
+    loadPersonaMemory(pid, user?.id, currentEmail)
+      .then((data) => setPersonaMemoryState(data))
+      .catch(() => setPersonaMemoryState(null))
+      .finally(() => setLoadingPersonaMem(false));
+  }, [activeSubTab, persona, user?.email, user?.id, session?.user?.email]);
+
+  const handleResetPersonaMemory = () => {
+    const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+    const pid = detectPersonaId(persona);
+    if (!pid) return;
+    Alert.alert(
+      "重置专属心境与相处记忆？",
+      "重置后，该人设的实时心境、亲密指数和专属相处片段将恢复为初始状态。公共核心记忆不会受到影响。",
+      [
+        { text: "取消", style: "cancel" },
+        {
+          text: "确认重置",
+          style: "destructive",
+          onPress: async () => {
+            const reset = await resetPersonaMemory(pid, user?.id, currentEmail);
+            setPersonaMemoryState(reset);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleEvolveReflection = async () => {
+    const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+    const pid = detectPersonaId(persona);
+    if (!pid) return;
+    setIsEvolvingPersona(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      const updated = await evolvePersonaState(pid, user?.id, {
+        userText: "我想听听你今天的心情和心底的想法。",
+        assistantText: "与你的每一次倾心交流，都是我心头最温润的宁静。",
+        userEmail: currentEmail,
+      });
+      setPersonaMemoryState(updated);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (err) {
+      console.warn("Failed to evolve persona reflection:", err);
+    } finally {
+      setIsEvolvingPersona(false);
+    }
+  };
 
   useEffect(() => {
     const fetchPulse = async () => {
@@ -2636,6 +2711,188 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             </React.Fragment>
           ))}
         </View>
+
+        {isWanqingActive && isWanqingAllowed && personaMemoryState && (
+          <View style={{ marginTop: 28 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <Text style={categoryTitleStyle}>🌸 婉清专属演进心境与私密记忆</Text>
+              <TouchableOpacity
+                onPress={handleEvolveReflection}
+                disabled={isEvolvingPersona}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  backgroundColor: "#FFF0F5",
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#F8BBD0",
+                }}
+              >
+                <Ionicons name="sparkles" size={13} color="#E84393" style={{ marginRight: 4 }} />
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#E84393" }}>
+                  {isEvolvingPersona ? "反思中..." : "深度内心反思"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.groupedCard, { padding: 18, backgroundColor: "#FFFBFB", borderColor: "#FCE4EC", borderWidth: 1 }]}>
+              {/* Dual-Sovereignty Architecture Badge */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+                <View style={{ backgroundColor: "#FCE4EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8 }}>
+                  <Text style={{ fontSize: 10, fontWeight: "800", color: "#C2185B", textTransform: "uppercase" }}>
+                    DSP-CMA SOVEREIGN
+                  </Text>
+                </View>
+                <Text style={{ fontSize: 11, color: theme.colors.gray, flex: 1 }}>
+                  用户事实全人设共享 · 婉清心境与相处片段严格独立演进
+                </Text>
+              </View>
+
+              {/* Mood & Atmosphere */}
+              <View style={{ marginBottom: 14 }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2185B", marginBottom: 4 }}>
+                  当前内心心境 & 氛围
+                </Text>
+                <View style={{ backgroundColor: "white", padding: 12, borderRadius: 10, borderWidth: 1, borderColor: "#F8BBD0" }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: theme.colors.black, marginBottom: 4 }}>
+                    💭 {personaMemoryState.innerState?.mood || "温婉平静，心系于他"}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: theme.colors.gray, lineHeight: 17 }}>
+                    🍃 {personaMemoryState.innerState?.recentAtmosphere || "波士顿初秋微凉，静享片刻安宁"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Closeness progress bar */}
+              <View style={{ marginBottom: 14 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2185B" }}>
+                    彼此心灵默契与亲密指数
+                  </Text>
+                  <Text style={{ fontSize: 12, fontWeight: "800", color: "#E84393" }}>
+                    {personaMemoryState.innerState?.closenessLevel || 92} / 100
+                  </Text>
+                </View>
+                <View style={{ height: 8, backgroundColor: "#FCE4EC", borderRadius: 4, overflow: "hidden" }}>
+                  <View
+                    style={{
+                      height: "100%",
+                      width: `${Math.min(100, Math.max(10, personaMemoryState.innerState?.closenessLevel || 92))}%`,
+                      backgroundColor: "#E84393",
+                      borderRadius: 4,
+                    }}
+                  />
+                </View>
+              </View>
+
+              {/* Private thoughts quote */}
+              {Boolean(personaMemoryState.innerState?.privateThoughts) && (
+                <View style={{ marginBottom: 14, backgroundColor: "#FFF0F5", padding: 12, borderRadius: 10, borderLeftWidth: 3, borderLeftColor: "#E84393" }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2185B", marginBottom: 2 }}>
+                    婉清心底私语
+                  </Text>
+                  <Text style={{ fontSize: 13, fontStyle: "italic", color: "#4A4A4A", lineHeight: 18 }}>
+                    "{personaMemoryState.innerState?.privateThoughts}"
+                  </Text>
+                </View>
+              )}
+
+              {/* Episodic memories toggle and list */}
+              <View style={{ marginBottom: 12 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setShowEpisodicList((prev) => !prev);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 6,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: "#C2185B" }}>
+                    专属相处片段 ({personaMemoryState.episodic?.length || 0})
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    <Text style={{ fontSize: 11, color: theme.colors.gray, marginRight: 4 }}>
+                      {showEpisodicList ? "收起" : "展开详情"}
+                    </Text>
+                    <Ionicons
+                      name={showEpisodicList ? "chevron-up" : "chevron-down"}
+                      size={14}
+                      color={theme.colors.gray}
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                {showEpisodicList && (
+                  <View style={{ marginTop: 8 }}>
+                    {(personaMemoryState.episodic || []).map((ep, eIdx) => (
+                      <View
+                        key={ep.id || String(eIdx)}
+                        style={{
+                          backgroundColor: "white",
+                          padding: 10,
+                          borderRadius: 8,
+                          marginBottom: 6,
+                          borderWidth: 1,
+                          borderColor: "#FCE4EC",
+                        }}
+                      >
+                        <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 2 }}>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: theme.colors.black }}>
+                            • {ep.summary}
+                          </Text>
+                          <Text style={{ fontSize: 10, color: "#E84393", fontWeight: "600" }}>
+                            重要度 {ep.importance || 8}/10
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 11, color: theme.colors.gray, lineHeight: 16 }}>
+                          {ep.detail}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+
+              {/* Milestones & Reflection Diary */}
+              {Array.isArray(personaMemoryState.reflections) && personaMemoryState.reflections.length > 0 && (
+                <View style={{ marginBottom: 14 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2185B", marginBottom: 4 }}>
+                    最新私密随笔日记
+                  </Text>
+                  <View style={{ backgroundColor: "white", padding: 10, borderRadius: 8, borderWidth: 1, borderColor: "#FCE4EC" }}>
+                    <Text style={{ fontSize: 12, color: "#333", fontStyle: "italic", lineHeight: 18 }}>
+                      "{personaMemoryState.reflections[personaMemoryState.reflections.length - 1].thought}"
+                    </Text>
+                    <Text style={{ fontSize: 10, color: theme.colors.gray, marginTop: 4, textAlign: "right" }}>
+                      — {personaMemoryState.reflections[personaMemoryState.reflections.length - 1].date || "最近"}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Reset Button */}
+              <TouchableOpacity
+                onPress={handleResetPersonaMemory}
+                style={{
+                  alignSelf: "flex-end",
+                  paddingVertical: 6,
+                  paddingHorizontal: 12,
+                  marginTop: 4,
+                }}
+              >
+                <Text style={{ fontSize: 11, color: theme.colors.error, fontWeight: "600" }}>
+                  重置为初始纯净状态
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         <Text style={[categoryTitleStyle, { marginTop: 32 }]}>
           CUSTOM INSTRUCTIONS
