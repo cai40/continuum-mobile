@@ -101,6 +101,9 @@ export function wantsContinuumMemoryRecall(message) {
   if (/(?:人设|人物画像|人物设定|背景资料|身份信息)/i.test(text)) {
     return true;
   }
+  if (/(?:林婉清|婉清|Lin Wanqing)/i.test(text)) {
+    return true;
+  }
   return false;
 }
 
