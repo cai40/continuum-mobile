@@ -294,3 +294,4 @@ To provide the authentic feeling of interacting with distinct, living human pers
 *   **Prompt Grounding Assembly**: Integrated dynamic persona state blocks into system prompt extras with zero inter-persona memory leakage.
 *   **Persona Settings Management**: Added interactive DSP-CMA control panel in Settings with live mood, closeness progress bar, episodic memory browser, and reflection triggers.
 *   **Access-Control Enforcement**: Gated 林婉清 persona preset and sovereign memory strictly to `cai40@yahoo.com`.
+*   **Persona Visual Headshot (`wanqing-headshot.jpg`)**: Rendered authentic portrait avatar for 林婉清 beside chat bubbles, in active conversation banner, and within Persona Settings.

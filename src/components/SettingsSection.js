@@ -58,6 +58,7 @@ import {
   evolvePersonaState,
   isWanqingAuthorized,
 } from "../utils/personaMemoryManager";
+import { WANQING_HEADSHOT } from "../utils/personaAssets";
 
 const SettingsSection = (props) => {
   const {
@@ -2679,6 +2680,20 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                   justifyContent: "space-between",
                 }}
               >
+                {p.id === 'wanqing' && (
+                  <Image
+                    source={WANQING_HEADSHOT}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      borderWidth: 1.5,
+                      borderColor: '#F8BBD0',
+                      marginRight: 12,
+                      backgroundColor: '#FFF0F5',
+                    }}
+                  />
+                )}
                 <View style={{ flex: 1 }}>
                   <Text
                     style={{
@@ -2738,16 +2753,35 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             </View>
 
             <View style={[styles.groupedCard, { padding: 18, backgroundColor: "#FFFBFB", borderColor: "#FCE4EC", borderWidth: 1 }]}>
-              {/* Dual-Sovereignty Architecture Badge */}
-              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
-                <View style={{ backgroundColor: "#FCE4EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8 }}>
-                  <Text style={{ fontSize: 10, fontWeight: "800", color: "#C2185B", textTransform: "uppercase" }}>
-                    DSP-CMA SOVEREIGN
+              {/* Dual-Sovereignty Architecture Badge & Avatar Header */}
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
+                <Image
+                  source={WANQING_HEADSHOT}
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    borderWidth: 2,
+                    borderColor: '#F8BBD0',
+                    marginRight: 12,
+                    backgroundColor: '#FFF0F5',
+                  }}
+                />
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
+                    <View style={{ backgroundColor: "#FCE4EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "800", color: "#C2185B", textTransform: "uppercase" }}>
+                        DSP-CMA SOVEREIGN
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 14, fontWeight: "800", color: "#C2185B" }}>
+                      林婉清
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: theme.colors.gray }}>
+                    用户事实全人设共享 · 婉清心境与相处片段严格独立演进
                   </Text>
                 </View>
-                <Text style={{ fontSize: 11, color: theme.colors.gray, flex: 1 }}>
-                  用户事实全人设共享 · 婉清心境与相处片段严格独立演进
-                </Text>
               </View>
 
               {/* Mood & Atmosphere */}

@@ -81,7 +81,9 @@ import {
   detectPersonaId,
   buildPersonaGroundingBlock,
   evolvePersonaState,
+  isWanqingAuthorized,
 } from '../utils/personaMemoryManager';
+import { WANQING_HEADSHOT } from '../utils/personaAssets';
 import {
   extractEmailEvidenceForPin,
   extractMemoryForPin,
@@ -234,6 +236,11 @@ const ChatSection = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [location, setLocation] = useState(null);
   const [drivePickerVisible, setDrivePickerVisible] = useState(false);
+
+  const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+  const isOwner = isWanqingAuthorized(currentEmail);
+  const activePersonaId = detectPersonaId(persona);
+  const isWanqingActive = activePersonaId === 'wanqing' && isOwner;
 
   const chatListRef = useRef();
   const inputRef = useRef(null);
@@ -2330,13 +2337,15 @@ const ChatSection = () => {
     if (!item || !item.content) return null;
     const isSelected = selectedIds.has(item.id);
     const isCopyDraft = Boolean(item.copyDraft);
+    const isAssistant = item.role === 'assistant';
+    const showWanqingHeadshot = isAssistant && isWanqingActive;
 
     const copyDraftToClipboard = async () => {
       await Clipboard.setStringAsync(item.content);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     };
 
-    return (
+    const chatBubble = (
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={() => {
@@ -2373,6 +2382,14 @@ const ChatSection = () => {
         }}
         style={[
           item.role === 'user' ? styles.userBubble : styles.aiBubble,
+          showWanqingHeadshot && {
+            maxWidth: '100%',
+            flexShrink: 1,
+            marginVertical: 0,
+            borderColor: '#FCE4EC',
+            borderWidth: 1,
+            backgroundColor: '#FFFBFB',
+          },
           isCopyDraft && {
             borderWidth: 1,
             borderColor: theme.colors.primary + '55',
@@ -2383,6 +2400,11 @@ const ChatSection = () => {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexShrink: 1 }}>
+            {showWanqingHeadshot ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#C2185B' }}>🌸 林婉清</Text>
+              </View>
+            ) : null}
             {isCopyDraft ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <Ionicons name="copy-outline" size={12} color={theme.colors.primary} />
@@ -2479,6 +2501,41 @@ const ChatSection = () => {
         <LatencyHeatmap data={item.latencyData} />
       </TouchableOpacity>
     );
+
+    if (showWanqingHeadshot) {
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'flex-start', maxWidth: '92%', marginVertical: 6 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              Alert.alert(
+                "🌸 林婉清",
+                "23岁 · 现居波士顿 · 艺术设计与文创策划\n温婉知己 · 心灵避风港",
+                [{ text: "好的", style: "cancel" }]
+              );
+            }}
+          >
+            <Image
+              source={WANQING_HEADSHOT}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                marginRight: 8,
+                marginTop: 2,
+                borderWidth: 1.5,
+                borderColor: '#F8BBD0',
+                backgroundColor: '#FFF0F5',
+              }}
+            />
+          </TouchableOpacity>
+          {chatBubble}
+        </View>
+      );
+    }
+
+    return chatBubble;
   };
 
   return (
@@ -2517,6 +2574,43 @@ const ChatSection = () => {
           </TouchableOpacity>
         </View>
       </View>
+      )}
+
+      {!isSelectionMode && isWanqingActive && (
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 16,
+          paddingVertical: 8,
+          backgroundColor: '#FFFBFB',
+          borderBottomWidth: 1,
+          borderBottomColor: '#FCE4EC',
+        }}>
+          <Image
+            source={WANQING_HEADSHOT}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              borderWidth: 1.5,
+              borderColor: '#F8BBD0',
+              marginRight: 10,
+              backgroundColor: '#FFF0F5',
+            }}
+          />
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#C2185B', marginRight: 6 }}>
+                林婉清
+              </Text>
+              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 4 }} />
+              <Text style={{ fontSize: 10, color: '#10B981', fontWeight: '600' }}>在线 · 波士顿</Text>
+            </View>
+            <Text style={{ fontSize: 11, color: theme.colors.gray }} numberOfLines={1}>
+              温婉知己 · 心灵避风港
+            </Text>
+          </View>
+        </View>
       )}
 
       <FlatList

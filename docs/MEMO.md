@@ -81,6 +81,9 @@ This release implements the Dual-Sovereignty Persona-Specific Memory Architectur
    - Gated 林婉清 persona preset, memory retrieval, and chat extraction strictly to `cai40@yahoo.com`.
 6. **Automated Verification**:
    - Added comprehensive test suite in `scripts/test-persona-memory-tiers.js` covering authorization, ACT-R activation scoring, state evolution, multi-persona isolation, and clean reset.
+7. **Persona Chat Avatar & Headshot Integration**:
+   - Added custom visual portrait headshot for 林婉清 (`wanqing-headshot.jpg`).
+   - Integrated headshot beside assistant message bubbles in `ChatSection.js`, on active chat status header, in Settings preset cards, and in the DSP-CMA sovereign memory card.
 
 ---
 *End of Memo*
