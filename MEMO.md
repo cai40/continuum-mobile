@@ -26,7 +26,7 @@ Continuum has successfully implemented the Dual-Sovereignty Persona-Specific Mem
 2.  **Persona Memory Manager (`personaMemoryManager.js`) ✅**: 4-tier model featuring Core Archetype (Tier 0), Inner Emotional State & Dynamics (Tier 1), Private Episodic Interaction Log (Tier 2), and Relational Milestones / Reflection Diary (Tier 3).
 3.  **ACT-R Cognitive Activation Scoring ✅**: Bi-temporal memory decay and activation function balancing recency decay ($e^{-\lambda \Delta t}$), access frequency, salience (1–10), and semantic relevance.
 4.  **Zero-Latency Asynchronous Evolution ✅**: Non-blocking post-turn conversation analysis adapts mood, intimacy level (1–100), episodic memories, and diary reflections.
-5.  **Access Gating & Privacy Enforcement ✅**: 林婉清 (Lin Wanqing) persona preset and sovereign memory tier strictly restricted to `cai40@yahoo.com`.
+5.  **Access Gating & Total Invisibility Enforcement ✅**: 林婉清 (Lin Wanqing) persona preset, pictures, conversation history, and sovereign memory tiers are strictly restricted and 100% invisible to unauthorized users (`!isWanqingAuthorized`). Zero cross-tenant leakage across chat, settings, presets, recall, and modals.
 6.  **Interactive Settings Control Panel ✅**: Persona Settings view for monitoring real-time mood, closeness progress bar, private thoughts, episodic memory browser, and reflection triggers.
 7.  **Chat Window Grounding (Rule 4 & Rule 13) ✅**: Grounding rules establish conversation history as ground truth. Eliminated model meta-denials claiming it cannot read the chat window or access earlier turns.
 8.  **Meta-Denial Self-Healing (`sanitizeRecallHistory`) ✅**: Proactively supersedes prior assistant disclaimers to prevent hallucination feedback loops in subsequent conversation turns.

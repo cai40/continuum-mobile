@@ -79,8 +79,10 @@ This release implements the Dual-Sovereignty Persona-Specific Memory Architectur
    - Interactive control panel in Persona Settings for `cai40@yahoo.com` displaying live mood, intimacy progress bar, private thoughts, expandable episodic memory viewer, reflection trigger, and state reset.
 5. **Access Control & Privacy Hardening**:
    - Gated 林婉清 persona preset, memory retrieval, and chat extraction strictly to `cai40@yahoo.com`.
+   - Complete multi-tenant invisibility: Any item of her (pictures, persona, history, memories) is 100% invisible to unauthorized users across all application layers (`AppContext`, `ChatSection`, `SettingsSection`, `PersonaPortraitModal`, `personaAssets`, and `helpers`).
 6. **Automated Verification**:
    - Added comprehensive test suite in `scripts/test-persona-memory-tiers.js` covering authorization, ACT-R activation scoring, state evolution, multi-persona isolation, and clean reset.
+   - Added dedicated test suite in `scripts/test-wanqing-invisibility.js` validating complete invisibility across pictures, persona, history, and memories for other users.
 7. **Persona Chat Avatar & Headshot Integration**:
    - Added custom visual portrait headshot for 林婉清 (`wanqing-headshot.jpg`).
    - Integrated headshot beside assistant message bubbles in `ChatSection.js`, on active chat status header, in Settings preset cards, and in the DSP-CMA sovereign memory card.

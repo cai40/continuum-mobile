@@ -83,6 +83,7 @@ import {
   buildPersonaGroundingBlock,
   evolvePersonaState,
   isWanqingAuthorized,
+  isWanqingItem,
 } from '../utils/personaMemoryManager';
 import { WANQING_HEADSHOT } from '../utils/personaAssets';
 import {
@@ -241,8 +242,13 @@ const ChatSection = () => {
 
   const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
   const isOwner = isWanqingAuthorized(currentEmail);
-  const activePersonaId = detectPersonaId(persona);
+  const activePersonaId = detectPersonaId(persona, currentEmail);
   const isWanqingActive = activePersonaId === 'wanqing' && isOwner;
+
+  const visibleMessages = useMemo(() => {
+    if (isOwner) return messages;
+    return (Array.isArray(messages) ? messages : []).filter((m) => !isWanqingItem(m));
+  }, [messages, isOwner]);
 
   const chatListRef = useRef();
   const inputRef = useRef(null);
@@ -1051,7 +1057,7 @@ const ChatSection = () => {
       // is what previously made a Chinese or Spanish utterance transcribe as English.
       const resolveBaseLang = () => {
         if (lastSttLangRef.current) return lastSttLangRef.current;
-        const last = messages[messages.length - 1];
+        const last = visibleMessages[visibleMessages.length - 1];
         return detectLangFromText(last?.content) || 'en-US';
       };
       const baseLang = resolveBaseLang();
@@ -1262,7 +1268,7 @@ const ChatSection = () => {
       }
 
       const confirmCleanupKind = isGenericCleanupConfirm(finalInput)
-        ? resolveConfirmCleanupKind(messages, finalInput)
+        ? resolveConfirmCleanupKind(visibleMessages, finalInput)
         : null;
       const isPhotoConfirm = confirmCleanupKind === 'photo';
       const isPhotoCleanupQuery = (wantsPhotoCleanup(finalInput) || wantsPhotoCleanupStatus(finalInput) || isPhotoConfirm)
@@ -1275,9 +1281,9 @@ const ChatSection = () => {
         || (isGenericCleanupConfirm(finalInput) && confirmCleanupKind !== 'photo')
       );
 
-      const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, messages.slice(0, -1));
+      const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, visibleMessages.slice(0, -1));
       let isFullFolderFetch = isExplicitFullEmailFetch(finalInput);
-      let isEmailFollowUpOnly = !isFullFolderFetch && shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
+      let isEmailFollowUpOnly = !isFullFolderFetch && shouldSkipEmailFetchForFollowUp(finalInput, visibleMessages.slice(0, -1));
       let isEmailRecallQuestion = !isFullFolderFetch && isEmailAnalysisFollowUp(finalInput) && !isRecallEvidenceFetch;
 
       const activeToken = session?.access_token?.trim();
@@ -1299,11 +1305,11 @@ const ChatSection = () => {
         try {
           const { layeredData, pinData } = await fetchMemories(null, activeToken, user?.id);
           const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
-          const isOwner = currentEmail === 'cai40@yahoo.com';
+          const isOwner = isWanqingAuthorized(currentEmail);
           const filterWanqing = (items) => {
             if (isOwner) return items;
             return (Array.isArray(items) ? items : []).filter(
-              (item) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(String(item?.content || item?.text || item || ''))
+              (item) => !isWanqingItem(item)
             );
           };
           memoryRecallContext = buildMemoryRecallContext({
@@ -1312,7 +1318,7 @@ const ChatSection = () => {
             temporalEvents: filterWanqing(layeredData?.temporalEvents),
             knowledgeBase: filterWanqing(layeredData?.knowledgeBase),
             pinnedMemories: filterWanqing(pinData),
-          }, finalInput, 28000, { fullFolderFetch: isFullFolderFetch });
+          }, finalInput, 28000, { fullFolderFetch: isFullFolderFetch, userEmail: currentEmail, isOwner });
           if (needsFullMinFolderRefetch(finalInput, memoryRecallContext)) {
             isFullFolderFetch = true;
             isEmailFollowUpOnly = false;
@@ -1434,7 +1440,7 @@ const ChatSection = () => {
       if (isPhotoCleanupQuery) {
         setStreamingContent('Starting photo cleanup…');
         try {
-          const priorPhotoMessage = isPhotoConfirm ? findPriorPhotoUserMessage(messages) : null;
+          const priorPhotoMessage = isPhotoConfirm ? findPriorPhotoUserMessage(visibleMessages) : null;
           const result = await runPhotoCleanupFromChat(finalInput, (detail) => {
             setStreamingContent(detail);
           }, { priorMessage: priorPhotoMessage });
@@ -1514,7 +1520,7 @@ const ChatSection = () => {
         }
       }
 
-      const priorMessages = messages.slice(0, -1);
+      const priorMessages = visibleMessages.slice(0, -1);
       const isAnyRecallTurn = !isFullFolderFetch
         && (isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput));
       const liveEmailFetchScheduled = isEmailBridgeQuery && !isEmailFollowUpOnly;
@@ -1529,15 +1535,19 @@ const ChatSection = () => {
         await validateAttachmentSizes(activeAttachments);
       }
 
-      // `messages` (closure) does not include the current question yet — it is
+      // `visibleMessages` does not include the current question yet — it is
       // added to state via setMessages below. So the full array is already the
       // prior conversation and must be sent in full; slicing off the last item
       // would drop the previous assistant reply, making the model re-answer the
       // prior question alongside the current one.
-      const recallHistoryBase = sanitizeRecallHistory(messages);
-      const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
-        ? trimChatHistoryForEmailRecall(recallHistoryBase, 8, 380 * 1024, finalInput)
-        : trimChatHistoryForUpload(recallHistoryBase, 50, undefined, finalInput);
+      const recallHistoryBase = sanitizeRecallHistory(visibleMessages);
+      let historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
+        ? trimChatHistoryForEmailRecall(recallHistoryBase, 8, 380 * 1024, finalInput, currentEmail, isOwner)
+        : trimChatHistoryForUpload(recallHistoryBase, 50, undefined, finalInput, currentEmail, isOwner);
+
+      if (!isOwner) {
+        historyForUpload = historyForUpload.filter((m) => !isWanqingItem(m));
+      }
 
       if (activeAttachments.length && !isFromVoice) {
         try {
@@ -1616,25 +1626,25 @@ const ChatSection = () => {
       // (family, children, identity, key history) are always in context instead of
       // surfacing only on an explicit memory lookup.
       const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
-      const isOwner = currentEmail === 'cai40@yahoo.com';
+      const isOwner = isWanqingAuthorized(currentEmail);
       const sanitizedPins = isOwner ? pinnedMemories : (pinnedMemories || []).filter(
-        (m) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(String(m?.content || m?.text || ''))
+        (m) => !isWanqingItem(m)
       );
       const sanitizedProfile = isOwner ? semanticProfile : (semanticProfile || []).filter(
-        (m) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(String(m?.content || m?.text || ''))
+        (m) => !isWanqingItem(m)
       );
       const coreMemoryBlock = coreMemoryAppend(sanitizedPins, sanitizedProfile);
 
       // If a non-cai40 user attempts to use Lin Wanqing's persona text directly, strip it
       let effectivePersona = persona;
-      if (!isOwner && /(?:林婉清|Lin Wanqing|林振华|苏慧)/i.test(effectivePersona || '')) {
+      if (!isOwner && isWanqingItem(effectivePersona)) {
         effectivePersona = "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.";
       }
 
       // Persona-specific sovereign memory tier (DSP-CMA)
-      const activePersonaId = detectPersonaId(effectivePersona);
+      const activePersonaId = detectPersonaId(effectivePersona, currentEmail);
       let personaPrivateBlock = '';
-      if (activePersonaId) {
+      if (activePersonaId && isOwner) {
         try {
           personaPrivateBlock = await buildPersonaGroundingBlock(
             activePersonaId,
@@ -1877,7 +1887,7 @@ const ChatSection = () => {
         }
 
         // Asynchronously evolve persona state and private memory without blocking
-        if (activePersonaId) {
+        if (activePersonaId && isOwner) {
           evolvePersonaState(activePersonaId, user?.id, {
             userText: finalInput,
             assistantText: finalText,
@@ -1891,6 +1901,9 @@ const ChatSection = () => {
           && activeToken
           && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });
         if (offerPinAlert) {
+          if (!isOwner && (isWanqingItem(finalInput) || isWanqingItem(finalText) || isWanqingItem(pinBodyForAlert))) {
+            return;
+          }
           setTimeout(() => {
             Alert.alert(
               'Pin email evidence to L1?',
@@ -1902,13 +1915,15 @@ const ChatSection = () => {
             );
           }, 500);
         } else if (activeToken && shouldOfferMemoryPin(finalInput)) {
-          const isWanqingQuery = /(?:林婉清|婉清|Lin Wanqing)/i.test(finalInput);
-          if (isWanqingQuery && !isOwner) {
-            // Wanqing persona and memory extraction is restricted to cai40@yahoo.com
+          if (!isOwner && (isWanqingItem(finalInput) || isWanqingItem(finalText))) {
+            // Wanqing persona and memory extraction is strictly restricted to cai40@yahoo.com
             return;
           }
           const generalPinBody = extractMemoryForPin(finalText);
           if (generalPinBody) {
+            if (!isOwner && isWanqingItem(generalPinBody)) {
+              return;
+            }
             setTimeout(() => {
               Alert.alert(
                 'Save to Core Memory (L1)?',
@@ -2075,7 +2090,7 @@ const ChatSection = () => {
         const useEnrichedBridgeMessage = !isEmailConfirm
           && (memoryRecallContext || isRecallEvidenceFetch || isAnyRecallTurn);
         const emailSourceMessage = isEmailConfirm
-          ? (findPriorEmailUserMessage(messages) || finalInput)
+          ? (findPriorEmailUserMessage(visibleMessages) || finalInput)
           : useEnrichedBridgeMessage
             ? chatMessage
             : finalInput;
@@ -2630,8 +2645,8 @@ const ChatSection = () => {
         onScrollBeginDrag={dismissKeyboard}
         data={
           streamingContent.trim() 
-            ? [{ id: 'stream', role: 'assistant', content: streamingContent }, ...[...messages].reverse()] 
-            : [...messages].reverse()
+            ? [{ id: 'stream', role: 'assistant', content: streamingContent }, ...[...visibleMessages].reverse()] 
+            : [...visibleMessages].reverse()
         }
         keyExtractor={item => item?.id || Math.random().toString()}
         renderItem={renderChatItem}
@@ -2791,11 +2806,13 @@ const ChatSection = () => {
       onClose={() => setDrivePickerVisible(false)}
       onPicked={(file) => addAttachments([file])}
     />
-    {portraitModalVisible && (
+    {portraitModalVisible && isWanqingActive && (
       <PersonaPortraitModal
         visible={portraitModalVisible}
         onClose={() => setPortraitModalVisible(false)}
         imageSource={WANQING_HEADSHOT}
+        userEmail={currentEmail}
+        isAuthorized={isOwner}
         name="林婉清"
         subtitle="温婉知己 · 心灵避风港"
         tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}

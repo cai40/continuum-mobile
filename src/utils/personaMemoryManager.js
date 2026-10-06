@@ -11,7 +11,42 @@ export function isWanqingAuthorized(email) {
   return String(email || '').trim().toLowerCase() === WANQING_AUTHORIZED_EMAIL;
 }
 
-export function detectPersonaId(personaText) {
+export const WANQING_IDENTIFIERS_REGEX = /(?:林婉清|婉清|Lin\s*Wanqing|wanqing|林振华|苏慧|教工大院|文三路与学院路)/i;
+
+/**
+ * Universal detector: Returns true if the provided string or item object belongs to or references Lin Wanqing.
+ * Covers pictures/assets, persona names, family members, specific bio facts, and persona IDs.
+ */
+export function isWanqingItem(item) {
+  if (!item) return false;
+  if (typeof item === 'string') {
+    return WANQING_IDENTIFIERS_REGEX.test(item);
+  }
+  if (typeof item === 'object') {
+    if (item.personaId === 'wanqing' || item.id === 'wanqing') return true;
+    if (item.allowedEmail && String(item.allowedEmail).toLowerCase() === WANQING_AUTHORIZED_EMAIL) return true;
+    const textToCheck = [
+      item.content,
+      item.text,
+      item.label,
+      item.name,
+      item.desc,
+      item.summary,
+      item.detail,
+      item.title,
+      item.bio,
+      item.source,
+      item.uri,
+      item.key,
+      item.category,
+      item.role === 'assistant' ? item.content : null,
+    ].filter(Boolean).map(String).join(' ');
+    return WANQING_IDENTIFIERS_REGEX.test(textToCheck);
+  }
+  return false;
+}
+
+export function detectPersonaId(personaText, ...rest) {
   const text = String(personaText || '');
   if (!text.trim()) return null;
 
@@ -21,6 +56,9 @@ export function detectPersonaId(personaText) {
     /lin\s*wanqing/i.test(text) ||
     /wanqing/i.test(text)
   ) {
+    if (rest.length > 0 && !isWanqingAuthorized(rest[0])) {
+      return null;
+    }
     return 'wanqing';
   }
   if (text.includes("Yongyao's mother") || text.includes("Mother's Voice")) {
@@ -50,8 +88,11 @@ function storageKey(personaId, userId) {
   return `${STORAGE_PREFIX}${pid}_${uid}`;
 }
 
-export function getDefaultPersonaState(personaId) {
+export function getDefaultPersonaState(personaId, ...rest) {
   if (personaId === 'wanqing') {
+    if (rest.length > 0 && !isWanqingAuthorized(rest[0])) {
+      return null;
+    }
     return {
       personaId: 'wanqing',
       name: '林婉清',

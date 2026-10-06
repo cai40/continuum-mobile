@@ -15,6 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
+import { isWanqingAuthorized, isWanqingItem } from '../../utils/personaMemoryManager';
+
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 /**
@@ -22,17 +24,28 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  * Full-screen / large viewer for persona pictures (e.g. 🌸 林婉清).
  * Allows the user to inspect the full size portrait, view her core archetype bio,
  * origin, age, and location, and dismiss seamlessly.
+ * Strictly gated: Any items of Lin Wanqing are completely invisible and un-renderable to unauthorized users.
  */
 export default function PersonaPortraitModal({
   visible,
   onClose,
   imageSource,
+  userEmail,
+  isAuthorized,
   name = "林婉清",
   subtitle = "温婉知己 · 心灵避风港",
   tags = ["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州"],
   bio = "23岁，现居波士顿。艺术设计与文创项目策划。性格温婉内敛却内心坚韧通透，兼具江南水乡的清雅与海外求学生活的开阔视野。善于倾听与真诚共情，是彼此最温暖可靠的心灵避风港。",
 }) {
   if (!visible) return null;
+
+  // Strict tenant gating: Lin Wanqing's picture and bio are strictly inaccessible to unauthorized users
+  const isWanqingModal = isWanqingItem(name) || isWanqingItem(bio) || isWanqingItem(subtitle);
+  if (isWanqingModal) {
+    if (isAuthorized === false) return null;
+    if (userEmail !== undefined && !isWanqingAuthorized(userEmail)) return null;
+    if (isAuthorized === undefined && userEmail === undefined) return null;
+  }
 
   const handleClose = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

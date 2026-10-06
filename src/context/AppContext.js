@@ -22,9 +22,11 @@ import { API_URL, DEFAULT_EMAIL_LIMIT, LEGACY_DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
 import { sanitizeUserVisibleContent } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
+import { isWanqingAuthorized, isWanqingItem } from "../utils/personaMemoryManager";
 
 const AppContext = createContext();
 const CHAT_HISTORY_CLEARED_AT_KEY = "@chat_history_cleared_at";
+const DEFAULT_PERSONA_PROMPT = "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.";
 
 function messageTimeMs(message) {
   const raw = message?.timestamp || message?.created_at || message?.createdAt;
@@ -189,6 +191,11 @@ export const AppProvider = ({ children }) => {
           // Biometric is required for hydrated sessions on cold start
           setIsBiometricAuthenticated(false);
           
+          if (!isWanqingAuthorized(session.user?.email)) {
+            setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
+            setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
+          }
+
           // LEGAL STATUS CHECK (v3.4.55)
           const accepted = await AsyncStorage.getItem(`legal_accepted_${session.user.email}`);
           setHasAcceptedLegal(accepted === 'true');
@@ -196,6 +203,9 @@ export const AppProvider = ({ children }) => {
           fetchAnalytics();
         } else {
           setHasAcceptedLegal(true); // Don't show modal on login screen
+          // Unauthenticated: ensure Wanqing items are wiped from memory
+          setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
+          setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
         }
         // Always try to fetch version even if no session
         const ver = await fetchSystemVersion();
@@ -216,6 +226,12 @@ export const AppProvider = ({ children }) => {
       setSession(session);
       setUser(currentUser);
       
+      const isAuthorized = isWanqingAuthorized(currentUser?.email);
+      if (!isAuthorized) {
+        setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
+        setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
+      }
+
       // CHECK SUPER USER STATUS
       if (currentUser?.email === 'cai40@yahoo.com') {
         setIsSuperUser(true);
@@ -368,15 +384,25 @@ export const AppProvider = ({ children }) => {
             // stale value cannot leave voice mode with an unusable pause budget.
             if (VOICE_PAUSE_OPTIONS.some((o) => o.value === parsed)) setVoicePauseMsState(parsed);
           }
-          if (key === "@persona") setPersona(value);
+          if (key === "@persona") {
+            const currentEmail = user?.email || session?.user?.email;
+            if (!isWanqingAuthorized(currentEmail) && isWanqingItem(value)) {
+              setPersona(DEFAULT_PERSONA_PROMPT);
+            } else {
+              setPersona(value);
+            }
+          }
           if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
           if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
+            const currentEmail = user?.email || session?.user?.email;
+            const isAuthorized = isWanqingAuthorized(currentEmail);
             setMessages(
               parsed
                 .filter((m) => m.content !== "🎙 Voice Transmission")
                 .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
+                .filter((m) => isAuthorized || !isWanqingItem(m))
                 .map((m) => (
                   m?.role === 'user'
                     ? { ...m, content: sanitizeUserVisibleContent(m.content) }
@@ -471,9 +497,12 @@ export const AppProvider = ({ children }) => {
           const existingIds = new Set(prev.map(m => m.id));
           // Strict filtering to prevent crashes from malformed remote data.
           // After an intentional clear, never rehydrate messages from before the clear.
+          const currentEmail = user?.email || session?.user?.email;
+          const isAuthorized = isWanqingAuthorized(currentEmail);
           const incoming = history
             .filter(m => m && m.id && m.content && !existingIds.has(m.id))
             .filter((m) => !hasValidClearedAt || messageTimeMs(m) > clearedAtMs)
+            .filter((m) => isAuthorized || !isWanqingItem(m))
             .map((m) => (
               m.role === 'user'
                 ? { ...m, content: sanitizeUserVisibleContent(m.content) }
@@ -641,15 +670,44 @@ export const AppProvider = ({ children }) => {
         token,
         user?.id,
       );
+      const currentEmail = user?.email || session?.user?.email;
+      const isAuthorized = isWanqingAuthorized(currentEmail);
+      const filterItem = (item) => isAuthorized || !isWanqingItem(item);
+      const cleanList = (list) => (Array.isArray(list) ? list.filter(filterItem) : []);
+
+      const cleanPins = cleanList(pinData);
       if (layeredData) {
-        setSemanticProfile(layeredData.semanticProfile || []);
-        setTemporalEvents(layeredData.temporalEvents || []);
-        setEpisodicSegments(layeredData.episodicSegments || []);
-        setKnowledgeBase(layeredData.knowledgeBase || []);
-        setTrueCounts(layeredData.trueCounts || { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 });
+        const cleanProfile = cleanList(layeredData.semanticProfile);
+        const cleanTemporal = cleanList(layeredData.temporalEvents);
+        const cleanEpisodic = cleanList(layeredData.episodicSegments);
+        const cleanKb = cleanList(layeredData.knowledgeBase);
+        setSemanticProfile(cleanProfile);
+        setTemporalEvents(cleanTemporal);
+        setEpisodicSegments(cleanEpisodic);
+        setKnowledgeBase(cleanKb);
+        if (isAuthorized) {
+          setTrueCounts(layeredData.trueCounts || { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 });
+        } else {
+          setTrueCounts({
+            l1: cleanPins.length,
+            l2: cleanEpisodic.length,
+            l3: cleanProfile.length,
+            l4: cleanTemporal.length,
+            l5: cleanKb.length,
+          });
+        }
       }
-      if (pinData) setPinnedMemories(pinData);
-      if (analytics) setBrainStats(analytics);
+      if (pinData) setPinnedMemories(cleanPins);
+      if (analytics) {
+        if (!isAuthorized) {
+          setBrainStats({
+            ...analytics,
+            pinned_total: cleanPins.length,
+          });
+        } else {
+          setBrainStats(analytics);
+        }
+      }
     } catch (e) {
       console.error("Memory refresh failed:", e);
     }
@@ -753,6 +811,15 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const updatePersona = (nextPersona) => {
+    const currentEmail = user?.email || session?.user?.email;
+    if (!isWanqingAuthorized(currentEmail) && isWanqingItem(nextPersona)) {
+      setPersona(DEFAULT_PERSONA_PROMPT);
+      return;
+    }
+    setPersona(nextPersona);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -788,7 +855,7 @@ export const AppProvider = ({ children }) => {
         voicePauseMs,
         setVoicePauseMs,
         persona,
-        setPersona,
+        setPersona: updatePersona,
         renderEmailBridgeSecret,
         setRenderEmailBridgeSecret,
         emailLimit,

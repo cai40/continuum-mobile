@@ -4,6 +4,7 @@ import {
   buildUidDateIndex,
   parseRecallMonthFromMessage,
 } from './emailRecallEvidence';
+import { isWanqingAuthorized, isWanqingItem } from './personaMemoryManager';
 
 export const formatFullDate = (isoString) => {
   if (!isoString) return 'Pending...';
@@ -121,9 +122,12 @@ function truncateText(text, maxChars) {
 /**
  * Shrink chat history so the JSON history field stays under the server 1MB part limit.
  * Keeps up to maxMessages (default 50) and preserves query-relevant older turns.
+ * Strictly guarantees that unauthorized users receive zero traces of Lin Wanqing.
  */
-export function trimChatHistoryForUpload(messages, maxMessages = 50, maxBytes = MAX_CHAT_UPLOAD_PART_BYTES, query = '') {
-  const all = Array.isArray(messages) ? messages : [];
+export function trimChatHistoryForUpload(messages, maxMessages = 50, maxBytes = MAX_CHAT_UPLOAD_PART_BYTES, query = '', userEmail = null, isOwner = null) {
+  const authorized = isOwner ?? (userEmail !== null && userEmail !== undefined ? isWanqingAuthorized(userEmail) : true);
+  const rawList = Array.isArray(messages) ? messages : [];
+  const all = authorized ? rawList : rawList.filter((m) => !isWanqingItem(m));
   let selected = all.slice(-maxMessages);
 
   // If earlier messages contain query-specific keywords (e.g. entity names like 林婉清)
@@ -329,9 +333,12 @@ function toUploadMessage(message, contentOverride) {
 /**
  * Keep the prior persona analysis in upload history for recall / follow-up turns.
  * Recent-only trimming drops long persona replies many messages above the user question.
+ * Strictly guarantees that unauthorized users receive zero traces of Lin Wanqing.
  */
-export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes = 380 * 1024, recallMessage = null) {
-  const all = Array.isArray(messages) ? messages : [];
+export function trimChatHistoryForEmailRecall(messages, maxRecent = 8, maxBytes = 380 * 1024, recallMessage = null, userEmail = null, isOwner = null) {
+  const authorized = isOwner ?? (userEmail !== null && userEmail !== undefined ? isWanqingAuthorized(userEmail) : true);
+  const rawList = Array.isArray(messages) ? messages : [];
+  const all = authorized ? rawList : rawList.filter((m) => !isWanqingItem(m));
   const persona = findLatestPersonaAnalysisMessage(all);
   const recentSlice = all.slice(-maxRecent);
 

@@ -58,6 +58,7 @@ import {
   resetPersonaMemory,
   evolvePersonaState,
   isWanqingAuthorized,
+  isWanqingItem,
 } from "../utils/personaMemoryManager";
 import { WANQING_HEADSHOT } from "../utils/personaAssets";
 import PersonaPortraitModal from "./shared/PersonaPortraitModal";
@@ -166,14 +167,14 @@ const SettingsSection = (props) => {
   const [portraitModalVisible, setPortraitModalVisible] = useState(false);
 
   useEffect(() => {
-    if (activeSubTab !== 'persona') return;
     const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
-    const pid = detectPersonaId(persona);
-    if (!pid) {
-      setPersonaMemoryState(null);
-      return;
+    const isWanqingAllowed = isWanqingAuthorized(currentEmail);
+    if (!isWanqingAllowed && isWanqingItem(persona)) {
+      setPersona("You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.");
     }
-    if (pid === 'wanqing' && !isWanqingAuthorized(currentEmail)) {
+    if (activeSubTab !== 'persona') return;
+    const pid = detectPersonaId(persona, currentEmail);
+    if (!pid || (pid === 'wanqing' && !isWanqingAllowed)) {
       setPersonaMemoryState(null);
       return;
     }
@@ -296,11 +297,11 @@ const SettingsSection = (props) => {
   };
 
   const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
-  const isOwner = currentEmail === 'cai40@yahoo.com';
+  const isOwner = isWanqingAuthorized(currentEmail);
   const filterWanqingMemory = (items) => {
     if (isOwner) return items || [];
     return (Array.isArray(items) ? items : []).filter(
-      (item) => !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(memoryItemText(item))
+      (item) => !isWanqingItem(item)
     );
   };
 
@@ -338,11 +339,10 @@ const SettingsSection = (props) => {
 
   const renderMemoryLayerItems = (items, layer, borderColor, emptyText) => {
     const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
-    const isOwner = currentEmail === 'cai40@yahoo.com';
+    const isOwner = isWanqingAuthorized(currentEmail);
     const emailSanitizedItems = (Array.isArray(items) ? items : []).filter((item) => {
       if (isOwner) return true;
-      const text = memoryItemText(item, layer);
-      return !/(?:林婉清|婉清|Lin Wanqing|林振华|苏慧)/i.test(text);
+      return !isWanqingItem(item);
     });
 
     const filtered = filterMemoryList(emailSanitizedItems, layer, memorySearchQuery);
@@ -2653,13 +2653,13 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
 
   const renderPersonaSettings = () => {
     const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
-    const isWanqingAllowed = currentEmail === 'cai40@yahoo.com';
+    const isWanqingAllowed = isWanqingAuthorized(currentEmail);
     const visiblePresets = personaPresets.filter(
-      (p) => !p.allowedEmail || p.allowedEmail.toLowerCase() === currentEmail,
+      (p) => !p.allowedEmail || (p.allowedEmail.toLowerCase() === currentEmail && isWanqingAllowed),
     );
     const wanqingPreset = personaPresets.find((p) => p.id === 'wanqing');
-    const isWanqingActive = wanqingPreset && persona === wanqingPreset.text;
-    const shouldHideCustomValue = !isWanqingAllowed && isWanqingActive;
+    const isWanqingActive = wanqingPreset && persona === wanqingPreset.text && isWanqingAllowed;
+    const shouldHideCustomValue = !isWanqingAllowed && isWanqingItem(persona);
 
     return (
       <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
@@ -2683,7 +2683,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                   justifyContent: "space-between",
                 }}
               >
-                {p.id === 'wanqing' && WANQING_HEADSHOT && (
+                {p.id === 'wanqing' && isWanqingAllowed && WANQING_HEADSHOT && (
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={(e) => {
@@ -2767,7 +2767,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             <View style={[styles.groupedCard, { padding: 18, backgroundColor: "#FFFBFB", borderColor: "#FCE4EC", borderWidth: 1 }]}>
               {/* Dual-Sovereignty Architecture Badge & Avatar Header */}
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
-                {WANQING_HEADSHOT && (
+                {isWanqingAllowed && WANQING_HEADSHOT && (
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={() => {
@@ -3035,11 +3035,13 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         </Modal>
 
         {/* --- PERSONA FULL PORTRAIT MODAL VIEWER (SUB-TAB SCOPE) --- */}
-        {portraitModalVisible && (
+        {portraitModalVisible && isWanqingAllowed && (
           <PersonaPortraitModal
             visible={portraitModalVisible}
             onClose={() => setPortraitModalVisible(false)}
             imageSource={WANQING_HEADSHOT}
+            userEmail={currentEmail}
+            isAuthorized={isWanqingAllowed}
             name="林婉清"
             subtitle="温婉知己 · 心灵避风港"
             tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
@@ -3181,11 +3183,13 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       </Modal>
 
       {/* --- PERSONA FULL PORTRAIT MODAL VIEWER --- */}
-      {portraitModalVisible && (
+      {portraitModalVisible && isWanqingAllowed && (
         <PersonaPortraitModal
           visible={portraitModalVisible}
           onClose={() => setPortraitModalVisible(false)}
           imageSource={WANQING_HEADSHOT}
+          userEmail={currentEmail}
+          isAuthorized={isWanqingAllowed}
           name="林婉清"
           subtitle="温婉知己 · 心灵避风港"
           tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}

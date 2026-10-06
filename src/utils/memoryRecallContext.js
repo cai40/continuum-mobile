@@ -5,6 +5,7 @@ import {
   rankMemoryFragment,
   isEmailEvidenceQuery,
 } from './memoryDisplay';
+import { isWanqingAuthorized, isWanqingItem } from './personaMemoryManager';
 
 const DEFAULT_KEYWORDS = [
   'min zhang', 'min folder', '敏', 'boundary', '641820', '641814', '641826', '641807',
@@ -108,6 +109,7 @@ export function wantsContinuumMemoryRecall(message) {
 }
 
 export function buildMemoryRecallContext(layers, message, maxBytes = 28000, options = {}) {
+  const isOwner = options.isOwner ?? (options.userEmail ? isWanqingAuthorized(options.userEmail) : true);
   const liveFetchScheduled = !!options.liveFetchScheduled;
   const fullFolderFetch = !!options.fullFolderFetch;
   const isEmailQuery = isEmailEvidenceQuery(message) || liveFetchScheduled;
@@ -122,8 +124,10 @@ export function buildMemoryRecallContext(layers, message, maxBytes = 28000, opti
 
   const ranked = pools
     .map(({ layer, item }) => {
+      if (!isOwner && isWanqingItem(item)) return null;
       const content = itemText(item);
       if (!content) return null;
+      if (!isOwner && isWanqingItem(content)) return null;
       const layerKey = String(layer).toLowerCase();
       if (layerKey !== 'l1' && isLowValueForEmailRecall(content, layerKey)) return null;
       let score = rankMemoryFragment(content, layerKey, keywords, message);
