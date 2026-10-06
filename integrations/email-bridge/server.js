@@ -145,9 +145,9 @@ function beginSse(res) {
 }
 
 function slimHistory(history) {
-  return (history || []).slice(-4).map((m) => ({
+  return (history || []).slice(-20).map((m) => ({
     role: m.role || 'user',
-    content: String(m.content || '').slice(0, 3000),
+    content: String(m.content || '').slice(0, 4000),
   }));
 }
 
@@ -586,7 +586,6 @@ async function handleChatStream(req, res, config) {
       message,
     ].join('\n');
     payload.message = message;
-    if (!emailContext) payload.history = [];
   }
 
   if (emailContext) {

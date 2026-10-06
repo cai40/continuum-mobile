@@ -120,15 +120,48 @@ function truncateText(text, maxChars) {
 
 /**
  * Shrink chat history so the JSON history field stays under the server 1MB part limit.
+ * Keeps up to maxMessages (default 50) and preserves query-relevant older turns.
  */
-export function trimChatHistoryForUpload(messages, maxMessages = 20, maxBytes = MAX_CHAT_UPLOAD_PART_BYTES) {
-  const base = (Array.isArray(messages) ? messages : [])
-    .slice(-maxMessages)
-    .map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: truncateText(m.content, 8000),
-    }));
+export function trimChatHistoryForUpload(messages, maxMessages = 50, maxBytes = MAX_CHAT_UPLOAD_PART_BYTES, query = '') {
+  const all = Array.isArray(messages) ? messages : [];
+  let selected = all.slice(-maxMessages);
+
+  // If earlier messages contain query-specific keywords (e.g. entity names like 林婉清)
+  // or if the user is asking to review/extract from chat, include those earlier matching turns.
+  if (all.length > maxMessages && query) {
+    const q = String(query).trim();
+    const cjkSegments = q.split(/[^\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]+|(?:的|是|在|和|与|了|吗|呢|什么|关于|告诉|一个|这个|那个|谁|如何|怎样|我想|请问)+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 2);
+    const cjkSub = [];
+    for (const seg of cjkSegments) {
+      cjkSub.push(seg);
+      if (seg.length > 2) {
+        for (let i = 0; i <= seg.length - 2; i++) {
+          cjkSub.push(seg.slice(i, i + 2));
+        }
+      }
+    }
+    const englishWords = (q.match(/[A-Za-z]{3,20}/g) || []).filter((w) => !/^(what|when|where|which|about|from|have|this|that|with|your|please|could|would)$/i.test(w));
+    const searchTerms = [...new Set([...cjkSub, ...englishWords])];
+
+    if (searchTerms.length > 0) {
+      const older = all.slice(0, -maxMessages);
+      const relevantOlder = older.filter((m) => {
+        const text = stringifyContent(m?.content);
+        return searchTerms.some((term) => text.includes(term));
+      });
+      if (relevantOlder.length > 0) {
+        selected = [...relevantOlder.slice(-10), ...selected];
+      }
+    }
+  }
+
+  const base = selected.map((m) => ({
+    id: m.id,
+    role: m.role,
+    content: truncateText(m.content, 8000),
+  }));
 
   let trimmed = base;
   while (trimmed.length > 1 && utf8ByteLength(safeJsonStringify(trimmed)) > maxBytes) {
@@ -168,6 +201,12 @@ export function sanitizeRecallHistory(messages) {
       return {
         ...m,
         content: '[Superseded — prior meta-denial; ignore. Answer from [CONTINUUM MEMORY], persona history, or live inbox this turn.]',
+      };
+    }
+    if (/(?:cannot (?:access|read|see|view|find)\s+(?:the\s+)?(?:current\s+)?(?:chat|conversation|message|history|window)|do not have access to (?:the\s+)?(?:current\s+)?(?:chat|conversation|history|past messages)|unable to read (?:the\s+)?(?:chat|message|window)|no (?:record|information|details|memory) (?:found|available) (?:about|regarding|in the chat)|无法(?:读取|查看|访问|获取|看到)(?:当前)?(?:聊天|对话|历史|记录|窗口)|没有(?:找到)?关于.*的(?:任何)?(?:信息|记录|记忆|资料)|查阅了?(?:当前)?(?:对话|聊天)?(?:历史|记录)?(?:，|,)?(?:并)?未(?:能)?找到|当前聊天窗口(?:中)?(?:并)?(?:没有|未找到)|作为(?:一个)?AI(?:助手)?(?:，|,)?(?:我)?无法(?:读取|查看|访问|获取))/i.test(content)) {
+      return {
+        ...m,
+        content: '[Superseded — prior meta-denial about reading chat/memory; ignore. Answer from conversation history, user-provided facts, and memory context.]',
       };
     }
     return m;

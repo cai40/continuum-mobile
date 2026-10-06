@@ -1,9 +1,10 @@
 'use strict';
 
 module.exports = {
-  version: '2026.09.14',
+  version: '2026.10.06',
   features: {
     continuum_paths: true,
+    chat_reading_grounding: true,
     date_range: true,
     date_range_mode: 'recent_lookback_filter',
     pagination: true,

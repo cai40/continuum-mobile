@@ -54,12 +54,35 @@ export function memoryFragmentKind(text, layer) {
 
 export function rankMemoryFragment(text, layer, keywords, query = '') {
   let score = 0;
-  const lower = String(text || '').toLowerCase();
-  for (const kw of keywords) {
-    if (lower.includes(kw.toLowerCase())) score += kw.length > 4 ? 3 : 1;
+  const content = String(text || '');
+  const lower = content.toLowerCase();
+  const isEmailQuery = isEmailEvidenceQuery(query);
+
+  for (const kw of (keywords || [])) {
+    if (!kw) continue;
+    // CJK keyword matching
+    if (/[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(kw)) {
+      if (content.includes(kw)) {
+        score += kw.length >= 3 ? 12 : 6;
+      }
+    } else {
+      // Latin keyword matching
+      if (lower.includes(kw.toLowerCase())) {
+        score += kw.length > 5 ? 4 : 2;
+      }
+    }
   }
-  if (hasEmailEvidenceSignals(text)) score += 20;
-  if (isLowValueForEmailRecall(text, layer)) score -= 25;
+
+  if (isEmailQuery) {
+    if (hasEmailEvidenceSignals(text)) score += 20;
+    if (isLowValueForEmailRecall(text, layer)) score -= 25;
+  } else {
+    // Non-email query: hand-pinned L1 memories and high-confidence profile items have base priority
+    if (layer === 'l1') score += 8;
+    else if (layer === 'l3') score += 3;
+    if (isInteractionQuestionLog(text) && !hasEmailEvidenceSignals(text)) score -= 15;
+  }
+
   if (/^Interaction:/i.test(text) && /\b(?:remember|cite|boundary)\b/i.test(query)) score -= 10;
   return score;
 }
@@ -67,6 +90,28 @@ export function rankMemoryFragment(text, layer, keywords, query = '') {
 export function isEmailEvidenceQuery(query) {
   const q = String(query || '').toLowerCase();
   return /\b(?:min|zhang|boundary|email|uid|april|641\d{3})\b/.test(q);
+}
+
+/** General memory summary extraction from assistant reply for L1 pin when user asks to store in memory. */
+export function extractMemoryForPin(assistantText, maxChars = 2000) {
+  const text = String(assistantText || '').trim();
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars - 16)}… [truncated]`;
+}
+
+export function shouldOfferMemoryPin(userMessage) {
+  const text = String(userMessage || '');
+  if (/\b(?:save|store|pin|record|archive)\b/i.test(text) && /\b(?:memory|memories|core memory|l1|long[- ]term)\b/i.test(text)) {
+    return true;
+  }
+  if (/(?:存入|保存|记录|记住|写入).*(?:记忆|长时记忆|长期记忆|核心记忆)/.test(text)) {
+    return true;
+  }
+  if (/(?:长时记忆|长期记忆|核心记忆|L1).*(?:保存|存入|记录)/.test(text)) {
+    return true;
+  }
+  return false;
 }
 
 /** Compact UID+Date block from assistant reply for L1 pin. */

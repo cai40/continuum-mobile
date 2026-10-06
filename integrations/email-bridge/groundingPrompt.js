@@ -99,9 +99,9 @@ const LIVE_INBOX_UNAVAILABLE_APPEND = [
 
 const MEMORY_RECALL_APPEND = [
   'CONTINUUM MEMORY: L1–L5 fragments were retrieved from the backend vault and injected below.',
-  'Use them for cross-session recall. Do NOT deny persistent memory or claim OOM/failed fetches unless shown in this turn.',
-  'If fragments lack UID+Date for emails, say so and cite what is present — do not invent.',
-  'Do NOT say email content is not present yet or that you await a fetch — use memory now and note missing UID+Date gaps.',
+  'Use them for cross-session recall and persona/fact retrieval. Do NOT deny persistent memory or claim you cannot read memory.',
+  'For email questions, cite UID+Date if present. For people, personas, and life facts, cite the layer and details directly — do not invent.',
+  'Answer now using available memory fragments and conversation history.',
 ].join(' ');
 
 const FULL_FOLDER_PERSONA_APPEND = [

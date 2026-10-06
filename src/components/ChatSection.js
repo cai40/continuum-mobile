@@ -77,7 +77,15 @@ import { wantsSlackRead, wantsSlackPost, extractSlackChannel, extractSlackPostTe
 import { slackListChannels, slackReadMessages, slackPostMessage, slackIngestChannel } from '../services/apiService';
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch, needsFullMinFolderRefetch } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
-import { extractEmailEvidenceForPin, attachPinOfferToMessages, shouldOfferEmailEvidencePin, attachClarifyOfferToMessages } from '../utils/memoryDisplay';
+import {
+  extractEmailEvidenceForPin,
+  extractMemoryForPin,
+  attachPinOfferToMessages,
+  shouldOfferEmailEvidencePin,
+  shouldOfferMemoryPin,
+  hasEmailEvidenceSignals,
+  attachClarifyOfferToMessages,
+} from '../utils/memoryDisplay';
 import { wantsPhotoCleanup, wantsPhotoCleanupStatus, runPhotoCleanupFromChat, findPriorPhotoUserMessage } from '../utils/photoCleanupChat';
 import { requestPhotoCleanupCancel, isPhotoCleanupCancelledError, clearPhotoCleanupCancel } from '../utils/photoCleanupCancel';
 import { isGenericCleanupConfirm, resolveConfirmCleanupKind } from '../utils/cleanupConfirmIntent';
@@ -110,9 +118,9 @@ const RECALL_TURN_APPEND = [
 
 const MEMORY_RECALL_APPEND = [
   'CONTINUUM MEMORY: L1–L5 fragments were retrieved from the backend vault and injected below.',
-  'Use them for cross-session recall. Do NOT deny persistent memory or claim OOM/failed fetches unless shown in this turn.',
-  'If fragments lack UID+Date for emails, say so and cite what is present — do not invent.',
-  'Do NOT say email content is not present yet or that you await a fetch — use memory now and note missing UID+Date gaps.',
+  'Use them for cross-session recall and persona/fact retrieval. Do NOT deny persistent memory or claim you cannot read memory.',
+  'For email questions, cite UID+Date if present. For people, personas, and life facts, cite the layer and details directly — do not invent.',
+  'Answer now using available memory fragments and conversation history.',
 ].join(' ');
 
 const FULL_FOLDER_PERSONA_APPEND = [
@@ -373,7 +381,8 @@ const ChatSection = () => {
     const activeToken = session?.access_token?.trim();
     if (!pinBody?.trim() || !activeToken) return;
     try {
-      await pinCoreMemory(pinBody, activeToken, 'Min email evidence', user?.id);
+      const label = hasEmailEvidenceSignals(pinBody) ? 'Min email evidence' : 'Core memory fact';
+      await pinCoreMemory(pinBody, activeToken, label, user?.id);
       try {
         await onRefreshMemories?.(activeToken);
       } catch {
@@ -1506,7 +1515,7 @@ const ChatSection = () => {
       const recallHistoryBase = sanitizeRecallHistory(messages);
       const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
         ? trimChatHistoryForEmailRecall(recallHistoryBase, 8, 380 * 1024, finalInput)
-        : trimChatHistoryForUpload(recallHistoryBase);
+        : trimChatHistoryForUpload(recallHistoryBase, 50, undefined, finalInput);
 
       if (activeAttachments.length && !isFromVoice) {
         try {
@@ -1605,7 +1614,7 @@ const ChatSection = () => {
       ];
 
       let historyForDeepseek = (
-        documentTextInjected || webSearchContext || isModelIdentityQuestion
+        documentTextInjected || isModelIdentityQuestion
       ) ? [] : historyForUpload;
 
       formData.append('message', chatMessage);
@@ -1614,9 +1623,9 @@ const ChatSection = () => {
         formData.append('model', deepseekPlatformModel(resolvedProvider));
       }
       formData.append('persona', appendGroundingPersona(persona, personaExtras));
-      // Fresh file analysis or web search: drop chat history so prior replies
-      // cannot override injected attachment text or live search results.
-      formData.append('history', safeJsonStringify(documentTextInjected || webSearchContext ? [] : historyForUpload));
+      // Fresh file analysis: drop chat history so prior replies
+      // cannot override injected attachment text.
+      formData.append('history', safeJsonStringify(documentTextInjected ? [] : historyForUpload));
       if (activeKey) formData.append('api_key', activeKey.trim());
       if (resolvedProvider === 'gemini' && geminiPlatformKey) formData.append('gemini_key', geminiPlatformKey);
       // Hands-free speech uses on-device TTS with markdown stripped so "*" is never spoken.
@@ -1663,7 +1672,7 @@ const ChatSection = () => {
         fd.append('provider', resolvedProvider);
         if (useDirectDeepseek) fd.append('model', deepseekPlatformModel(resolvedProvider));
         fd.append('persona', appendGroundingPersona(persona, [...personaExtras, WEB_SEARCH_APPEND]));
-        fd.append('history', safeJsonStringify([]));
+        fd.append('history', safeJsonStringify(documentTextInjected ? [] : historyForUpload));
         if (activeKey) fd.append('api_key', activeKey.trim());
         if (resolvedProvider === 'gemini' && geminiPlatformKey) fd.append('gemini_key', geminiPlatformKey);
         if (activeAttachments.length && !isFromVoice) {
@@ -1724,7 +1733,7 @@ const ChatSection = () => {
             const newMsg = `${ctx}\n\n${chatMessage}`;
             chatMessage = newMsg;
             formData = rebuildFormData(newMsg);
-            historyForDeepseek = [];
+            historyForDeepseek = (documentTextInjected || isModelIdentityQuestion) ? [] : historyForUpload;
             isHandled = false;
             setStreamingContent('');
             if (preferDirectDeepseek) startDirectDeepseekStream();
@@ -1773,6 +1782,11 @@ const ChatSection = () => {
             && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });
           if (offerPin) {
             aiMsgs = attachPinOfferToMessages(aiMsgs, pinBody);
+          } else if (activeToken && shouldOfferMemoryPin(finalInput)) {
+            const generalPin = extractMemoryForPin(finalText) || extractMemoryForPin(combinedText);
+            if (generalPin) {
+              aiMsgs = attachPinOfferToMessages(aiMsgs, generalPin);
+            }
           }
           // The clarification the backend raised instead of answering: the card rides the same
           // bubble as the question. Consumed once so a later turn cannot inherit it.
@@ -1825,6 +1839,20 @@ const ChatSection = () => {
               ],
             );
           }, 500);
+        } else if (activeToken && shouldOfferMemoryPin(finalInput)) {
+          const generalPinBody = extractMemoryForPin(finalText);
+          if (generalPinBody) {
+            setTimeout(() => {
+              Alert.alert(
+                'Save to Core Memory (L1)?',
+                'Pin this extracted persona and key information to L1 Core Memory so it is permanently remembered across conversations.',
+                [
+                  { text: 'Not now', style: 'cancel' },
+                  { text: 'Pin to L1', onPress: () => handlePinEmailEvidence(generalPinBody) },
+                ],
+              );
+            }, 500);
+          }
         }
       };
 
@@ -2008,7 +2036,7 @@ const ChatSection = () => {
         ...(isEmailFollowUpOnly || isEmailRecallQuestion ? [EMAIL_FOLLOW_UP_APPEND] : []),
             ...(webSearchContext ? [WEB_SEARCH_APPEND] : []),
           ]),
-          history: webSearchContext ? [] : historyForUpload,
+          history: historyForUpload,
           gemini_key: resolvedProvider === 'gemini' ? (geminiKey || '').trim() : '',
           groq_key: resolvedProvider === 'groq' ? (groqKey || '').trim() : '',
           api_key: (activeKey || '').trim(),

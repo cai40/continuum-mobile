@@ -96,9 +96,9 @@ function truncateForLlm(text, maxChars = MAX_LLM_MESSAGE_CHARS) {
 }
 
 function slimHistory(history) {
-  return (history || []).slice(-4).map((m) => ({
+  return (history || []).slice(-20).map((m) => ({
     role: m.role || 'user',
-    content: String(m.content || '').slice(0, 3000),
+    content: String(m.content || '').slice(0, 4000),
   }));
 }
 
