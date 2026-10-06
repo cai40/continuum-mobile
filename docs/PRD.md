@@ -154,7 +154,7 @@ Allows the AI to embody authentic, distinct personas that dynamically evolve ove
 *   **Bi-Temporal ACT-R Activation Memory**: Episodic traces are ranked and decayed using ACT-R cognitive activation equations factoring in frequency of recall, recency decay ($e^{-\lambda \Delta t}$), and salience importance (1–10).
 *   **Access Control Gating**: The 林婉清 (Lin Wanqing) persona preset and sovereign memory tier are cryptographically and logically restricted to `cai40@yahoo.com`.
 *   **Settings Control Panel**: Dedicated management view in Persona Settings for monitoring dynamic mood, intimacy level (1–100), private thoughts, episodic interaction logs, and manual reflection triggers.
-*   **Visual Portrait Headshot**: Integrated high-resolution portrait headshot for 林婉清 (`wanqing-headshot.jpg`) displayed beside assistant message bubbles, on the active chat status bar, in preset library cards, and on the DSP-CMA management view.
+*   **Visual Portrait Headshot & Full-Size Viewer**: Integrated high-resolution portrait headshot for 林婉清 (`wanqing-headshot.jpg`) displayed beside assistant message bubbles, on the active chat status bar, in preset library cards, and on the DSP-CMA management view. Tapping any avatar opens a dedicated full-size picture viewer (`PersonaPortraitModal.js`) with detailed archetype bio and origin attributes.
 
 ---
 
@@ -176,5 +176,5 @@ Allows the AI to embody authentic, distinct personas that dynamically evolve ove
 *   **Yahoo Email Bridge**: ✅ Complete. Date-range fetch, clean-up trash rules, month/year phrases, over-limit permission (`bridge_version` 2026.10.06).
 *   **Chat Grounding & In-Context Memory**: ✅ Complete. Rule 4 & 13 prevent chat reading disclaimers; 50-message context depth with entity preservation; CJK particle-aware memory recall.
 *   **Dual-Sovereignty Persona Memory (DSP-CMA)**: ✅ Complete. SOTA multi-tier persona isolation, bi-temporal ACT-R memory evolution, and email-gated privacy.
-*   **Lin Wanqing Chat Headshot & Visual Persona**: ✅ Complete. High-resolution portrait headshot asset bundled and integrated into assistant chat bubbles, active conversation banner, preset library, and DSP-CMA management view.
+*   **Lin Wanqing Chat Headshot & Visual Persona**: ✅ Complete. High-resolution portrait headshot asset bundled and integrated into assistant chat bubbles, active conversation banner, preset library, and DSP-CMA management view. Full-size photo viewer modal enabled on tap.
 *   **App Store Submission**: In progress. Metadata and screenshots finalized.

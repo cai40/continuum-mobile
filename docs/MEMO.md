@@ -84,6 +84,8 @@ This release implements the Dual-Sovereignty Persona-Specific Memory Architectur
 7. **Persona Chat Avatar & Headshot Integration**:
    - Added custom visual portrait headshot for 林婉清 (`wanqing-headshot.jpg`).
    - Integrated headshot beside assistant message bubbles in `ChatSection.js`, on active chat status header, in Settings preset cards, and in the DSP-CMA sovereign memory card.
+8. **Full-Size Portrait Viewer Modal (`PersonaPortraitModal.js`)**:
+   - Interactive full-size picture viewer with bio card, tag pills, origin attributes, and seamless dismissal. Accessible by tapping any avatar in Chat or Settings.
 
 ---
 *End of Memo*

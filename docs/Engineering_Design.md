@@ -295,3 +295,4 @@ To provide the authentic feeling of interacting with distinct, living human pers
 *   **Persona Settings Management**: Added interactive DSP-CMA control panel in Settings with live mood, closeness progress bar, episodic memory browser, and reflection triggers.
 *   **Access-Control Enforcement**: Gated 林婉清 persona preset and sovereign memory strictly to `cai40@yahoo.com`.
 *   **Persona Visual Headshot (`wanqing-headshot.jpg`)**: Rendered authentic portrait avatar for 林婉清 beside chat bubbles, in active conversation banner, and within Persona Settings.
+*   **Full-Size Picture Viewer (`PersonaPortraitModal.js`)**: Enabled tap-to-view full-size portrait modal across Chat and Persona Settings with background bio, age, location, and origin tags.

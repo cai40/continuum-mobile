@@ -30,6 +30,7 @@ import { appendGroundingPersona, replyLanguageAppend, coreMemoryAppend, DOCUMENT
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import MemoryClarifyCard from './shared/MemoryClarifyCard';
+import PersonaPortraitModal from './shared/PersonaPortraitModal';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
 import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline, isProfileFollowUp, getCachedProfileContext, setBridgeExcerptFetcher } from '../utils/webSearch';
@@ -236,6 +237,7 @@ const ChatSection = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [location, setLocation] = useState(null);
   const [drivePickerVisible, setDrivePickerVisible] = useState(false);
+  const [portraitModalVisible, setPortraitModalVisible] = useState(false);
 
   const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
   const isOwner = isWanqingAuthorized(currentEmail);
@@ -2509,11 +2511,7 @@ const ChatSection = () => {
             activeOpacity={0.85}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              Alert.alert(
-                "🌸 林婉清",
-                "23岁 · 现居波士顿 · 艺术设计与文创策划\n温婉知己 · 心灵避风港",
-                [{ text: "好的", style: "cancel" }]
-              );
+              setPortraitModalVisible(true);
             }}
           >
             <Image
@@ -2577,15 +2575,22 @@ const ChatSection = () => {
       )}
 
       {!isSelectionMode && isWanqingActive && (
-        <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          paddingHorizontal: 16,
-          paddingVertical: 8,
-          backgroundColor: '#FFFBFB',
-          borderBottomWidth: 1,
-          borderBottomColor: '#FCE4EC',
-        }}>
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setPortraitModalVisible(true);
+          }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+            backgroundColor: '#FFFBFB',
+            borderBottomWidth: 1,
+            borderBottomColor: '#FCE4EC',
+          }}
+        >
           <Image
             source={WANQING_HEADSHOT}
             style={{
@@ -2607,10 +2612,11 @@ const ChatSection = () => {
               <Text style={{ fontSize: 10, color: '#10B981', fontWeight: '600' }}>在线 · 波士顿</Text>
             </View>
             <Text style={{ fontSize: 11, color: theme.colors.gray }} numberOfLines={1}>
-              温婉知己 · 心灵避风港
+              温婉知己 · 心灵避风港 · 点击查看写真画像
             </Text>
           </View>
-        </View>
+          <Ionicons name="expand-outline" size={16} color="#E84393" style={{ opacity: 0.8 }} />
+        </TouchableOpacity>
       )}
 
       <FlatList
@@ -2782,6 +2788,15 @@ const ChatSection = () => {
       visible={drivePickerVisible}
       onClose={() => setDrivePickerVisible(false)}
       onPicked={(file) => addAttachments([file])}
+    />
+    <PersonaPortraitModal
+      visible={portraitModalVisible}
+      onClose={() => setPortraitModalVisible(false)}
+      imageSource={WANQING_HEADSHOT}
+      name="林婉清"
+      subtitle="温婉知己 · 心灵避风港"
+      tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
+      bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
     />
     </>
   );

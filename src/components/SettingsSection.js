@@ -59,6 +59,7 @@ import {
   isWanqingAuthorized,
 } from "../utils/personaMemoryManager";
 import { WANQING_HEADSHOT } from "../utils/personaAssets";
+import PersonaPortraitModal from "./shared/PersonaPortraitModal";
 
 const SettingsSection = (props) => {
   const {
@@ -161,6 +162,7 @@ const SettingsSection = (props) => {
   const [loadingPersonaMem, setLoadingPersonaMem] = useState(false);
   const [isEvolvingPersona, setIsEvolvingPersona] = useState(false);
   const [showEpisodicList, setShowEpisodicList] = useState(false);
+  const [portraitModalVisible, setPortraitModalVisible] = useState(false);
 
   useEffect(() => {
     if (activeSubTab !== 'persona') return;
@@ -2681,18 +2683,27 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 }}
               >
                 {p.id === 'wanqing' && (
-                  <Image
-                    source={WANQING_HEADSHOT}
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 22,
-                      borderWidth: 1.5,
-                      borderColor: '#F8BBD0',
-                      marginRight: 12,
-                      backgroundColor: '#FFF0F5',
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={(e) => {
+                      e?.stopPropagation?.();
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setPortraitModalVisible(true);
                     }}
-                  />
+                  >
+                    <Image
+                      source={WANQING_HEADSHOT}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        borderWidth: 1.5,
+                        borderColor: '#F8BBD0',
+                        marginRight: 12,
+                        backgroundColor: '#FFF0F5',
+                      }}
+                    />
+                  </TouchableOpacity>
                 )}
                 <View style={{ flex: 1 }}>
                   <Text
@@ -2755,18 +2766,26 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             <View style={[styles.groupedCard, { padding: 18, backgroundColor: "#FFFBFB", borderColor: "#FCE4EC", borderWidth: 1 }]}>
               {/* Dual-Sovereignty Architecture Badge & Avatar Header */}
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
-                <Image
-                  source={WANQING_HEADSHOT}
-                  style={{
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    borderWidth: 2,
-                    borderColor: '#F8BBD0',
-                    marginRight: 12,
-                    backgroundColor: '#FFF0F5',
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setPortraitModalVisible(true);
                   }}
-                />
+                >
+                  <Image
+                    source={WANQING_HEADSHOT}
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 26,
+                      borderWidth: 2,
+                      borderColor: '#F8BBD0',
+                      marginRight: 12,
+                      backgroundColor: '#FFF0F5',
+                    }}
+                  />
+                </TouchableOpacity>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
                     <View style={{ backgroundColor: "#FCE4EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8 }}>
@@ -2779,7 +2798,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                     </Text>
                   </View>
                   <Text style={{ fontSize: 11, color: theme.colors.gray }}>
-                    用户事实全人设共享 · 婉清心境与相处片段严格独立演进
+                    用户事实全人设共享 · 点击头像查看全尺寸写真
                   </Text>
                 </View>
               </View>
@@ -3011,6 +3030,17 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             </ScrollView>
           </View>
         </Modal>
+
+        {/* --- PERSONA FULL PORTRAIT MODAL VIEWER (SUB-TAB SCOPE) --- */}
+        <PersonaPortraitModal
+          visible={portraitModalVisible}
+          onClose={() => setPortraitModalVisible(false)}
+          imageSource={WANQING_HEADSHOT}
+          name="林婉清"
+          subtitle="温婉知己 · 心灵避风港"
+          tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
+          bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+        />
       </View>
     );
   }
@@ -3144,6 +3174,17 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           </ScrollView>
         </View>
       </Modal>
+
+      {/* --- PERSONA FULL PORTRAIT MODAL VIEWER --- */}
+      <PersonaPortraitModal
+        visible={portraitModalVisible}
+        onClose={() => setPortraitModalVisible(false)}
+        imageSource={WANQING_HEADSHOT}
+        name="林婉清"
+        subtitle="温婉知己 · 心灵避风港"
+        tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
+        bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+      />
     </ScrollView>
   );
 };
