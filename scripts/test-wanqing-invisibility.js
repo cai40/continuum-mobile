@@ -310,6 +310,10 @@ async function runTests() {
   // Test ChatSection visibleMessages logic
   const chatSectionPath = path.resolve(__dirname, '../src/components/ChatSection.js');
   const chatSectionCode = fs.readFileSync(chatSectionPath, 'utf8');
+  assert.ok(
+    /import\s+React,\s*\{[^}]*\buseMemo\b[^}]*\}\s*from\s+['"]react['"]/.test(chatSectionCode),
+    'ChatSection imports useMemo from react'
+  );
   assert.ok(chatSectionCode.includes('const visibleMessages = useMemo(() => {'), 'ChatSection defines visibleMessages');
   assert.ok(chatSectionCode.includes('filter((m) => !isWanqingItem(m))'), 'ChatSection visibleMessages filters out isWanqingItem');
   assert.ok(chatSectionCode.includes('historyForUpload = historyForUpload.filter((m) => !isWanqingItem(m))'), 'ChatSection double-sanitizes historyForUpload');
