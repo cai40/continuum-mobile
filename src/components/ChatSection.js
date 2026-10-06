@@ -2504,7 +2504,7 @@ const ChatSection = () => {
       </TouchableOpacity>
     );
 
-    if (showWanqingHeadshot) {
+    if (showWanqingHeadshot && WANQING_HEADSHOT) {
       return (
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'flex-start', maxWidth: '92%', marginVertical: 6 }}>
           <TouchableOpacity
@@ -2574,7 +2574,7 @@ const ChatSection = () => {
       </View>
       )}
 
-      {!isSelectionMode && isWanqingActive && (
+      {!isSelectionMode && isWanqingActive && WANQING_HEADSHOT && (
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => {
@@ -2591,18 +2591,20 @@ const ChatSection = () => {
             borderBottomColor: '#FCE4EC',
           }}
         >
-          <Image
-            source={WANQING_HEADSHOT}
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 17,
-              borderWidth: 1.5,
-              borderColor: '#F8BBD0',
-              marginRight: 10,
-              backgroundColor: '#FFF0F5',
-            }}
-          />
+          {WANQING_HEADSHOT && (
+            <Image
+              source={WANQING_HEADSHOT}
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 17,
+                borderWidth: 1.5,
+                borderColor: '#F8BBD0',
+                marginRight: 10,
+                backgroundColor: '#FFF0F5',
+              }}
+            />
+          )}
           <View style={{ flex: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ fontSize: 13, fontWeight: '700', color: '#C2185B', marginRight: 6 }}>
@@ -2789,15 +2791,17 @@ const ChatSection = () => {
       onClose={() => setDrivePickerVisible(false)}
       onPicked={(file) => addAttachments([file])}
     />
-    <PersonaPortraitModal
-      visible={portraitModalVisible}
-      onClose={() => setPortraitModalVisible(false)}
-      imageSource={WANQING_HEADSHOT}
-      name="林婉清"
-      subtitle="温婉知己 · 心灵避风港"
-      tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
-      bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
-    />
+    {portraitModalVisible && (
+      <PersonaPortraitModal
+        visible={portraitModalVisible}
+        onClose={() => setPortraitModalVisible(false)}
+        imageSource={WANQING_HEADSHOT}
+        name="林婉清"
+        subtitle="温婉知己 · 心灵避风港"
+        tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
+        bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+      />
+    )}
     </>
   );
 };

@@ -11,6 +11,7 @@ import {
   RefreshControl,
   Modal,
   Switch,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -2682,7 +2683,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                   justifyContent: "space-between",
                 }}
               >
-                {p.id === 'wanqing' && (
+                {p.id === 'wanqing' && WANQING_HEADSHOT && (
                   <TouchableOpacity
                     activeOpacity={0.8}
                     onPress={(e) => {
@@ -2766,26 +2767,28 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             <View style={[styles.groupedCard, { padding: 18, backgroundColor: "#FFFBFB", borderColor: "#FCE4EC", borderWidth: 1 }]}>
               {/* Dual-Sovereignty Architecture Badge & Avatar Header */}
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 14 }}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setPortraitModalVisible(true);
-                  }}
-                >
-                  <Image
-                    source={WANQING_HEADSHOT}
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 26,
-                      borderWidth: 2,
-                      borderColor: '#F8BBD0',
-                      marginRight: 12,
-                      backgroundColor: '#FFF0F5',
+                {WANQING_HEADSHOT && (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setPortraitModalVisible(true);
                     }}
-                  />
-                </TouchableOpacity>
+                  >
+                    <Image
+                      source={WANQING_HEADSHOT}
+                      style={{
+                        width: 52,
+                        height: 52,
+                        borderRadius: 26,
+                        borderWidth: 2,
+                        borderColor: '#F8BBD0',
+                        marginRight: 12,
+                        backgroundColor: '#FFF0F5',
+                      }}
+                    />
+                  </TouchableOpacity>
+                )}
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 4 }}>
                     <View style={{ backgroundColor: "#FCE4EC", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 8 }}>
@@ -3032,15 +3035,17 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
         </Modal>
 
         {/* --- PERSONA FULL PORTRAIT MODAL VIEWER (SUB-TAB SCOPE) --- */}
-        <PersonaPortraitModal
-          visible={portraitModalVisible}
-          onClose={() => setPortraitModalVisible(false)}
-          imageSource={WANQING_HEADSHOT}
-          name="林婉清"
-          subtitle="温婉知己 · 心灵避风港"
-          tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
-          bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
-        />
+        {portraitModalVisible && (
+          <PersonaPortraitModal
+            visible={portraitModalVisible}
+            onClose={() => setPortraitModalVisible(false)}
+            imageSource={WANQING_HEADSHOT}
+            name="林婉清"
+            subtitle="温婉知己 · 心灵避风港"
+            tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
+            bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+          />
+        )}
       </View>
     );
   }
@@ -3176,15 +3181,17 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       </Modal>
 
       {/* --- PERSONA FULL PORTRAIT MODAL VIEWER --- */}
-      <PersonaPortraitModal
-        visible={portraitModalVisible}
-        onClose={() => setPortraitModalVisible(false)}
-        imageSource={WANQING_HEADSHOT}
-        name="林婉清"
-        subtitle="温婉知己 · 心灵避风港"
-        tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
-        bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
-      />
+      {portraitModalVisible && (
+        <PersonaPortraitModal
+          visible={portraitModalVisible}
+          onClose={() => setPortraitModalVisible(false)}
+          imageSource={WANQING_HEADSHOT}
+          name="林婉清"
+          subtitle="温婉知己 · 心灵避风港"
+          tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
+          bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+        />
+      )}
     </ScrollView>
   );
 };

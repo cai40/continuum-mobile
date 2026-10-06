@@ -89,7 +89,11 @@ export default function PersonaPortraitModal({
                     style={styles.fullImage}
                     resizeMode="cover"
                   />
-                ) : null}
+                ) : (
+                  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <Ionicons name="person-circle-outline" size={80} color="#F8BBD0" />
+                  </View>
+                )}
               </View>
 
               {/* Persona Metadata & Bio */}
