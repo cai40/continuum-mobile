@@ -38,4 +38,4 @@ export const VOICE_PAUSE_OPTIONS = [
 ];
 export const BUILD_ID = "3.4.112-WanqingSharedReality";
 export const APP_VERSION = "3.4.112";
-export const GIT_COMMIT = '072707c';
+export const GIT_COMMIT = '48a3161';
