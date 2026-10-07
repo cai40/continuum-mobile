@@ -49,6 +49,7 @@ import {
   attachmentSizeLimitBytes,
   formatAttachmentBytes,
   sanitizeUserVisibleContent,
+  sanitizeImmersionMetaDenials,
   trimChatHistoryForUpload,
   trimChatHistoryForEmailRecall,
   sanitizeRecallHistory,
@@ -84,6 +85,8 @@ import {
   evolvePersonaState,
   isWanqingAuthorized,
   isWanqingItem,
+  WANQING_PERSONA_PROMPT,
+  DEFAULT_PERSONA_PROMPT,
 } from '../utils/personaMemoryManager';
 import { WANQING_HEADSHOT } from '../utils/personaAssets';
 import {
@@ -242,7 +245,8 @@ const ChatSection = () => {
 
   const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
   const isOwner = isWanqingAuthorized(currentEmail);
-  const activePersonaId = detectPersonaId(persona, currentEmail);
+  const detectedPid = detectPersonaId(persona, currentEmail);
+  const activePersonaId = detectedPid || (isOwner && (!persona || persona === DEFAULT_PERSONA_PROMPT) ? 'wanqing' : null);
   const isWanqingActive = activePersonaId === 'wanqing' && isOwner;
 
   const visibleMessages = useMemo(() => {
@@ -1638,11 +1642,20 @@ const ChatSection = () => {
       // If a non-cai40 user attempts to use Lin Wanqing's persona text directly, strip it
       let effectivePersona = persona;
       if (!isOwner && isWanqingItem(effectivePersona)) {
-        effectivePersona = "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.";
+        effectivePersona = DEFAULT_PERSONA_PROMPT;
       }
 
+      // Detect if user query refers to photos, albums, portraits, outfits, evening gowns, or Lin Wanqing
+      const isPhotoOrOutfitTopic = isOwner && /(照片|相册|写真|晚礼服|礼服|漏肩|露肩|高跟鞋|露脚趾|穿搭|长裙|开衩|生活照|全身照|模样|长相|林婉清|婉清|波士顿|交响大厅|图书馆|美术馆|生成.*照片|照片.*能看到|你看.*照片|你看到|几张照片)/i.test(chatMessage);
+
       // Persona-specific sovereign memory tier (DSP-CMA)
-      const activePersonaId = detectPersonaId(effectivePersona, currentEmail);
+      const detectedPid = detectPersonaId(effectivePersona, currentEmail);
+      const activePersonaId = detectedPid || (isOwner && (isPhotoOrOutfitTopic || !effectivePersona || effectivePersona === DEFAULT_PERSONA_PROMPT) ? 'wanqing' : null);
+
+      if (isOwner && activePersonaId === 'wanqing' && (!effectivePersona || effectivePersona === DEFAULT_PERSONA_PROMPT)) {
+        effectivePersona = WANQING_PERSONA_PROMPT;
+      }
+
       let personaPrivateBlock = '';
       if (activePersonaId && isOwner) {
         try {
@@ -1822,8 +1835,12 @@ const ChatSection = () => {
         if (finalText.trim()) markServerHealthy();
         if (!finalText.trim()) return;
 
+        const processedFinalText = (isOwner || isWanqingActive || activePersonaId === 'wanqing')
+          ? sanitizeImmersionMetaDenials(finalText)
+          : finalText;
+
         setMessages(prev => {
-          let aiMsgs = buildDraftAssistantMessages(finalText, {
+          let aiMsgs = buildDraftAssistantMessages(processedFinalText, {
             requestedDraft: wantsCopyDraft,
             baseId: Date.now(),
           });          aiMsgs = aiMsgs.map((m) => ({
@@ -1839,14 +1856,14 @@ const ChatSection = () => {
           // foreground reconcile removes them in favour of the stored rows. Adding to a
           // Set is idempotent, which matters if React invokes this updater twice.
           aiMsgs.forEach((m) => activeTurn.ids.add(m.id));
-          const pinBody = extractEmailEvidenceForPin(finalText) || extractEmailEvidenceForPin(combinedText);
+          const pinBody = extractEmailEvidenceForPin(processedFinalText) || extractEmailEvidenceForPin(combinedText);
           const offerPin = pinBody
             && activeToken
             && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });
           if (offerPin) {
             aiMsgs = attachPinOfferToMessages(aiMsgs, pinBody);
           } else if (activeToken && shouldOfferMemoryPin(finalInput)) {
-            const generalPin = extractMemoryForPin(finalText) || extractMemoryForPin(combinedText);
+            const generalPin = extractMemoryForPin(processedFinalText) || extractMemoryForPin(combinedText);
             if (generalPin) {
               aiMsgs = attachPinOfferToMessages(aiMsgs, generalPin);
             }
@@ -1874,7 +1891,7 @@ const ChatSection = () => {
 
         if (isFromVoice) {
           const transcriptLang = detectLangFromText(voiceTranscript);
-          const replyLang = detectLangFromText(finalText);
+          const replyLang = detectLangFromText(processedFinalText);
           const detectedTurnLang = transcriptLang || replyLang;
           if (detectedTurnLang) {
             lastSttLangRef.current = detectedTurnLang;
@@ -1883,20 +1900,20 @@ const ChatSection = () => {
         }
 
         if (isVoiceMode) {
-          speakAssistantReplyRef.current?.(finalText);
+          speakAssistantReplyRef.current?.(processedFinalText);
         }
 
         // Asynchronously evolve persona state and private memory without blocking
         if (activePersonaId && isOwner) {
           evolvePersonaState(activePersonaId, user?.id, {
             userText: finalInput,
-            assistantText: finalText,
+            assistantText: processedFinalText,
             userEmail: currentEmail,
           }).catch((err) => console.warn('[ChatSection] Persona evolution error:', err));
         }
 
-        const pinBodyForAlert = extractEmailEvidenceForPin(finalText)
-          || extractEmailEvidenceForPin(finalText.replace(/\*\*/g, ''));
+        const pinBodyForAlert = extractEmailEvidenceForPin(processedFinalText)
+          || extractEmailEvidenceForPin(processedFinalText.replace(/\*\*/g, ''));
         const offerPinAlert = pinBodyForAlert
           && activeToken
           && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });

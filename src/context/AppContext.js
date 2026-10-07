@@ -22,11 +22,10 @@ import { API_URL, DEFAULT_EMAIL_LIMIT, LEGACY_DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
 import { sanitizeUserVisibleContent } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
-import { isWanqingAuthorized, isWanqingItem } from "../utils/personaMemoryManager";
+import { isWanqingAuthorized, isWanqingItem, WANQING_PERSONA_PROMPT, DEFAULT_PERSONA_PROMPT } from "../utils/personaMemoryManager";
 
 const AppContext = createContext();
 const CHAT_HISTORY_CLEARED_AT_KEY = "@chat_history_cleared_at";
-const DEFAULT_PERSONA_PROMPT = "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.";
 
 function messageTimeMs(message) {
   const raw = message?.timestamp || message?.created_at || message?.createdAt;
@@ -194,6 +193,15 @@ export const AppProvider = ({ children }) => {
           if (!isWanqingAuthorized(session.user?.email)) {
             setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
             setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
+          } else {
+            // Authorized owner cai40@yahoo.com: restore or heal persona to Lin Wanqing
+            const savedPersona = await AsyncStorage.getItem("@persona");
+            if (savedPersona && isWanqingItem(savedPersona)) {
+              setPersona(savedPersona);
+            } else if (!savedPersona || savedPersona === DEFAULT_PERSONA_PROMPT) {
+              setPersona(WANQING_PERSONA_PROMPT);
+              AsyncStorage.setItem("@persona", WANQING_PERSONA_PROMPT).catch(() => {});
+            }
           }
 
           // LEGAL STATUS CHECK (v3.4.55)
@@ -203,7 +211,7 @@ export const AppProvider = ({ children }) => {
           fetchAnalytics();
         } else {
           setHasAcceptedLegal(true); // Don't show modal on login screen
-          // Unauthenticated: ensure Wanqing items are wiped from memory
+          // Unauthenticated: ensure Wanqing items are not active in memory
           setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
           setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
         }
@@ -221,7 +229,7 @@ export const AppProvider = ({ children }) => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
       setSession(session);
       setUser(currentUser);
@@ -230,6 +238,14 @@ export const AppProvider = ({ children }) => {
       if (!isAuthorized) {
         setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
         setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
+      } else if (currentUser?.email === 'cai40@yahoo.com') {
+        const savedPersona = await AsyncStorage.getItem("@persona");
+        if (savedPersona && isWanqingItem(savedPersona)) {
+          setPersona(savedPersona);
+        } else if (!savedPersona || savedPersona === DEFAULT_PERSONA_PROMPT) {
+          setPersona(WANQING_PERSONA_PROMPT);
+          AsyncStorage.setItem("@persona", WANQING_PERSONA_PROMPT).catch(() => {});
+        }
       }
 
       // CHECK SUPER USER STATUS
@@ -364,6 +380,10 @@ export const AppProvider = ({ children }) => {
           }
         }
 
+        const { data: authData } = await supabase.auth.getSession();
+        const activeAuthEmail = String(authData?.session?.user?.email || session?.user?.email || user?.email || '').trim().toLowerCase();
+        const isOwner = isWanqingAuthorized(activeAuthEmail);
+
         keys.forEach(([key, value]) => {
           if (!value) return;
           if (key === "@groq_key") setGroqKey(value);
@@ -385,9 +405,11 @@ export const AppProvider = ({ children }) => {
             if (VOICE_PAUSE_OPTIONS.some((o) => o.value === parsed)) setVoicePauseMsState(parsed);
           }
           if (key === "@persona") {
-            const currentEmail = user?.email || session?.user?.email;
-            if (!isWanqingAuthorized(currentEmail) && isWanqingItem(value)) {
+            if (activeAuthEmail && !isOwner && isWanqingItem(value)) {
               setPersona(DEFAULT_PERSONA_PROMPT);
+            } else if (isOwner && (!value || value === DEFAULT_PERSONA_PROMPT)) {
+              setPersona(WANQING_PERSONA_PROMPT);
+              AsyncStorage.setItem("@persona", WANQING_PERSONA_PROMPT).catch(() => {});
             } else {
               setPersona(value);
             }
@@ -396,13 +418,12 @@ export const AppProvider = ({ children }) => {
           if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
           if (key === "@chat_history") {
             const parsed = JSON.parse(value);
-            const currentEmail = user?.email || session?.user?.email;
-            const isAuthorized = isWanqingAuthorized(currentEmail);
+            const shouldFilterWanqing = Boolean(activeAuthEmail && !isOwner);
             setMessages(
               parsed
                 .filter((m) => m.content !== "🎙 Voice Transmission")
                 .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
-                .filter((m) => isAuthorized || !isWanqingItem(m))
+                .filter((m) => !shouldFilterWanqing || !isWanqingItem(m))
                 .map((m) => (
                   m?.role === 'user'
                     ? { ...m, content: sanitizeUserVisibleContent(m.content) }

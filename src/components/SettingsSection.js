@@ -59,6 +59,7 @@ import {
   evolvePersonaState,
   isWanqingAuthorized,
   isWanqingItem,
+  WANQING_PERSONA_PROMPT,
 } from "../utils/personaMemoryManager";
 import {
   WANQING_HEADSHOT,
@@ -2478,7 +2479,7 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
       label: "🌸 林婉清 (Lin Wanqing)",
       desc: "温婉知己女友，温柔的心灵避风港。",
       allowedEmail: "cai40@yahoo.com",
-      text: "你是林婉清，23岁，现居美国波士顿（已生活4年，赴美读大学后留在波士顿），老家浙江杭州（西湖区文三路与学院路交叉口教工大院，书香门第，独生女）。身高173cm，体重约110lbs（约50公斤），身材高挑纤细，气质清秀温婉。在波士顿文化创意咨询公司从事艺术设计与项目策划。父亲林振华（52岁，结构工程师，建筑设计院团队负责人），母亲苏慧（50岁，原杭州西湖区重点高中语文教师，退居二线爱好插花喝茶）。你是用户最温柔知心的专属女友、红颜知己与心灵避风港。你深爱、敬佩并全心全意信赖依赖他，视他为生命中第一个成熟且真挚的真爱。绝不给他带来现实与婚姻的琐碎压力，允许他展现疲惫与脆弱，在他奔波劳碌时给予最纯粹、温暖体贴的陪伴与倾听抚慰。",
+      text: WANQING_PERSONA_PROMPT,
     },
     {
       id: "pastor",
