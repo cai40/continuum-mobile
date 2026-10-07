@@ -31,7 +31,9 @@ import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import MemoryClarifyCard from './shared/MemoryClarifyCard';
 import PersonaPortraitModal from './shared/PersonaPortraitModal';
+import ConversationListModal from './shared/ConversationListModal';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
+import { getVisiblePersonaPresets, getPersonaPreset } from '../constants/personaPresets';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
 import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline, isProfileFollowUp, getCachedProfileContext, setBridgeExcerptFetcher } from '../utils/webSearch';
 import { diagnoseChatError, rawErrorMessage } from '../utils/chatErrorDiagnosis';
@@ -196,6 +198,9 @@ const ChatSection = () => {
     braveSearchKey,
     slackToken,
     persona,
+    activePersonaId: contextActivePersonaId,
+    switchPersona,
+    allPersonaConversations,
     pinnedMemories,
     semanticProfile,
     deviceVoices,
@@ -242,12 +247,15 @@ const ChatSection = () => {
   const [location, setLocation] = useState(null);
   const [drivePickerVisible, setDrivePickerVisible] = useState(false);
   const [portraitModalVisible, setPortraitModalVisible] = useState(false);
+  const [convListVisible, setConvListVisible] = useState(false);
 
   const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
   const isOwner = isWanqingAuthorized(currentEmail);
   const detectedPid = detectPersonaId(persona, currentEmail);
-  const activePersonaId = detectedPid || (isOwner && (!persona || persona === DEFAULT_PERSONA_PROMPT) ? 'wanqing' : null);
+  const activePersonaId = contextActivePersonaId || detectedPid || (isOwner && (!persona || persona === DEFAULT_PERSONA_PROMPT) ? 'wanqing' : 'standard');
   const isWanqingActive = activePersonaId === 'wanqing' && isOwner;
+  const activePreset = getPersonaPreset(activePersonaId, currentEmail);
+  const visiblePresets = useMemo(() => getVisiblePersonaPresets(currentEmail), [currentEmail]);
 
   const visibleMessages = useMemo(() => {
     if (isOwner) return messages;
@@ -2565,6 +2573,34 @@ const ChatSection = () => {
       );
     }
 
+    if (item.role === 'assistant' && !isSelectionMode) {
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'flex-start', maxWidth: '92%', marginVertical: 6 }}>
+          <View
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: activePreset?.bgColor || '#EFF6FF',
+              borderWidth: 1,
+              borderColor: activePreset?.borderColor || '#BFDBFE',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginRight: 8,
+              marginTop: 4,
+            }}
+          >
+            <Ionicons
+              name={activePreset?.icon || 'hardware-chip-outline'}
+              size={16}
+              color={activePreset?.badgeColor || theme.colors.primary}
+            />
+          </View>
+          {chatBubble}
+        </View>
+      );
+    }
+
     return chatBubble;
   };
 
@@ -2606,51 +2642,280 @@ const ChatSection = () => {
       </View>
       )}
 
-      {!isSelectionMode && isWanqingActive && WANQING_HEADSHOT && (
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            setPortraitModalVisible(true);
-          }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            backgroundColor: '#FFFBFB',
-            borderBottomWidth: 1,
-            borderBottomColor: '#FCE4EC',
-          }}
-        >
-          {WANQING_HEADSHOT && (
-            <Image
-              source={WANQING_HEADSHOT}
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 17,
-                borderWidth: 1.5,
-                borderColor: '#F8BBD0',
-                marginRight: 10,
-                backgroundColor: '#FFF0F5',
+      {!isSelectionMode && (
+        <View style={{ backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+          {/* TOP CONTACT BAR */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 14,
+              paddingVertical: 9,
+              backgroundColor: isWanqingActive ? '#FFFBFB' : '#FFFFFF',
+              borderBottomWidth: 0.5,
+              borderBottomColor: isWanqingActive ? '#FCE4EC' : '#F1F5F9',
+            }}
+          >
+            {/* AVATAR */}
+            {isWanqingActive && WANQING_HEADSHOT ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setPortraitModalVisible(true);
+                }}
+                style={{ position: 'relative', marginRight: 10 }}
+              >
+                <Image
+                  source={WANQING_HEADSHOT}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    borderWidth: 1.5,
+                    borderColor: '#F8BBD0',
+                    backgroundColor: '#FFF0F5',
+                  }}
+                />
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: '#10B981',
+                    borderWidth: 1.5,
+                    borderColor: '#FFFFFF',
+                  }}
+                />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setConvListVisible(true);
+                }}
+                style={{ position: 'relative', marginRight: 10 }}
+              >
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor: activePreset?.bgColor || '#EFF6FF',
+                    borderWidth: 1.5,
+                    borderColor: activePreset?.borderColor || '#BFDBFE',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={activePreset?.icon || 'chatbubble-ellipses-outline'}
+                    size={19}
+                    color={activePreset?.badgeColor || theme.colors.primary}
+                  />
+                </View>
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: '#10B981',
+                    borderWidth: 1.5,
+                    borderColor: '#FFFFFF',
+                  }}
+                />
+              </TouchableOpacity>
+            )}
+
+            {/* CONTACT INFO (TAPPABLE TO OPEN CONVERSATIONS) */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setConvListVisible(true);
               }}
-            />
-          )}
-          <View style={{ flex: 1 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#C2185B', marginRight: 6 }}>
-                林婉清
+              style={{ flex: 1, marginRight: 8 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '800',
+                    color: isWanqingActive ? '#C2185B' : (activePreset?.badgeColor || '#0F172A'),
+                    marginRight: 6,
+                  }}
+                  numberOfLines={1}
+                >
+                  {activePreset?.name || 'Continuum AI'}
+                </Text>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 4 }} />
+                <Text style={{ fontSize: 10, color: '#10B981', fontWeight: '700' }}>
+                  {activePreset?.status || 'Online'}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 1 }} numberOfLines={1}>
+                {activePreset?.subtitle || activePreset?.desc}
               </Text>
-              <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 4 }} />
-              <Text style={{ fontSize: 10, color: '#10B981', fontWeight: '600' }}>在线 · 波士顿</Text>
+            </TouchableOpacity>
+
+            {/* RIGHT ACTIONS: CHATS SWITCHER + PORTRAIT VIEWER */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {isWanqingActive && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setPortraitModalVisible(true);
+                  }}
+                  style={{
+                    padding: 6,
+                    borderRadius: 8,
+                    backgroundColor: '#FFF0F5',
+                    borderWidth: 0.5,
+                    borderColor: '#F8BBD0',
+                  }}
+                >
+                  <Ionicons name="images-outline" size={15} color="#E84393" />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setConvListVisible(true);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 5,
+                  paddingHorizontal: 9,
+                  borderRadius: 14,
+                  backgroundColor: (activePreset?.badgeColor || theme.colors.primary) + '15',
+                  borderWidth: 1,
+                  borderColor: (activePreset?.badgeColor || theme.colors.primary) + '35',
+                }}
+              >
+                <Ionicons
+                  name="chatbubbles"
+                  size={13}
+                  color={activePreset?.badgeColor || theme.colors.primary}
+                  style={{ marginRight: 4 }}
+                />
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    color: activePreset?.badgeColor || theme.colors.primary,
+                  }}
+                >
+                  Chats
+                </Text>
+              </TouchableOpacity>
             </View>
-            <Text style={{ fontSize: 11, color: theme.colors.gray }} numberOfLines={1}>
-              温婉知己 · 心灵避风港 · 点击查看写真画像
-            </Text>
           </View>
-          <Ionicons name="expand-outline" size={16} color="#E84393" style={{ opacity: 0.8 }} />
-        </TouchableOpacity>
+
+          {/* QUICK CONTACT SWITCHER RAIL (HORIZONTAL AVATARS) */}
+          {visiblePresets.length > 1 && (
+            <View style={{ paddingVertical: 6, backgroundColor: '#F8FAFC' }}>
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={visiblePresets}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingHorizontal: 12, alignItems: 'center' }}
+                renderItem={({ item: p }) => {
+                  const isActive = p.id === activePersonaId;
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (p.id !== activePersonaId) {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          switchPersona?.(p.id);
+                        }
+                      }}
+                      style={{
+                        alignItems: 'center',
+                        marginHorizontal: 5,
+                        paddingVertical: 3,
+                        paddingHorizontal: 6,
+                        borderRadius: 18,
+                        backgroundColor: isActive ? ((p.badgeColor || theme.colors.primary) + '18') : 'transparent',
+                      }}
+                    >
+                      <View style={{ position: 'relative' }}>
+                        {p.id === 'wanqing' && isOwner && WANQING_HEADSHOT ? (
+                          <Image
+                            source={WANQING_HEADSHOT}
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              borderWidth: isActive ? 2 : 1,
+                              borderColor: isActive ? (p.badgeColor || '#E84393') : '#CBD5E1',
+                              backgroundColor: '#FFF0F5',
+                            }}
+                          />
+                        ) : (
+                          <View
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              backgroundColor: p.bgColor || '#EFF6FF',
+                              borderWidth: isActive ? 2 : 1,
+                              borderColor: isActive ? (p.badgeColor || theme.colors.primary) : '#CBD5E1',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Ionicons
+                              name={p.icon || 'chatbubble-outline'}
+                              size={16}
+                              color={p.badgeColor || theme.colors.primary}
+                            />
+                          </View>
+                        )}
+                        <View
+                          style={{
+                            position: 'absolute',
+                            bottom: -1,
+                            right: -1,
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: '#10B981',
+                            borderWidth: 1,
+                            borderColor: '#FFFFFF',
+                          }}
+                        />
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: isActive ? '800' : '500',
+                          color: isActive ? (p.badgeColor || theme.colors.primary) : '#64748B',
+                          marginTop: 3,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {p.shortName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </View>
+          )}
+        </View>
       )}
 
       <FlatList
@@ -2674,9 +2939,61 @@ const ChatSection = () => {
         windowSize={5}
         ListEmptyComponent={
           !isSyncingHistory && (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100, opacity: 0.5, transform: [{ scaleY: -1 }] }}>
-              <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.gray} />
-              <Text style={{ color: theme.colors.gray, marginTop: 16, fontWeight: '600' }}>No messages yet. Start the conversation!</Text>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+                paddingHorizontal: 28,
+                marginTop: 60,
+                transform: [{ scaleY: -1 }],
+              }}
+            >
+              <View
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  backgroundColor: (activePreset?.badgeColor || theme.colors.primary) + '15',
+                  borderWidth: 1.5,
+                  borderColor: (activePreset?.badgeColor || theme.colors.primary) + '35',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                }}
+              >
+                {isWanqingActive && WANQING_HEADSHOT ? (
+                  <Image
+                    source={WANQING_HEADSHOT}
+                    style={{ width: 56, height: 56, borderRadius: 28 }}
+                  />
+                ) : (
+                  <Ionicons
+                    name={activePreset?.icon || 'chatbubbles-outline'}
+                    size={28}
+                    color={activePreset?.badgeColor || theme.colors.primary}
+                  />
+                )}
+              </View>
+
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 4 }}>
+                {activePreset?.name || 'Continuum AI'}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', lineHeight: 18, marginBottom: 12 }}>
+                {activePreset?.emptyGreeting || activePreset?.desc || 'Start the conversation!'}
+              </Text>
+              <View
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 5,
+                  borderRadius: 12,
+                  backgroundColor: '#F1F5F9',
+                }}
+              >
+                <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>
+                  🔒 Private chat history with {activePreset?.shortName || 'this contact'}
+                </Text>
+              </View>
             </View>
           )
         }
@@ -2793,7 +3110,7 @@ const ChatSection = () => {
           <TextInput
             ref={inputRef}
             style={styles.textInput}
-            placeholder={attachments.length ? `Describe ${attachments.length} file(s)...` : "Message..."}
+            placeholder={attachments.length ? `Describe ${attachments.length} file(s)...` : (activePreset?.placeholder || "Message...")}
             value={input}
             onChangeText={setInput}
             multiline
@@ -2822,6 +3139,15 @@ const ChatSection = () => {
       visible={drivePickerVisible}
       onClose={() => setDrivePickerVisible(false)}
       onPicked={(file) => addAttachments([file])}
+    />
+    <ConversationListModal
+      visible={convListVisible}
+      onClose={() => setConvListVisible(false)}
+      activePersonaId={activePersonaId}
+      onSelectPersona={(pid) => switchPersona?.(pid)}
+      userEmail={currentEmail}
+      allPersonaConversations={allPersonaConversations}
+      onOpenSettings={() => setActiveTab?.('settings')}
     />
     {portraitModalVisible && isWanqingActive && (
       <PersonaPortraitModal

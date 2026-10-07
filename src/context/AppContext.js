@@ -23,6 +23,12 @@ import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
 import { sanitizeUserVisibleContent } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
 import { isWanqingAuthorized, isWanqingItem, WANQING_PERSONA_PROMPT, DEFAULT_PERSONA_PROMPT } from "../utils/personaMemoryManager";
+import {
+  PERSONA_PRESETS,
+  getVisiblePersonaPresets,
+  getPersonaPreset,
+  resolveConversationPersonaId,
+} from "../constants/personaPresets";
 
 const AppContext = createContext();
 const CHAT_HISTORY_CLEARED_AT_KEY = "@chat_history_cleared_at";
@@ -102,6 +108,10 @@ export const AppProvider = ({ children }) => {
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
+  // Dedicated conversation/window state per persona for real chat app experience
+  const [activePersonaId, setActivePersonaId] = useState("standard");
+  const [allPersonaConversations, setAllPersonaConversations] = useState({});
+  const switchingPersonaRef = useRef(false);
   // Listening is always auto-detect now (see the recognizer setup in ChatSection), so
   // there is no locale state to persist. The old "@stt_lang" pin is no longer read: with
   // the picker gone a stale pin could never be cleared, which is the bug this fixes.
@@ -191,11 +201,19 @@ export const AppProvider = ({ children }) => {
           setIsBiometricAuthenticated(false);
           
           if (!isWanqingAuthorized(session.user?.email)) {
+            setActivePersonaId((prev) => (prev === 'wanqing' ? 'standard' : prev));
             setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
             setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
           } else {
             // Authorized owner cai40@yahoo.com: restore or heal persona to Lin Wanqing
             const savedPersona = await AsyncStorage.getItem("@persona");
+            const savedPid = await AsyncStorage.getItem("@active_persona_id");
+            if (savedPid) {
+              setActivePersonaId(savedPid);
+            } else {
+              setActivePersonaId('wanqing');
+              AsyncStorage.setItem("@active_persona_id", 'wanqing').catch(() => {});
+            }
             if (savedPersona && isWanqingItem(savedPersona)) {
               setPersona(savedPersona);
             } else if (!savedPersona || savedPersona === DEFAULT_PERSONA_PROMPT) {
@@ -212,6 +230,7 @@ export const AppProvider = ({ children }) => {
         } else {
           setHasAcceptedLegal(true); // Don't show modal on login screen
           // Unauthenticated: ensure Wanqing items are not active in memory
+          setActivePersonaId((prev) => (prev === 'wanqing' ? 'standard' : prev));
           setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
           setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
         }
@@ -236,10 +255,18 @@ export const AppProvider = ({ children }) => {
       
       const isAuthorized = isWanqingAuthorized(currentUser?.email);
       if (!isAuthorized) {
+        setActivePersonaId((prev) => (prev === 'wanqing' ? 'standard' : prev));
         setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
         setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
       } else if (currentUser?.email === 'cai40@yahoo.com') {
         const savedPersona = await AsyncStorage.getItem("@persona");
+        const savedPid = await AsyncStorage.getItem("@active_persona_id");
+        if (savedPid) {
+          setActivePersonaId(savedPid);
+        } else {
+          setActivePersonaId('wanqing');
+          AsyncStorage.setItem("@active_persona_id", 'wanqing').catch(() => {});
+        }
         if (savedPersona && isWanqingItem(savedPersona)) {
           setPersona(savedPersona);
         } else if (!savedPersona || savedPersona === DEFAULT_PERSONA_PROMPT) {
@@ -309,6 +336,7 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     const loadVault = async () => {
       try {
+        const personaChatKeys = PERSONA_PRESETS.map((p) => `@chat_history_persona_${p.id}`);
         const keys = await AsyncStorage.multiGet([
           "@groq_key",
           "@gemini_key",
@@ -328,6 +356,8 @@ export const AppProvider = ({ children }) => {
           "@chat_history",
           CHAT_HISTORY_CLEARED_AT_KEY,
           "@persona",
+          "@active_persona_id",
+          ...personaChatKeys,
           "@render_email_bridge_secret",
           "@render_email_enabled",
           "@email_limit",
@@ -416,22 +446,100 @@ export const AppProvider = ({ children }) => {
           }
           if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
           if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
-          if (key === "@chat_history") {
-            const parsed = JSON.parse(value);
-            const shouldFilterWanqing = Boolean(activeAuthEmail && !isOwner);
-            setMessages(
-              parsed
+        });
+
+        // Resolve active persona ID
+        const savedActivePersonaId = valueFor("@active_persona_id");
+        const savedPersona = valueFor("@persona");
+
+        let resolvedPid = "standard";
+        if (savedActivePersonaId) {
+          resolvedPid = (savedActivePersonaId === 'wanqing' && !isOwner) ? 'standard' : savedActivePersonaId;
+        } else if (isOwner) {
+          resolvedPid = 'wanqing';
+        } else if (savedPersona) {
+          resolvedPid = resolveConversationPersonaId(savedPersona, activeAuthEmail);
+        }
+
+        setActivePersonaId(resolvedPid);
+        if (!savedActivePersonaId) {
+          AsyncStorage.setItem("@active_persona_id", resolvedPid).catch(() => {});
+        }
+
+        // Parse legacy chat history if available (for migration/fallback)
+        const legacyChatRaw = valueFor("@chat_history");
+        let legacyChatParsed = [];
+        if (legacyChatRaw) {
+          try {
+            const parsed = JSON.parse(legacyChatRaw);
+            if (Array.isArray(parsed)) {
+              const shouldFilterWanqing = Boolean(activeAuthEmail && !isOwner);
+              legacyChatParsed = parsed
+                .filter((m) => m && m.content && m.role)
                 .filter((m) => m.content !== "🎙 Voice Transmission")
                 .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
                 .filter((m) => !shouldFilterWanqing || !isWanqingItem(m))
                 .map((m) => (
-                  m?.role === 'user'
-                    ? { ...m, content: sanitizeUserVisibleContent(m.content) }
-                    : m
-                )),
-            );
+                  m?.role === 'user' ? { ...m, content: sanitizeUserVisibleContent(m.content) } : m
+                ));
+            }
+          } catch (e) {
+            console.warn("Legacy chat history parse error:", e);
           }
-        });
+        }
+
+        // Build conversation summaries for all visible personas
+        const visiblePresets = getVisiblePersonaPresets(activeAuthEmail);
+        const convMap = {};
+        let activeMessagesToSet = null;
+
+        for (const p of visiblePresets) {
+          const pKey = `@chat_history_persona_${p.id}`;
+          const pRaw = valueFor(pKey);
+          let pMessages = [];
+
+          if (pRaw) {
+            try {
+              const parsed = JSON.parse(pRaw);
+              if (Array.isArray(parsed)) {
+                const shouldFilterWanqing = Boolean(activeAuthEmail && !isOwner);
+                pMessages = parsed
+                  .filter((m) => m && m.content && m.role)
+                  .filter((m) => m.content !== "🎙 Voice Transmission")
+                  .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
+                  .filter((m) => !shouldFilterWanqing || !isWanqingItem(m))
+                  .map((m) => (
+                    m?.role === 'user' ? { ...m, content: sanitizeUserVisibleContent(m.content) } : m
+                  ));
+              }
+            } catch (e) {
+              console.warn(`Persona ${p.id} chat parse error:`, e);
+            }
+          } else if (p.id === resolvedPid && legacyChatParsed.length > 0) {
+            // Seamless migration of existing chat history to active persona
+            pMessages = legacyChatParsed;
+            AsyncStorage.setItem(pKey, JSON.stringify(pMessages)).catch(() => {});
+          }
+
+          if (p.id === resolvedPid) {
+            activeMessagesToSet = pMessages;
+          }
+
+          const lastMsg = pMessages.length > 0 ? pMessages[pMessages.length - 1] : null;
+          convMap[p.id] = {
+            lastMessage: lastMsg ? lastMsg.content : (p.emptyGreeting || p.desc),
+            timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : null),
+            count: pMessages.length,
+          };
+        }
+
+        setAllPersonaConversations(convMap);
+
+        if (activeMessagesToSet !== null) {
+          setMessages(activeMessagesToSet);
+        } else if (legacyChatParsed.length > 0) {
+          setMessages(legacyChatParsed);
+        }
         isHistoryLoaded.current = true;
         isVaultLoaded.current = true;
       } catch (e) {
@@ -468,9 +576,9 @@ export const AppProvider = ({ children }) => {
 
   const clearDeviceVoices = () => setDeviceVoices({});
 
-  // Persistence: Auto-Save History
+  // Persistence: Auto-Save History per Persona & Mirror to Global
   useEffect(() => {
-    if (isHistoryLoaded.current) {
+    if (isHistoryLoaded.current && !switchingPersonaRef.current && activePersonaId) {
       const hardwareLimit = 500; // Stricter memory cap for mobile stability
       const optimizedHistory =
         messages.length > hardwareLimit
@@ -486,12 +594,31 @@ export const AppProvider = ({ children }) => {
             : m
         ));
 
+      // 1. Save to current persona's private storage
+      const personaKey = `@chat_history_persona_${activePersonaId}`;
+      AsyncStorage.setItem(
+        personaKey,
+        JSON.stringify(safeHistory),
+      ).catch((e) => console.error("Persona auto-save failed:", e));
+
+      // 2. Mirror to global @chat_history for background workers / diagnostics
       AsyncStorage.setItem(
         "@chat_history",
         JSON.stringify(safeHistory),
       ).catch((e) => console.error("Auto-save failed:", e));
+
+      // 3. Update conversation summary
+      const lastMsg = safeHistory.length > 0 ? safeHistory[safeHistory.length - 1] : null;
+      setAllPersonaConversations((prev) => ({
+        ...prev,
+        [activePersonaId]: {
+          lastMessage: lastMsg ? lastMsg.content : '',
+          timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : Date.now()),
+          count: safeHistory.length,
+        },
+      }));
     }
-  }, [messages]);
+  }, [messages, activePersonaId]);
 
   const syncRemoteHistory = async (explicitToken, retryCount = 0) => {
     const token = explicitToken || session?.access_token;
@@ -789,6 +916,17 @@ export const AppProvider = ({ children }) => {
       // Persist clear watermark first so a concurrent remote sync cannot resurrect old chat.
       await AsyncStorage.setItem(CHAT_HISTORY_CLEARED_AT_KEY, clearedAt);
       setMessages([]);
+      if (activePersonaId) {
+        await AsyncStorage.removeItem(`@chat_history_persona_${activePersonaId}`);
+        setAllPersonaConversations((prev) => ({
+          ...prev,
+          [activePersonaId]: {
+            lastMessage: '',
+            timestamp: null,
+            count: 0,
+          },
+        }));
+      }
       await AsyncStorage.removeItem("@chat_history");
 
       const token = session?.access_token;
@@ -805,6 +943,81 @@ export const AppProvider = ({ children }) => {
     } catch (e) {
       console.error("Clear local history failed:", e);
       Alert.alert("Clear failed", e?.message || "Could not clear chat history.");
+    }
+  };
+
+  const switchPersona = async (targetPersonaId) => {
+    const currentEmail = user?.email || session?.user?.email;
+    const isAuthorized = isWanqingAuthorized(currentEmail);
+    let targetId = String(targetPersonaId || 'standard').toLowerCase();
+    if (targetId === 'wanqing' && !isAuthorized) {
+      targetId = 'standard';
+    }
+
+    const targetPreset = getPersonaPreset(targetId, currentEmail);
+    const currentPid = activePersonaId || 'standard';
+
+    if (currentPid === targetId) return;
+
+    switchingPersonaRef.current = true;
+    try {
+      // 1. Save current messages to current persona's private storage
+      if (currentPid && Array.isArray(messages)) {
+        const currentKey = `@chat_history_persona_${currentPid}`;
+        await AsyncStorage.setItem(currentKey, JSON.stringify(messages)).catch(() => {});
+        const lastCurMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+        setAllPersonaConversations((prev) => ({
+          ...prev,
+          [currentPid]: {
+            lastMessage: lastCurMsg ? lastCurMsg.content : '',
+            timestamp: lastCurMsg?.timestamp || (lastCurMsg?.id ? Number(lastCurMsg.id) || Date.now() : Date.now()),
+            count: messages.length,
+          },
+        }));
+      }
+
+      // 2. Load target persona's messages
+      const targetKey = `@chat_history_persona_${targetId}`;
+      let loadedMessages = [];
+      try {
+        const raw = await AsyncStorage.getItem(targetKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            loadedMessages = parsed
+              .filter((m) => m && m.content && m.role)
+              .filter((m) => isAuthorized || !isWanqingItem(m))
+              .map((m) => (
+                m.role === 'user' ? { ...m, content: sanitizeUserVisibleContent(m.content) } : m
+              ));
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to switch to persona ${targetId} history:`, err);
+      }
+
+      // 3. Update state
+      setActivePersonaId(targetId);
+      setMessages(loadedMessages);
+      setPersona(targetPreset.text);
+
+      // 4. Persist active persona and mirror history
+      await AsyncStorage.setItem('@active_persona_id', targetId).catch(() => {});
+      await AsyncStorage.setItem('@persona', targetPreset.text).catch(() => {});
+      await AsyncStorage.setItem('@chat_history', JSON.stringify(loadedMessages)).catch(() => {});
+
+      // 5. Update target conversation summary
+      const lastMsg = loadedMessages.length > 0 ? loadedMessages[loadedMessages.length - 1] : null;
+      setAllPersonaConversations((prev) => ({
+        ...prev,
+        [targetId]: {
+          lastMessage: lastMsg ? lastMsg.content : (targetPreset.emptyGreeting || targetPreset.desc),
+          timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : null),
+          count: loadedMessages.length,
+        },
+      }));
+    } finally {
+      switchingPersonaRef.current = false;
     }
   };
 
@@ -838,7 +1051,13 @@ export const AppProvider = ({ children }) => {
       setPersona(DEFAULT_PERSONA_PROMPT);
       return;
     }
+    const resolvedPid = resolveConversationPersonaId(nextPersona, currentEmail);
+    if (resolvedPid && resolvedPid !== activePersonaId) {
+      switchPersona(resolvedPid);
+      return;
+    }
     setPersona(nextPersona);
+    AsyncStorage.setItem("@persona", nextPersona).catch(() => {});
   };
 
   return (
@@ -877,6 +1096,10 @@ export const AppProvider = ({ children }) => {
         setVoicePauseMs,
         persona,
         setPersona: updatePersona,
+        activePersonaId,
+        setActivePersonaId,
+        switchPersona,
+        allPersonaConversations,
         renderEmailBridgeSecret,
         setRenderEmailBridgeSecret,
         emailLimit,
