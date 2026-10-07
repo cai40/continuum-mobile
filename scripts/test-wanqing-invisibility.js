@@ -107,8 +107,8 @@ const {
 const assetsPath = path.resolve(__dirname, '../src/utils/personaAssets.js');
 const assetsCode = fs.readFileSync(assetsPath, 'utf8')
   .replace(/import \{ isWanqingAuthorized \} from '\.\/personaMemoryManager';/g, '')
-  .replace(/export \{ WANQING_HEADSHOT \};/g, '')
-  .replace(/export function/g, 'function');
+  .replace(/export (?:const|let|var|function)/g, (m) => m.replace('export ', ''))
+  .replace(/export \{[\s\S]*?\};/g, '');
 
 const assetsContext = {
   isWanqingAuthorized,
@@ -120,12 +120,14 @@ vm.runInContext(`
 ${assetsCode}
 module.exports = {
   WANQING_HEADSHOT,
+  WANQING_MOMENTS,
   getPersonaAvatar,
   getWanqingHeadshot,
+  getWanqingMoments,
 };
 `, assetsContext);
 
-const { WANQING_HEADSHOT, getPersonaAvatar, getWanqingHeadshot } = assetsContext.module.exports;
+const { WANQING_HEADSHOT, WANQING_MOMENTS, getPersonaAvatar, getWanqingHeadshot, getWanqingMoments } = assetsContext.module.exports;
 
 // -----------------------------------------------------------------------------
 // Load helpers.js (trimChatHistoryForUpload, trimChatHistoryForEmailRecall)
@@ -226,17 +228,20 @@ async function runTests() {
   // =========================================================================
   console.log('1. Testing Pictures & Headshots Invisibility...');
 
-  // Authorized user gets the avatar asset
+  // Authorized user gets the avatar asset and moments
   assert.ok(WANQING_HEADSHOT != null, 'WANQING_HEADSHOT asset must exist');
   assert.strictEqual(getPersonaAvatar('wanqing', authorizedUser), WANQING_HEADSHOT, 'Owner can retrieve avatar');
   assert.strictEqual(getWanqingHeadshot(authorizedUser), WANQING_HEADSHOT, 'Owner can retrieve headshot');
+  assert.ok(Array.isArray(WANQING_MOMENTS) && WANQING_MOMENTS.length === 4, 'Must have 4 moments');
+  assert.strictEqual(getWanqingMoments(authorizedUser).length, 4, 'Owner can retrieve moments list');
 
-  // Other users MUST receive null for avatars and headshots
+  // Other users MUST receive null for avatars, headshots, and empty list for moments
   for (const user of unauthorizedUsers) {
     assert.strictEqual(getPersonaAvatar('wanqing', user), null, `User ${user} must NOT get avatar`);
     assert.strictEqual(getWanqingHeadshot(user), null, `User ${user} must NOT get headshot`);
+    assert.strictEqual(getWanqingMoments(user).length, 0, `User ${user} must get empty moments list`);
   }
-  console.log('✓ Picture & headshot getters strictly return null for unauthorized users');
+  console.log('✓ Picture, headshot & moments getters strictly return null/empty for unauthorized users');
 
   // PersonaPortraitModal authorization verification
   const modalPath = path.resolve(__dirname, '../src/components/shared/PersonaPortraitModal.js');

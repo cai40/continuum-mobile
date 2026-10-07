@@ -60,7 +60,11 @@ import {
   isWanqingAuthorized,
   isWanqingItem,
 } from "../utils/personaMemoryManager";
-import { WANQING_HEADSHOT } from "../utils/personaAssets";
+import {
+  WANQING_HEADSHOT,
+  WANQING_MOMENTS,
+  getWanqingMoments,
+} from "../utils/personaAssets";
 import PersonaPortraitModal from "./shared/PersonaPortraitModal";
 
 const SettingsSection = (props) => {
@@ -165,6 +169,7 @@ const SettingsSection = (props) => {
   const [isEvolvingPersona, setIsEvolvingPersona] = useState(false);
   const [showEpisodicList, setShowEpisodicList] = useState(false);
   const [portraitModalVisible, setPortraitModalVisible] = useState(false);
+  const [selectedPhotoModal, setSelectedPhotoModal] = useState(null);
 
   const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
   const isWanqingAllowed = isWanqingAuthorized(currentEmail);
@@ -2934,6 +2939,66 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                 </View>
               )}
 
+              {/* Moments & Life Photos (朋友圈生活照) */}
+              {isWanqingAllowed && (
+                <View style={{ marginBottom: 14 }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2185B" }}>
+                      婉清的生活瞬间 · 朋友圈相册 ({WANQING_MOMENTS.length})
+                    </Text>
+                    <Text style={{ fontSize: 10, color: theme.colors.gray }}>
+                      点击查看原图与心语
+                    </Text>
+                  </View>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={{ paddingRight: 8, gap: 10 }}
+                  >
+                    {WANQING_MOMENTS.map((moment) => (
+                      <TouchableOpacity
+                        key={moment.id}
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          setSelectedPhotoModal(moment);
+                        }}
+                        style={{
+                          width: 110,
+                          backgroundColor: "white",
+                          borderRadius: 12,
+                          overflow: "hidden",
+                          borderWidth: 1,
+                          borderColor: "#FCE4EC",
+                          shadowColor: "#000",
+                          shadowOffset: { width: 0, height: 2 },
+                          shadowOpacity: 0.08,
+                          shadowRadius: 4,
+                          elevation: 2,
+                        }}
+                      >
+                        <Image
+                          source={moment.image}
+                          style={{ width: 110, height: 110 }}
+                          resizeMode="cover"
+                        />
+                        <View style={{ padding: 6 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={{ fontSize: 10, fontWeight: "600", color: "#2D3436" }}
+                          >
+                            {moment.caption}
+                          </Text>
+                          <Text style={{ fontSize: 8, color: theme.colors.gray, marginTop: 2 }}>
+                            {moment.date}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+
               {/* Reset Button */}
               <TouchableOpacity
                 onPress={handleResetPersonaMemory}
@@ -3048,6 +3113,21 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             subtitle="温婉知己 · 心灵避风港"
             tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
             bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+          />
+        )}
+
+        {/* --- MOMENTS PHOTO DETAIL MODAL VIEWER --- */}
+        {Boolean(selectedPhotoModal) && isWanqingAllowed && (
+          <PersonaPortraitModal
+            visible={Boolean(selectedPhotoModal)}
+            onClose={() => setSelectedPhotoModal(null)}
+            imageSource={selectedPhotoModal?.image}
+            userEmail={currentEmail}
+            isAuthorized={isWanqingAllowed}
+            name="林婉清的生活瞬间"
+            subtitle={selectedPhotoModal?.location || "波士顿生活记录"}
+            tags={["朋友圈瞬间", selectedPhotoModal?.date || "近期", "波士顿生活"]}
+            bio={selectedPhotoModal?.caption}
           />
         )}
       </View>
@@ -3196,6 +3276,21 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           subtitle="温婉知己 · 心灵避风港"
           tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
           bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+        />
+      )}
+
+      {/* --- MOMENTS PHOTO DETAIL MODAL VIEWER --- */}
+      {Boolean(selectedPhotoModal) && isWanqingAllowed && (
+        <PersonaPortraitModal
+          visible={Boolean(selectedPhotoModal)}
+          onClose={() => setSelectedPhotoModal(null)}
+          imageSource={selectedPhotoModal?.image}
+          userEmail={currentEmail}
+          isAuthorized={isWanqingAllowed}
+          name="林婉清的生活瞬间"
+          subtitle={selectedPhotoModal?.location || "波士顿生活记录"}
+          tags={["朋友圈瞬间", selectedPhotoModal?.date || "近期", "波士顿生活"]}
+          bio={selectedPhotoModal?.caption}
         />
       )}
     </ScrollView>
