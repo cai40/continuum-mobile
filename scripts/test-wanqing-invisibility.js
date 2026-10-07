@@ -271,6 +271,7 @@ async function runTests() {
   const settingsCode = fs.readFileSync(settingsPath, 'utf8');
   assert.ok(settingsCode.includes('p.allowedEmail.toLowerCase() === currentEmail && isWanqingAllowed'), 'SettingsSection restricts wanqing preset to isWanqingAllowed');
   assert.ok(settingsCode.includes('!isWanqingAllowed && isWanqingItem(persona)'), 'SettingsSection sanitizes custom input if persona matches Wanqing');
+  assert.ok(/const\s+isWanqingAllowed\s*=\s*isWanqingAuthorized\(currentEmail\);/.test(settingsCode), 'SettingsSection defines isWanqingAllowed at component level');
   console.log('✓ SettingsSection preset library & custom persona input are strictly hidden from other users');
 
   // =========================================================================

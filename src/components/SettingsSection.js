@@ -166,6 +166,9 @@ const SettingsSection = (props) => {
   const [showEpisodicList, setShowEpisodicList] = useState(false);
   const [portraitModalVisible, setPortraitModalVisible] = useState(false);
 
+  const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+  const isWanqingAllowed = isWanqingAuthorized(currentEmail);
+
   useEffect(() => {
     const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
     const isWanqingAllowed = isWanqingAuthorized(currentEmail);
@@ -296,8 +299,7 @@ const SettingsSection = (props) => {
     setExpandedMemoryIds((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
-  const isOwner = isWanqingAuthorized(currentEmail);
+  const isOwner = isWanqingAllowed;
   const filterWanqingMemory = (items) => {
     if (isOwner) return items || [];
     return (Array.isArray(items) ? items : []).filter(
