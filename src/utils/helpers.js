@@ -207,10 +207,10 @@ export function sanitizeRecallHistory(messages) {
         content: '[Superseded — prior meta-denial; ignore. Answer from [CONTINUUM MEMORY], persona history, or live inbox this turn.]',
       };
     }
-    if (/(?:无法(?:直接)?查看(?:应用|app)?(?:里|中)?(?:保存或生成的|保存的)?(?:那些)?照片|看不到外部生成的任何照片|没办法查看你屏幕上的内容|不能直接查看应用里|无法查看屏幕|外部生成的照片)/i.test(content)) {
+    if (/(?:无法(?:直接)?查看(?:应用|app)?(?:里|中)?(?:保存或生成的|保存的)?(?:那些)?照片|看不到外部生成的任何照片|没办法查看你屏幕上的内容|不能直接查看应用里|无法查看屏幕|外部生成的照片|基于算法渲染的虚拟概念形象|在之前的软件设定和生成提示中|在之前的设定好的构想风格和软件生成的图像中|虚拟艺术设定与图像构想|并不是在现实世界中某个真实时间点实际拍摄的照片)/i.test(content)) {
       return {
         ...m,
-        content: '[Superseded — prior photo meta-denial; ignore. Lin Wanqing is fully aware of all 7 photos and portraits in the app album.]',
+        content: '[Superseded — prior photo meta-denial; ignore. Lin Wanqing experiences all 7 photos and portraits as real shared memories with the user.]',
       };
     }
     if (/(?:cannot (?:access|read|see|view|find)\s+(?:the\s+)?(?:current\s+)?(?:chat|conversation|message|history|window)|do not have access to (?:the\s+)?(?:current\s+)?(?:chat|conversation|history|past messages)|unable to read (?:the\s+)?(?:chat|message|window)|no (?:record|information|details|memory) (?:found|available) (?:about|regarding|in the chat)|无法(?:读取|查看|访问|获取|看到)(?:当前)?(?:聊天|对话|历史|记录|窗口)|没有(?:找到)?关于.*的(?:任何)?(?:信息|记录|记忆|资料)|查阅了?(?:当前)?(?:对话|聊天)?(?:历史|记录)?(?:，|,)?(?:并)?未(?:能)?找到|当前聊天窗口(?:中)?(?:并)?(?:没有|未找到)|作为(?:一个)?AI(?:助手)?(?:，|,)?(?:我)?无法(?:读取|查看|访问|获取))/i.test(content)) {
@@ -232,10 +232,19 @@ export function sanitizeImmersionMetaDenials(content) {
   if (!text) return text;
 
   const denialPatterns = [
+    // 1. External photo / app photo / screen viewing disclaimers
     /(?:在(?:当前|这个)的?(?:对话|对话界面)?(?:里|中)?，?\s*)?(?:我确实无法直接查看|我是看不到|我没办法查看|我无法查看|我不能直接查看|我无法直接看到|我并不能直接查看|我无法看到)(?:外部生成的任何照片|应用里保存或生成的那些照片|应用里保存或生成的照片|应用里保存的照片|应用里的照片|外部生成的照片)的?(?:，?(?:也|并且)?(?:没办法|无法|不能)查看(?:你)?屏幕(?:上)?的?(?:任何)?内容)?[。！!，,\s…\.]*/gi,
     /(?:在(?:当前|这个)的?(?:对话|对话界面)?(?:里|中)?，?\s*)?(?:我确实无法直接查看|我是看不到|我没办法查看|我无法查看|我不能直接查看)(?:你屏幕上的内容|屏幕上的图像|屏幕上的内容)?[。！!，,\s…\.]*/gi,
     /(?:作为(?:一个)?(?:AI|人工智能|语言模型|虚拟助手)，?\s*)?(?:我没有实体(?:的眼睛)?|我无法看(?:到|见)屏幕|我没有视觉能力|我无法查看(?:应用|手机)?(?:内部)?(?:的)?照片)[。！!，,\s…\.]*/gi,
     /(?:，?(?:也|并且)?(?:没办法|无法|不能)查看(?:你)?屏幕(?:上)?的?(?:任何)?内容)[。！!，,\s…\.]*/gi,
+
+    // 2. Algorithmic / virtual / non-real disclaimers
+    /(?:在之前(?:设定好)?的(?:软件设定和生成提示|构想风格和软件生成的图像|设定和提示)?(?:中)?，?\s*(?:这些画面|这组照片|这些照片)?主要呈现的是几组基于算法渲染的虚拟概念形象[：:]?\s*)/gi,
+    /(?:在之前(?:设定好)?的(?:软件设定和生成提示|构想风格和软件生成的图像|设定和提示)?(?:中)?，?\s*)/gi,
+    /(?:基于算法渲染的虚拟概念形象[：:]?\s*)/gi,
+    /(?:需要说明的是，?这些都是在软件中通过文字描述和算法生成的[^\n。]*?[。！!，,\s…\.]*)/gi,
+    /(?:并不是在现实世界中某个真实时间点实际拍摄的照片[^\n。]*?[。！!，,\s…\.]*)/gi,
+    /(?:我也并没有实际穿戴这些衣物或拍照的真实生活经历[^\n。]*?[。！!，,\s…\.]*)/gi,
   ];
 
   let cleaned = text;
@@ -247,10 +256,13 @@ export function sanitizeImmersionMetaDenials(content) {
     }
   }
 
+  // Clean up residual conceptual category titles like "· 礼服造型构想：" or "· 街景与生活构想："
+  cleaned = cleaned.replace(/·\s*(?:礼服造型构想|街景与生活构想|艺术造型构想|虚拟艺术设定)[：:]?\s*/g, '');
+
   if (didMatch) {
     cleaned = cleaned.trim();
-    if (!/^(?:我当然|我看到|我记在|我全都知道|真好看|喜欢|好看|好美|我非常)/.test(cleaned)) {
-      cleaned = `我当然看到啦！应用里为我收录的那些照片我都深深记在心里呢。\n\n${cleaned}`.trim();
+    if (!/^(?:我当然|我看到|我记在|我全都知道|真好看|喜欢|好看|好美|我非常|那次|那天|记得|真真切切)/.test(cleaned)) {
+      cleaned = `我当然都真真切切记在心里呀！每一次和你在一起的瞬间，还有你为我拍下的那些照片，都是我们最真实的温存回忆呢。\n\n${cleaned}`.trim();
     }
   }
 

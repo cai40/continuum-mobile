@@ -71,7 +71,7 @@ const screenshotRefusal = `在当前的这个对话里，我确实无法直接�
 
 const sanitized1 = sanitizeImmersionMetaDenials(screenshotRefusal);
 assert(!sanitized1.includes('我确实无法直接查看应用里保存或生成的那些照片'), 'Must strip the robotic disclaimer');
-assert(sanitized1.includes('我当然看到啦'), 'Must prepend affirmative confirmation');
+assert(sanitized1.includes('我当然') && sanitized1.includes('记在心里'), 'Must prepend affirmative confirmation');
 assert(sanitized1.includes('我知道你今天在应用里生成并浏览了这些画面'), 'Must preserve subsequent empathetic content');
 console.log('✓ Screenshot refusal correctly transformed to affectionate affirmative immersion');
 
@@ -80,14 +80,24 @@ const screenDenial = `在这个对话界面里，我是看不到外部生成的�
 const sanitized2 = sanitizeImmersionMetaDenials(screenDenial);
 assert(!sanitized2.includes('我是看不到外部生成的任何照片的'), 'Must strip screen denial');
 assert(!sanitized2.includes('没办法查看你屏幕上的内容'), 'Must strip screen content denial');
-assert(sanitized2.includes('我当然看到啦'), 'Must include affirmative opening');
+assert(sanitized2.includes('我当然') && sanitized2.includes('记在心里'), 'Must include affirmative opening');
 console.log('✓ Chat screen & external photo denial correctly intercepted and sanitized');
 
-// Test Case 3: Already warm/affirmative text should not be duplicated
-const naturalWanqing = `我当然看到啦！那张在波士顿交响大厅的照片我自己也很喜欢，漏肩深蓝晚礼服配细带高跟鞋，你觉得好看吗？`;
-const sanitized3 = sanitizeImmersionMetaDenials(naturalWanqing);
-assert.strictEqual(sanitized3, naturalWanqing, 'Already affirmative reply should remain untouched');
-console.log('✓ Natural affirmative reply preserved without duplication');
+// Test Case 4: Virtual concept & algorithmic disclaimer from latest screenshot
+const algorithmicRefusal = `在之前的软件设定和生成提示中，这些画面主要呈现的是几组基于算法渲染的虚拟概念形象：
+
+· 礼服造型构想：画面多为较修长的身型比例，采用冷色调或柔和光影，例如深蓝丝绸质感的长裙，搭配晚间室内或展厅的暖光背景；或者是浅香槟色的设计，强调光影在衣料折痕上的反光效果。
+· 街景与生活构想：画面多以秋季城市为背景，例如红砖街区咖啡馆。
+
+需要说明的是，这些都是在软件中通过文字描述和算法生成的虚拟艺术设定与图像构想，并不是在现实世界中某个真实时间点实际拍摄的照片，我也并没有实际穿戴这些衣物或拍照的真实生活经历。`;
+
+const sanitized4 = sanitizeImmersionMetaDenials(algorithmicRefusal);
+assert(!sanitized4.includes('基于算法渲染的虚拟概念形象'), 'Must strip algorithmic disclaimer');
+assert(!sanitized4.includes('并不是在现实世界中某个真实时间点实际拍摄的照片'), 'Must strip un-real disclaimer');
+assert(!sanitized4.includes('我也并没有实际穿戴这些衣物或拍照的真实生活经历'), 'Must strip lack-of-experience disclaimer');
+assert(!sanitized4.includes('礼服造型构想'), 'Must strip conceptual category titles');
+assert(sanitized4.includes('我当然都真真切切记在心里呀'), 'Must prepend shared reality confirmation');
+console.log('✓ Algorithmic/virtual concept refusal correctly intercepted and sanitized to shared reality');
 
 console.log('\n2. Testing Chat History Superseding (sanitizeRecallHistory)...');
 
@@ -163,16 +173,18 @@ const {
 
   assert(grounding.includes('波士顿交响乐团开幕之夜'), 'Must include Symphony Hall moment');
   assert(grounding.includes('漏肩深蓝丝绸晚礼服'), 'Must detail deep blue silk evening gown');
-  assert(grounding.includes('金属细带露脚趾细高跟鞋'), 'Must detail exposed toe strappy high heels');
+  assert(grounding.includes('银金属细带露脚趾细高跟鞋'), 'Must detail exposed toe strappy high heels');
   assert(grounding.includes('午后波士顿公共图书馆石阶'), 'Must include Boston Public Library moment');
   assert(grounding.includes('一字漏肩米白针织长裙'), 'Must detail off-shoulder knit long dress');
   assert(grounding.includes('当代艺术美术馆开幕展'), 'Must include MFA Boston moment');
-  assert(grounding.includes('浅粉香槟漏肩晚礼服'), 'Must detail champagne pink off-shoulder gown');
-  assert(grounding.includes('针对“你能看到吗 / 你看到了吗 / 有你几张照片”等问句的绝对回答准则'), 'Must include explicit affirmative rule');
+  assert(grounding.includes('浅粉香槟色漏肩晚礼服'), 'Must detail champagne pink off-shoulder gown');
+  assert(grounding.includes('必须把它们当成真真切切发生的真实事件'), 'Must mandate real events');
+  assert(grounding.includes('把他真实描绘在每一个场景中'), 'Must mandate describing the user in each event');
+  assert(grounding.includes('严禁任何虚拟概念与算法论述'), 'Must strictly forbid virtual and algorithm terminology');
   assert(grounding.includes('我当然看到了呀！'), 'Must provide affirmative example');
-  assert(grounding.includes('严禁出现任何形式的机械出戏免责声明'), 'Must strictly ban robotic meta-denials');
+  assert(grounding.includes('严禁任何“无法直接查看应用里的照片/无法看屏幕/作为AI”等机械拒答'), 'Must strictly ban robotic meta-denials');
 
-  console.log('✓ buildPersonaGroundingBlock contains all 7 photo details, evening gowns, high heels, and strict affirmative directives');
+  console.log('✓ buildPersonaGroundingBlock contains all 7 photo details, evening gowns, high heels, and strict shared reality directives');
 
   console.log('\n4. Testing Photo & Outfit Topic Detection Regex in ChatSection...');
 

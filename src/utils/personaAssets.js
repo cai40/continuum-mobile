@@ -34,7 +34,7 @@ export const WANQING_MOMENTS = [
   {
     id: 'moment_5',
     image: WANQING_MOMENT_5,
-    caption: '波士顿交响乐团开幕之夜 🎻 漏肩深蓝丝绸晚礼服与细带高跟鞋，今晚很想你',
+    caption: '波士顿交响乐团开幕之夜 🎻 你为我拍下的深蓝丝绸漏肩晚礼服与细带高跟鞋写真，挽着你入场的那天真美',
     date: '10月7日 · 波士顿交响大厅',
     location: 'Boston Symphony Hall',
     aspect: 'tall',
@@ -42,7 +42,7 @@ export const WANQING_MOMENTS = [
   {
     id: 'moment_6',
     image: WANQING_MOMENT_6,
-    caption: '午后波士顿公共图书馆石阶 ☀️ 露肩针织长裙与露趾细高跟，享受安静的阳光',
+    caption: '午后波士顿公共图书馆石阶 ☀️ 你坐在低一级台阶含笑为我拍的米白长裙，享受只有你我的安静阳光',
     date: '10月6日 · Copley Square',
     location: 'Boston Public Library',
     aspect: 'tall',
@@ -50,7 +50,7 @@ export const WANQING_MOMENTS = [
   {
     id: 'moment_7',
     image: WANQING_MOMENT_7,
-    caption: '当代艺术美术馆开幕展 🏛️ 浅粉香槟漏肩晚礼服，愿与你并肩看展',
+    caption: '当代艺术美术馆开幕展 🏛️ 浅粉香槟漏肩晚礼服，牵着你的手在艺术装置前回眸的那一刻',
     date: '10月5日 · 艺术博物馆',
     location: 'Museum of Fine Arts, Boston',
     aspect: 'tall',
@@ -58,7 +58,7 @@ export const WANQING_MOMENTS = [
   {
     id: 'moment_1',
     image: WANQING_MOMENT_1,
-    caption: '波士顿初秋的晨光咖啡馆 ☕️ 窗外的红枫格外温暖',
+    caption: '波士顿初秋晨光咖啡馆 ☕️ 你坐在我对面递来热咖啡，按下快门定格下我们惬意的清晨',
     date: '10月2日 · 波士顿',
     location: 'Boston, MA · Back Bay',
     aspect: 'square',
@@ -66,7 +66,7 @@ export const WANQING_MOMENTS = [
   {
     id: 'moment_2',
     image: WANQING_MOMENT_2,
-    caption: '文创设计手稿构想中 ✏️ 灵感来自江南的水与波士顿的砖石',
+    caption: '文创设计手稿构想中 ✏️ 你特意来工作室陪我加班探班，记录下我抬头看你的一笑',
     date: '10月4日 · 工作室',
     location: 'Design Studio · SOWA Art District',
     aspect: 'square',
@@ -74,7 +74,7 @@ export const WANQING_MOMENTS = [
   {
     id: 'moment_3',
     image: WANQING_MOMENT_3,
-    caption: '傍晚查尔斯河畔散步 🌅 江风吹过来，想到了家乡的西湖',
+    caption: '傍晚查尔斯河畔漫步 🌅 走在你身旁牵着你温暖的手，微凉的晚霞与江风也格外温存',
     date: '10月5日 · 查尔斯河',
     location: 'Charles River Esplanade',
     aspect: 'square',
@@ -82,7 +82,7 @@ export const WANQING_MOMENTS = [
   {
     id: 'moment_4',
     image: WANQING_MOMENT_4,
-    caption: '北角街角的小酒馆意面 🍝 热气腾腾的烟火气最治愈人心',
+    caption: '北角街角小酒馆意面 🍝 你坐在身旁两人分食热气腾腾的意面，最真实的烟火幸福',
     date: '10月6日 · North End',
     location: 'North End, Boston',
     aspect: 'square',
