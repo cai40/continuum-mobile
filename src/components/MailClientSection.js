@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RenderHtml from 'react-native-render-html';
 import { theme } from '../styles/theme';
@@ -908,7 +909,30 @@ const MailClientSection = () => {
       {error ? (
         <View style={{ padding: 20, alignItems: 'center' }}>
           <Ionicons name="cloud-offline-outline" size={36} color={theme.colors.warning} />
-          <Text style={{ color: theme.colors.darkGray, textAlign: 'center', marginTop: 10, lineHeight: 20 }}>{error}</Text>
+          <Text selectable={true} style={{ color: theme.colors.darkGray, textAlign: 'center', marginTop: 10, lineHeight: 20 }}>{error}</Text>
+          <TouchableOpacity
+            onPress={async () => {
+              try {
+                await Clipboard.setStringAsync(String(error));
+                await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                Alert.alert("Copied", "Error message copied to clipboard.");
+              } catch {}
+            }}
+            style={{ 
+              marginTop: 10, 
+              paddingHorizontal: 14, 
+              paddingVertical: 7, 
+              backgroundColor: theme.colors.light, 
+              borderRadius: 12, 
+              flexDirection: 'row', 
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            }}
+          >
+            <Ionicons name="copy-outline" size={14} color={theme.colors.gray} style={{ marginRight: 6 }} />
+            <Text style={{ fontSize: 12, color: theme.colors.darkGray, fontWeight: '700' }}>Copy Error</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
