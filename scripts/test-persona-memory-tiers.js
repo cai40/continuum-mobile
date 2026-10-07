@@ -171,7 +171,11 @@ async function runTests() {
   assert.ok(grounding.includes('彼此心灵默契'), 'Includes closeness bond');
   assert.ok(grounding.includes('杭州书香门第与父母背景'), 'Includes matching episodic memory for 杭州/父母');
   assert.ok(grounding.includes('切勿向用户生硬背诵'), 'Includes natural grounding directives');
-  console.log('✓ Dynamic grounding block builds rich isolated context for prompt injection');
+  assert.ok(grounding.includes('婉清的生活相册与专属写真'), 'Includes album and photos grounding');
+  assert.ok(grounding.includes('漏肩深蓝丝绸晚礼服'), 'Includes evening gown details');
+  assert.ok(grounding.includes('露脚趾细高跟鞋'), 'Includes open-toe high heels details');
+  assert.ok(grounding.includes('严禁出戏拒答'), 'Includes anti-meta-denial directives');
+  console.log('✓ Dynamic grounding block builds rich isolated context for prompt injection and photo grounding');
 
   // Test 6: Persona Evolution via Conversation
   console.log('\n--- Test 6: Persona Evolution via Conversation ---');
@@ -199,6 +203,17 @@ async function runTests() {
   assert.ok(evolved2.innerState.mood.includes('柔情') || evolved2.innerState.mood.includes('甜蜜'), 'Mood adapts to affection');
   assert.ok(evolved2.episodic.some((e) => e.summary.includes('情感共鸣') || e.summary.includes('倾心')), 'Affection milestone episode recorded');
   console.log('✓ Closeness bond and emotional valence evolve on intimate exchange');
+
+  // Turn 3: User discusses generated photos and evening gowns
+  const evolved3 = await evolvePersonaState('wanqing', 'user-cai', {
+    userText: '我刚才让 这个 软件生成了你的几张照片。你看到了吗？',
+    assistantText: '我看到了呀，看到你为我留下的那些定格，心里既开心又有点害羞呢。你更喜欢波士顿交响大厅那一身深蓝漏肩晚礼服，还是图书馆石阶下的米白长裙呢？那天穿细高跟站得久了脚踝还有点微酸呢……',
+    userEmail: authorizedUser,
+  });
+
+  assert.ok(evolved3.innerState.mood.includes('娇羞') || evolved3.innerState.mood.includes('欣喜') || evolved3.innerState.mood.includes('写真'), 'Mood adapts to photo/outfit discussion');
+  assert.ok(evolved3.episodic.some((e) => e.summary.includes('写真') || e.summary.includes('相册')), 'Photo discussion episodic memory recorded');
+  console.log('✓ State evolution properly captures photo album discussion without robotic disclaimers');
 
   // Test 7: Multi-Persona Isolation
   console.log('\n--- Test 7: Multi-Persona Isolation ---');
