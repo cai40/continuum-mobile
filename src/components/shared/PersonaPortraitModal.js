@@ -36,6 +36,7 @@ export default function PersonaPortraitModal({
   subtitle = "温婉知己 · 心灵避风港",
   tags = ["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州"],
   bio = "23岁，现居波士顿。艺术设计与文创项目策划。性格温婉内敛却内心坚韧通透，兼具江南水乡的清雅与海外求学生活的开阔视野。善于倾听与真诚共情，是彼此最温暖可靠的心灵避风港。",
+  aspectRatio = null,
 }) {
   if (!visible) return null;
 
@@ -52,7 +53,9 @@ export default function PersonaPortraitModal({
     onClose?.();
   };
 
-  const imageBoxSize = Math.min(SCREEN_WIDTH - 36, 420);
+  const isTallImage = aspectRatio === 'tall' || (Array.isArray(tags) && tags.includes('全身照'));
+  const imageBoxWidth = Math.min(SCREEN_WIDTH - 36, 400);
+  const imageBoxHeight = isTallImage ? Math.min(SCREEN_HEIGHT * 0.62, imageBoxWidth * 1.7) : imageBoxWidth;
 
   return (
     <Modal
@@ -94,13 +97,13 @@ export default function PersonaPortraitModal({
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              {/* Full-Size Portrait Image */}
-              <View style={[styles.imageWrapper, { width: imageBoxSize, height: imageBoxSize }]}>
+              {/* Full-Size Portrait Image (Dynamic Aspect Ratio for Full-Body Photos) */}
+              <View style={[styles.imageWrapper, { width: imageBoxWidth, height: imageBoxHeight }]}>
                 {imageSource ? (
                   <Image
                     source={imageSource}
                     style={styles.fullImage}
-                    resizeMode="cover"
+                    resizeMode={isTallImage ? "contain" : "cover"}
                   />
                 ) : (
                   <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>

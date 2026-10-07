@@ -2955,46 +2955,68 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={{ paddingRight: 8, gap: 10 }}
                   >
-                    {WANQING_MOMENTS.map((moment) => (
-                      <TouchableOpacity
-                        key={moment.id}
-                        activeOpacity={0.85}
-                        onPress={() => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          setSelectedPhotoModal(moment);
-                        }}
-                        style={{
-                          width: 110,
-                          backgroundColor: "white",
-                          borderRadius: 12,
-                          overflow: "hidden",
-                          borderWidth: 1,
-                          borderColor: "#FCE4EC",
-                          shadowColor: "#000",
-                          shadowOffset: { width: 0, height: 2 },
-                          shadowOpacity: 0.08,
-                          shadowRadius: 4,
-                          elevation: 2,
-                        }}
-                      >
-                        <Image
-                          source={moment.image}
-                          style={{ width: 110, height: 110 }}
-                          resizeMode="cover"
-                        />
-                        <View style={{ padding: 6 }}>
-                          <Text
-                            numberOfLines={1}
-                            style={{ fontSize: 10, fontWeight: "600", color: "#2D3436" }}
-                          >
-                            {moment.caption}
-                          </Text>
-                          <Text style={{ fontSize: 8, color: theme.colors.gray, marginTop: 2 }}>
-                            {moment.date}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
+                    {WANQING_MOMENTS.map((moment) => {
+                      const isTall = moment.aspect === 'tall';
+                      return (
+                        <TouchableOpacity
+                          key={moment.id}
+                          activeOpacity={0.85}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            setSelectedPhotoModal(moment);
+                          }}
+                          style={{
+                            width: isTall ? 110 : 120,
+                            backgroundColor: "white",
+                            borderRadius: 14,
+                            overflow: "hidden",
+                            borderWidth: 1,
+                            borderColor: isTall ? "#F48FB1" : "#FCE4EC",
+                            shadowColor: "#000",
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.1,
+                            shadowRadius: 5,
+                            elevation: 3,
+                          }}
+                        >
+                          <View style={{ position: "relative" }}>
+                            <Image
+                              source={moment.image}
+                              style={{ width: isTall ? 110 : 120, height: isTall ? 175 : 120 }}
+                              resizeMode="cover"
+                            />
+                            {isTall && (
+                              <View
+                                style={{
+                                  position: "absolute",
+                                  top: 6,
+                                  left: 6,
+                                  backgroundColor: "rgba(194, 24, 91, 0.85)",
+                                  paddingHorizontal: 6,
+                                  paddingVertical: 2,
+                                  borderRadius: 4,
+                                }}
+                              >
+                                <Text style={{ color: "white", fontSize: 8, fontWeight: "800" }}>
+                                  全身写真
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                          <View style={{ padding: 8 }}>
+                            <Text
+                              numberOfLines={2}
+                              style={{ fontSize: 10, fontWeight: "600", color: "#2D3436", lineHeight: 14 }}
+                            >
+                              {moment.caption}
+                            </Text>
+                            <Text style={{ fontSize: 8, color: theme.colors.gray, marginTop: 4 }}>
+                              {moment.date}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </ScrollView>
                 </View>
               )}
@@ -3126,8 +3148,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
             isAuthorized={isWanqingAllowed}
             name="林婉清的生活瞬间"
             subtitle={selectedPhotoModal?.location || "波士顿生活记录"}
-            tags={["朋友圈瞬间", selectedPhotoModal?.date || "近期", "波士顿生活"]}
+            tags={["朋友圈瞬间", selectedPhotoModal?.aspect === 'tall' ? "全身照" : "生活照", selectedPhotoModal?.date || "近期", "波士顿生活"]}
             bio={selectedPhotoModal?.caption}
+            aspectRatio={selectedPhotoModal?.aspect}
           />
         )}
       </View>
@@ -3289,8 +3312,9 @@ We reserve the right to suspend accounts violating safety protocols. You may ter
           isAuthorized={isWanqingAllowed}
           name="林婉清的生活瞬间"
           subtitle={selectedPhotoModal?.location || "波士顿生活记录"}
-          tags={["朋友圈瞬间", selectedPhotoModal?.date || "近期", "波士顿生活"]}
+          tags={["朋友圈瞬间", selectedPhotoModal?.aspect === 'tall' ? "全身照" : "生活照", selectedPhotoModal?.date || "近期", "波士顿生活"]}
           bio={selectedPhotoModal?.caption}
+          aspectRatio={selectedPhotoModal?.aspect}
         />
       )}
     </ScrollView>

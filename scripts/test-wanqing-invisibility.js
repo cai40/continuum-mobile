@@ -232,8 +232,8 @@ async function runTests() {
   assert.ok(WANQING_HEADSHOT != null, 'WANQING_HEADSHOT asset must exist');
   assert.strictEqual(getPersonaAvatar('wanqing', authorizedUser), WANQING_HEADSHOT, 'Owner can retrieve avatar');
   assert.strictEqual(getWanqingHeadshot(authorizedUser), WANQING_HEADSHOT, 'Owner can retrieve headshot');
-  assert.ok(Array.isArray(WANQING_MOMENTS) && WANQING_MOMENTS.length === 4, 'Must have 4 moments');
-  assert.strictEqual(getWanqingMoments(authorizedUser).length, 4, 'Owner can retrieve moments list');
+  assert.ok(Array.isArray(WANQING_MOMENTS) && WANQING_MOMENTS.length === 7, 'Must have 7 moments');
+  assert.strictEqual(getWanqingMoments(authorizedUser).length, 7, 'Owner can retrieve moments list');
 
   // Other users MUST receive null for avatars, headshots, and empty list for moments
   for (const user of unauthorizedUsers) {
