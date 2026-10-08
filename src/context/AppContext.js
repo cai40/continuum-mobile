@@ -110,6 +110,8 @@ export const AppProvider = ({ children }) => {
   );
   // Dedicated conversation/window state per persona for real chat app experience
   const [activePersonaId, setActivePersonaId] = useState("standard");
+  const activePersonaIdRef = useRef("standard");
+  useEffect(() => { activePersonaIdRef.current = activePersonaId; }, [activePersonaId]);
   const [allPersonaConversations, setAllPersonaConversations] = useState({});
   const switchingPersonaRef = useRef(false);
   // Listening is always auto-detect now (see the recognizer setup in ChatSection), so
@@ -461,6 +463,7 @@ export const AppProvider = ({ children }) => {
           resolvedPid = resolveConversationPersonaId(savedPersona, activeAuthEmail);
         }
 
+        activePersonaIdRef.current = resolvedPid;
         setActivePersonaId(resolvedPid);
         if (!savedActivePersonaId) {
           AsyncStorage.setItem("@active_persona_id", resolvedPid).catch(() => {});
@@ -649,35 +652,64 @@ export const AppProvider = ({ children }) => {
            return;
         }
 
-        setMessages(prev => {
-          const existingIds = new Set(prev.map(m => m.id));
-          // Strict filtering to prevent crashes from malformed remote data.
-          // After an intentional clear, never rehydrate messages from before the clear.
-          const currentEmail = user?.email || session?.user?.email;
-          const isAuthorized = isWanqingAuthorized(currentEmail);
-          const incoming = history
-            .filter(m => m && m.id && m.content && !existingIds.has(m.id))
-            .filter((m) => !hasValidClearedAt || messageTimeMs(m) > clearedAtMs)
-            .filter((m) => isAuthorized || !isWanqingItem(m))
-            .map((m) => (
-              m.role === 'user'
-                ? { ...m, content: sanitizeUserVisibleContent(m.content) }
-                : m
-            ));
-          
-          if (incoming.length === 0) return prev;
-          
-          const combined = [...prev, ...incoming].sort((a, b) => {
-            // Sort on messageTimeMs, not `timestamp` alone: device-created messages carry
-            // no timestamp, so sorting on the raw field bucketed them at epoch 0 and moved
-            // them to the front — where the 500-message cap below then trimmed them away.
-            // messageTimeMs already falls back to the Date.now() id for exactly this case.
-            return messageTimeMs(a) - messageTimeMs(b);
-          });
+        const currentEmail = user?.email || session?.user?.email;
+        const isAuthorized = isWanqingAuthorized(currentEmail);
+        const incomingClean = history
+          .filter((m) => m && m.id && m.content)
+          .filter((m) => !hasValidClearedAt || messageTimeMs(m) > clearedAtMs)
+          .filter((m) => isAuthorized || !isWanqingItem(m))
+          .map((m) => (
+            m.role === 'user'
+              ? { ...m, content: sanitizeUserVisibleContent(m.content) }
+              : m
+          ));
 
-          // Final Memory Safety Cap
-          return combined.slice(-500);
-        });
+        const currentActivePid = activePersonaIdRef.current || 'standard';
+        if (currentActivePid === 'standard') {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const incoming = incomingClean.filter(m => !existingIds.has(m.id));
+            if (incoming.length === 0) return prev;
+            
+            const combined = [...prev, ...incoming].sort((a, b) => {
+              // Sort on messageTimeMs, not `timestamp` alone: device-created messages carry
+              // no timestamp, so sorting on the raw field bucketed them at epoch 0 and moved
+              // them to the front — where the 500-message cap below then trimmed them away.
+              // messageTimeMs already falls back to the Date.now() id for exactly this case.
+              return messageTimeMs(a) - messageTimeMs(b);
+            });
+
+            // Final Memory Safety Cap
+            return combined.slice(-500);
+          });
+        } else {
+          // If a non-standard persona is active, merge cloud history into standard persona's storage
+          // so active persona messages are not mixed with standard cloud history
+          try {
+            const stdKey = '@chat_history_persona_standard';
+            const stdRaw = await AsyncStorage.getItem(stdKey);
+            const stdExisting = stdRaw ? JSON.parse(stdRaw) : [];
+            const stdIds = new Set((Array.isArray(stdExisting) ? stdExisting : []).map((m) => m.id));
+            const incoming = incomingClean.filter(m => !stdIds.has(m.id));
+            if (incoming.length > 0) {
+              const combined = [...(Array.isArray(stdExisting) ? stdExisting : []), ...incoming]
+                .sort((a, b) => messageTimeMs(a) - messageTimeMs(b))
+                .slice(-500);
+              await AsyncStorage.setItem(stdKey, JSON.stringify(combined));
+              const lastMsg = combined.length > 0 ? combined[combined.length - 1] : null;
+              setAllPersonaConversations((prev) => ({
+                ...prev,
+                standard: {
+                  lastMessage: lastMsg ? lastMsg.content : '',
+                  timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : Date.now()),
+                  count: combined.length,
+                },
+              }));
+            }
+          } catch (e) {
+            console.warn('[Hydration] Failed to sync standard history to storage:', e);
+          }
+        }
         console.log(`[Hydration] Success: Hydrated ${history.length} messages.`);
       }
     } catch (err) {
@@ -936,6 +968,7 @@ export const AppProvider = ({ children }) => {
         }));
       }
       await AsyncStorage.removeItem("@chat_history");
+      await AsyncStorage.removeItem("@chat_history_backfilled_ids").catch(() => {});
 
       const token = session?.access_token;
       if (token) {
@@ -1009,6 +1042,7 @@ export const AppProvider = ({ children }) => {
       }
 
       // 3. Update state
+      activePersonaIdRef.current = targetId;
       setActivePersonaId(targetId);
       setMessages(loadedMessages);
       setPersona(targetPreset.text);

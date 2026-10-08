@@ -364,38 +364,73 @@ const ChatSection = () => {
 
   useEffect(() => { reconcileRef.current = reconcileInterruptedTurn; }, [reconcileInterruptedTurn]);
 
-  // --- ONE-TIME RECOVERY: push turns the device still holds but the cloud lost ---
+  // --- SILENT BACKGROUND RECOVERY: push turns the device still holds but the cloud lost ---
   // The Sep 14-16 database outage meant replies streamed but turns were never stored, and
   // because the archival tasks were registered inside the failing commit's try block,
   // nothing was remembered either. Those turns still exist here: locally-created messages
   // carry a Date.now() id, so they are distinguishable from server rows by `id > 1e12`.
-  // Push them once per launch; the backend inserts only what it is missing and replays the
-  // recovered turns through the normal memory pipeline. Idempotent, so a repeat is a no-op.
+  // Push them silently in the background; backend inserts only what it is missing and replays
+  // the recovered turns through the normal memory pipeline. Idempotent, so a repeat is a no-op.
+  // Note: Runs completely silently in background, NEVER showing an intrusive Alert modal on app start.
+  // Gated to 'standard' persona so private persona chats (e.g. Wanqing) are never pushed to cloud.
+  // Backfilled message IDs are persisted to AsyncStorage to prevent duplicate network calls.
   useEffect(() => {
     if (backfillDoneRef.current) return;
+    if (activePersonaId && activePersonaId !== 'standard') return;
     const token = session?.access_token?.trim();
     if (!token) return;
-    const deviceOnly = messages.filter((m) => {
-      if (!m?.content) return false;
-      const ms = parseInt(String(m.id ?? ''), 10);
-      return Number.isFinite(ms) && ms > 1e12;
-    });
-    if (deviceOnly.length === 0) return;
-    // Only mark done once there is actually something to send, so a still-loading history
-    // is not mistaken for "nothing to recover".
-    backfillDoneRef.current = true;
-    backfillChatHistory(deviceOnly, token).then((result) => {
-      if (result?.inserted > 0) {
-        console.log(`Recovered ${result.inserted} cloud-missing messages from this device`);
-        Alert.alert(
-          'History recovered',
-          `Restored ${result.inserted} message${result.inserted === 1 ? '' : 's'} missing from `
-            + `the cloud, and queued ${result.memory_rebuild_queued} turn`
-            + `${result.memory_rebuild_queued === 1 ? '' : 's'} to be remembered again.`,
-        );
+
+    let isMounted = true;
+    (async () => {
+      try {
+        let backfilledSet = new Set();
+        try {
+          const raw = await AsyncStorage.getItem('@chat_history_backfilled_ids');
+          if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) backfilledSet = new Set(arr);
+          }
+        } catch {
+          // ignore parsing error
+        }
+
+        const deviceOnly = (Array.isArray(messages) ? messages : []).filter((m) => {
+          if (!m?.content) return false;
+          if (isWanqingItem(m)) return false;
+          const idStr = String(m.id ?? '');
+          if (backfilledSet.has(idStr)) return false;
+          const ms = parseInt(idStr, 10);
+          return Number.isFinite(ms) && ms > 1e12;
+        });
+
+        if (deviceOnly.length === 0) return;
+        if (!isMounted) return;
+        backfillDoneRef.current = true;
+
+        const result = await backfillChatHistory(deviceOnly, token);
+
+        // Persist processed IDs so they are never re-evaluated across app restarts
+        try {
+          deviceOnly.forEach((m) => backfilledSet.add(String(m.id)));
+          const updatedList = Array.from(backfilledSet).slice(-500);
+          await AsyncStorage.setItem('@chat_history_backfilled_ids', JSON.stringify(updatedList));
+        } catch (e) {
+          console.warn('[Backfill] Failed to persist backfilled IDs:', e);
+        }
+
+        if (result?.inserted > 0) {
+          console.log(`[Backfill] Silently recovered ${result.inserted} cloud-missing message(s) from this device (queued ${result.memory_rebuild_queued} turns)`);
+          // Intentionally NEVER show an Alert.alert modal on app startup
+        }
+      } catch (err) {
+        console.warn('[Backfill] Silent recovery error:', err);
       }
-    });
-  }, [messages, session?.access_token]);
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [messages, session?.access_token, activePersonaId]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
