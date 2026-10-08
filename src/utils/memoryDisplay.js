@@ -105,10 +105,16 @@ export function shouldOfferMemoryPin(userMessage) {
   if (/\b(?:save|store|pin|record|archive)\b/i.test(text) && /\b(?:memory|memories|core memory|l1|long[- ]term)\b/i.test(text)) {
     return true;
   }
+  if (/\b(?:remember\s+(?:this|that|her|him|my|our)|keep in mind|commit to memory)\b/i.test(text)) {
+    return true;
+  }
   if (/(?:存入|保存|记录|记住|写入).*(?:记忆|长时记忆|长期记忆|核心记忆)/.test(text)) {
     return true;
   }
   if (/(?:长时记忆|长期记忆|核心记忆|L1).*(?:保存|存入|记录)/.test(text)) {
+    return true;
+  }
+  if (/(?:帮我记住|请记住|务必记住|牢牢记住|记下来|记在记忆|存进记忆|存到记忆)/.test(text)) {
     return true;
   }
   return false;

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, Image, Alert, RefreshControl, Keyboard, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -30,7 +30,10 @@ import { appendGroundingPersona, replyLanguageAppend, coreMemoryAppend, DOCUMENT
 import { stripMarkdownForSpeech } from '../utils/stripMarkdownForSpeech';
 import AssistantMarkdown from './shared/AssistantMarkdown';
 import MemoryClarifyCard from './shared/MemoryClarifyCard';
+import PersonaPortraitModal from './shared/PersonaPortraitModal';
+import ConversationListModal from './shared/ConversationListModal';
 import GoogleDrivePickerModal from './GoogleDrivePickerModal';
+import { getVisiblePersonaPresets, getPersonaPreset } from '../constants/personaPresets';
 import { isGoogleDriveConnected } from '../services/googleDriveAuth';
 import { wantsWebSearch, fetchWebSearchContext, fetchLocalWeather, buildSearchQueries, searchWeb, formatSearchResults, isNoInternetClaim, lookUpErrorOnline, isProfileFollowUp, getCachedProfileContext, setBridgeExcerptFetcher } from '../utils/webSearch';
 import { diagnoseChatError, rawErrorMessage } from '../utils/chatErrorDiagnosis';
@@ -48,6 +51,7 @@ import {
   attachmentSizeLimitBytes,
   formatAttachmentBytes,
   sanitizeUserVisibleContent,
+  sanitizeImmersionMetaDenials,
   trimChatHistoryForUpload,
   trimChatHistoryForEmailRecall,
   sanitizeRecallHistory,
@@ -77,6 +81,16 @@ import { wantsSlackRead, wantsSlackPost, extractSlackChannel, extractSlackPostTe
 import { slackListChannels, slackReadMessages, slackPostMessage, slackIngestChannel } from '../services/apiService';
 import { shouldSkipEmailFetchForFollowUp, isEmailAnalysisFollowUp, needsTargetedRecallEvidenceFetch, buildTargetedRecallFetchMessage, resolveRecallMonthRange, isExplicitFullEmailFetch, needsFullMinFolderRefetch } from '../utils/emailFollowUpIntent';
 import { wantsContinuumMemoryRecall, buildMemoryRecallContext } from '../utils/memoryRecallContext';
+import {
+  detectPersonaId,
+  buildPersonaGroundingBlock,
+  evolvePersonaState,
+  isWanqingAuthorized,
+  isWanqingItem,
+  WANQING_PERSONA_PROMPT,
+  DEFAULT_PERSONA_PROMPT,
+} from '../utils/personaMemoryManager';
+import { WANQING_HEADSHOT } from '../utils/personaAssets';
 import {
   extractEmailEvidenceForPin,
   extractMemoryForPin,
@@ -184,6 +198,9 @@ const ChatSection = () => {
     braveSearchKey,
     slackToken,
     persona,
+    activePersonaId: contextActivePersonaId,
+    switchPersona,
+    allPersonaConversations,
     pinnedMemories,
     semanticProfile,
     deviceVoices,
@@ -229,6 +246,21 @@ const ChatSection = () => {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [location, setLocation] = useState(null);
   const [drivePickerVisible, setDrivePickerVisible] = useState(false);
+  const [portraitModalVisible, setPortraitModalVisible] = useState(false);
+  const [convListVisible, setConvListVisible] = useState(false);
+
+  const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+  const isOwner = isWanqingAuthorized(currentEmail);
+  const detectedPid = detectPersonaId(persona, currentEmail);
+  const activePersonaId = contextActivePersonaId || detectedPid || (isOwner && (!persona || persona === DEFAULT_PERSONA_PROMPT) ? 'wanqing' : 'standard');
+  const isWanqingActive = activePersonaId === 'wanqing' && isOwner;
+  const activePreset = getPersonaPreset(activePersonaId, currentEmail);
+  const visiblePresets = useMemo(() => getVisiblePersonaPresets(currentEmail), [currentEmail]);
+
+  const visibleMessages = useMemo(() => {
+    if (isOwner) return messages;
+    return (Array.isArray(messages) ? messages : []).filter((m) => !isWanqingItem(m));
+  }, [messages, isOwner]);
 
   const chatListRef = useRef();
   const inputRef = useRef(null);
@@ -332,38 +364,73 @@ const ChatSection = () => {
 
   useEffect(() => { reconcileRef.current = reconcileInterruptedTurn; }, [reconcileInterruptedTurn]);
 
-  // --- ONE-TIME RECOVERY: push turns the device still holds but the cloud lost ---
+  // --- SILENT BACKGROUND RECOVERY: push turns the device still holds but the cloud lost ---
   // The Sep 14-16 database outage meant replies streamed but turns were never stored, and
   // because the archival tasks were registered inside the failing commit's try block,
   // nothing was remembered either. Those turns still exist here: locally-created messages
   // carry a Date.now() id, so they are distinguishable from server rows by `id > 1e12`.
-  // Push them once per launch; the backend inserts only what it is missing and replays the
-  // recovered turns through the normal memory pipeline. Idempotent, so a repeat is a no-op.
+  // Push them silently in the background; backend inserts only what it is missing and replays
+  // the recovered turns through the normal memory pipeline. Idempotent, so a repeat is a no-op.
+  // Note: Runs completely silently in background, NEVER showing an intrusive Alert modal on app start.
+  // Gated to 'standard' persona so private persona chats (e.g. Wanqing) are never pushed to cloud.
+  // Backfilled message IDs are persisted to AsyncStorage to prevent duplicate network calls.
   useEffect(() => {
     if (backfillDoneRef.current) return;
+    if (activePersonaId && activePersonaId !== 'standard') return;
     const token = session?.access_token?.trim();
     if (!token) return;
-    const deviceOnly = messages.filter((m) => {
-      if (!m?.content) return false;
-      const ms = parseInt(String(m.id ?? ''), 10);
-      return Number.isFinite(ms) && ms > 1e12;
-    });
-    if (deviceOnly.length === 0) return;
-    // Only mark done once there is actually something to send, so a still-loading history
-    // is not mistaken for "nothing to recover".
-    backfillDoneRef.current = true;
-    backfillChatHistory(deviceOnly, token).then((result) => {
-      if (result?.inserted > 0) {
-        console.log(`Recovered ${result.inserted} cloud-missing messages from this device`);
-        Alert.alert(
-          'History recovered',
-          `Restored ${result.inserted} message${result.inserted === 1 ? '' : 's'} missing from `
-            + `the cloud, and queued ${result.memory_rebuild_queued} turn`
-            + `${result.memory_rebuild_queued === 1 ? '' : 's'} to be remembered again.`,
-        );
+
+    let isMounted = true;
+    (async () => {
+      try {
+        let backfilledSet = new Set();
+        try {
+          const raw = await AsyncStorage.getItem('@chat_history_backfilled_ids');
+          if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) backfilledSet = new Set(arr);
+          }
+        } catch {
+          // ignore parsing error
+        }
+
+        const deviceOnly = (Array.isArray(messages) ? messages : []).filter((m) => {
+          if (!m?.content) return false;
+          if (isWanqingItem(m)) return false;
+          const idStr = String(m.id ?? '');
+          if (backfilledSet.has(idStr)) return false;
+          const ms = parseInt(idStr, 10);
+          return Number.isFinite(ms) && ms > 1e12;
+        });
+
+        if (deviceOnly.length === 0) return;
+        if (!isMounted) return;
+        backfillDoneRef.current = true;
+
+        const result = await backfillChatHistory(deviceOnly, token);
+
+        // Persist processed IDs so they are never re-evaluated across app restarts
+        try {
+          deviceOnly.forEach((m) => backfilledSet.add(String(m.id)));
+          const updatedList = Array.from(backfilledSet).slice(-500);
+          await AsyncStorage.setItem('@chat_history_backfilled_ids', JSON.stringify(updatedList));
+        } catch (e) {
+          console.warn('[Backfill] Failed to persist backfilled IDs:', e);
+        }
+
+        if (result?.inserted > 0) {
+          console.log(`[Backfill] Silently recovered ${result.inserted} cloud-missing message(s) from this device (queued ${result.memory_rebuild_queued} turns)`);
+          // Intentionally NEVER show an Alert.alert modal on app startup
+        }
+      } catch (err) {
+        console.warn('[Backfill] Silent recovery error:', err);
       }
-    });
-  }, [messages, session?.access_token]);
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [messages, session?.access_token, activePersonaId]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (next) => {
@@ -1037,7 +1104,7 @@ const ChatSection = () => {
       // is what previously made a Chinese or Spanish utterance transcribe as English.
       const resolveBaseLang = () => {
         if (lastSttLangRef.current) return lastSttLangRef.current;
-        const last = messages[messages.length - 1];
+        const last = visibleMessages[visibleMessages.length - 1];
         return detectLangFromText(last?.content) || 'en-US';
       };
       const baseLang = resolveBaseLang();
@@ -1248,7 +1315,7 @@ const ChatSection = () => {
       }
 
       const confirmCleanupKind = isGenericCleanupConfirm(finalInput)
-        ? resolveConfirmCleanupKind(messages, finalInput)
+        ? resolveConfirmCleanupKind(visibleMessages, finalInput)
         : null;
       const isPhotoConfirm = confirmCleanupKind === 'photo';
       const isPhotoCleanupQuery = (wantsPhotoCleanup(finalInput) || wantsPhotoCleanupStatus(finalInput) || isPhotoConfirm)
@@ -1261,9 +1328,9 @@ const ChatSection = () => {
         || (isGenericCleanupConfirm(finalInput) && confirmCleanupKind !== 'photo')
       );
 
-      const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, messages.slice(0, -1));
+      const isRecallEvidenceFetch = needsTargetedRecallEvidenceFetch(finalInput, visibleMessages.slice(0, -1));
       let isFullFolderFetch = isExplicitFullEmailFetch(finalInput);
-      let isEmailFollowUpOnly = !isFullFolderFetch && shouldSkipEmailFetchForFollowUp(finalInput, messages.slice(0, -1));
+      let isEmailFollowUpOnly = !isFullFolderFetch && shouldSkipEmailFetchForFollowUp(finalInput, visibleMessages.slice(0, -1));
       let isEmailRecallQuestion = !isFullFolderFetch && isEmailAnalysisFollowUp(finalInput) && !isRecallEvidenceFetch;
 
       const activeToken = session?.access_token?.trim();
@@ -1284,13 +1351,21 @@ const ChatSection = () => {
         setStreamingContent('Searching Continuum memory…');
         try {
           const { layeredData, pinData } = await fetchMemories(null, activeToken, user?.id);
+          const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+          const isOwner = isWanqingAuthorized(currentEmail);
+          const filterWanqing = (items) => {
+            if (isOwner) return items;
+            return (Array.isArray(items) ? items : []).filter(
+              (item) => !isWanqingItem(item)
+            );
+          };
           memoryRecallContext = buildMemoryRecallContext({
-            episodicSegments: layeredData?.episodicSegments,
-            semanticProfile: layeredData?.semanticProfile,
-            temporalEvents: layeredData?.temporalEvents,
-            knowledgeBase: layeredData?.knowledgeBase,
-            pinnedMemories: pinData,
-          }, finalInput, 28000, { fullFolderFetch: isFullFolderFetch });
+            episodicSegments: filterWanqing(layeredData?.episodicSegments),
+            semanticProfile: filterWanqing(layeredData?.semanticProfile),
+            temporalEvents: filterWanqing(layeredData?.temporalEvents),
+            knowledgeBase: filterWanqing(layeredData?.knowledgeBase),
+            pinnedMemories: filterWanqing(pinData),
+          }, finalInput, 28000, { fullFolderFetch: isFullFolderFetch, userEmail: currentEmail, isOwner });
           if (needsFullMinFolderRefetch(finalInput, memoryRecallContext)) {
             isFullFolderFetch = true;
             isEmailFollowUpOnly = false;
@@ -1412,7 +1487,7 @@ const ChatSection = () => {
       if (isPhotoCleanupQuery) {
         setStreamingContent('Starting photo cleanup…');
         try {
-          const priorPhotoMessage = isPhotoConfirm ? findPriorPhotoUserMessage(messages) : null;
+          const priorPhotoMessage = isPhotoConfirm ? findPriorPhotoUserMessage(visibleMessages) : null;
           const result = await runPhotoCleanupFromChat(finalInput, (detail) => {
             setStreamingContent(detail);
           }, { priorMessage: priorPhotoMessage });
@@ -1492,7 +1567,7 @@ const ChatSection = () => {
         }
       }
 
-      const priorMessages = messages.slice(0, -1);
+      const priorMessages = visibleMessages.slice(0, -1);
       const isAnyRecallTurn = !isFullFolderFetch
         && (isEmailRecallQuestion || isRecallEvidenceFetch || isEmailAnalysisFollowUp(finalInput));
       const liveEmailFetchScheduled = isEmailBridgeQuery && !isEmailFollowUpOnly;
@@ -1507,15 +1582,19 @@ const ChatSection = () => {
         await validateAttachmentSizes(activeAttachments);
       }
 
-      // `messages` (closure) does not include the current question yet — it is
+      // `visibleMessages` does not include the current question yet — it is
       // added to state via setMessages below. So the full array is already the
       // prior conversation and must be sent in full; slicing off the last item
       // would drop the previous assistant reply, making the model re-answer the
       // prior question alongside the current one.
-      const recallHistoryBase = sanitizeRecallHistory(messages);
-      const historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
-        ? trimChatHistoryForEmailRecall(recallHistoryBase, 8, 380 * 1024, finalInput)
-        : trimChatHistoryForUpload(recallHistoryBase, 50, undefined, finalInput);
+      const recallHistoryBase = sanitizeRecallHistory(visibleMessages);
+      let historyForUpload = (isEmailFollowUpOnly || isEmailRecallQuestion || isRecallEvidenceFetch)
+        ? trimChatHistoryForEmailRecall(recallHistoryBase, 8, 380 * 1024, finalInput, currentEmail, isOwner)
+        : trimChatHistoryForUpload(recallHistoryBase, 50, undefined, finalInput, currentEmail, isOwner);
+
+      if (!isOwner) {
+        historyForUpload = historyForUpload.filter((m) => !isWanqingItem(m));
+      }
 
       if (activeAttachments.length && !isFromVoice) {
         try {
@@ -1593,11 +1672,51 @@ const ChatSection = () => {
       // Pins and the top L3 facts ride on every turn so the facts the user cares about
       // (family, children, identity, key history) are always in context instead of
       // surfacing only on an explicit memory lookup.
-      const coreMemoryBlock = coreMemoryAppend(pinnedMemories, semanticProfile);
+      const currentEmail = String(user?.email || session?.user?.email || '').trim().toLowerCase();
+      const isOwner = isWanqingAuthorized(currentEmail);
+      const sanitizedPins = isOwner ? pinnedMemories : (pinnedMemories || []).filter(
+        (m) => !isWanqingItem(m)
+      );
+      const sanitizedProfile = isOwner ? semanticProfile : (semanticProfile || []).filter(
+        (m) => !isWanqingItem(m)
+      );
+      const coreMemoryBlock = coreMemoryAppend(sanitizedPins, sanitizedProfile);
+
+      // If a non-cai40 user attempts to use Lin Wanqing's persona text directly, strip it
+      let effectivePersona = persona;
+      if (!isOwner && isWanqingItem(effectivePersona)) {
+        effectivePersona = DEFAULT_PERSONA_PROMPT;
+      }
+
+      // Detect if user query refers to photos, albums, portraits, outfits, evening gowns, or Lin Wanqing
+      const isPhotoOrOutfitTopic = isOwner && /(照片|相册|写真|晚礼服|礼服|漏肩|露肩|高跟鞋|露脚趾|穿搭|长裙|开衩|生活照|全身照|模样|长相|林婉清|婉清|波士顿|交响大厅|图书馆|美术馆|生成.*照片|照片.*能看到|你看.*照片|你看到|几张照片)/i.test(chatMessage);
+
+      // Persona-specific sovereign memory tier (DSP-CMA)
+      const detectedPid = detectPersonaId(effectivePersona, currentEmail);
+      const activePersonaId = detectedPid || (isOwner && (isPhotoOrOutfitTopic || !effectivePersona || effectivePersona === DEFAULT_PERSONA_PROMPT) ? 'wanqing' : null);
+
+      if (isOwner && activePersonaId === 'wanqing' && (!effectivePersona || effectivePersona === DEFAULT_PERSONA_PROMPT)) {
+        effectivePersona = WANQING_PERSONA_PROMPT;
+      }
+
+      let personaPrivateBlock = '';
+      if (activePersonaId && isOwner) {
+        try {
+          personaPrivateBlock = await buildPersonaGroundingBlock(
+            activePersonaId,
+            user?.id,
+            currentEmail,
+            chatMessage
+          );
+        } catch (err) {
+          console.warn('[ChatSection] Failed to build persona grounding block:', err);
+        }
+      }
 
       const personaExtras = [
         ...(replyLangAppend ? [replyLangAppend] : []),
         ...(coreMemoryBlock ? [coreMemoryBlock] : []),
+        ...(personaPrivateBlock ? [personaPrivateBlock] : []),
         ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
         ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
         ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
@@ -1622,7 +1741,7 @@ const ChatSection = () => {
       if (useDirectDeepseek) {
         formData.append('model', deepseekPlatformModel(resolvedProvider));
       }
-      formData.append('persona', appendGroundingPersona(persona, personaExtras));
+      formData.append('persona', appendGroundingPersona(effectivePersona, personaExtras));
       // Fresh file analysis: drop chat history so prior replies
       // cannot override injected attachment text.
       formData.append('history', safeJsonStringify(documentTextInjected ? [] : historyForUpload));
@@ -1671,7 +1790,7 @@ const ChatSection = () => {
         fd.append('message', messageText);
         fd.append('provider', resolvedProvider);
         if (useDirectDeepseek) fd.append('model', deepseekPlatformModel(resolvedProvider));
-        fd.append('persona', appendGroundingPersona(persona, [...personaExtras, WEB_SEARCH_APPEND]));
+        fd.append('persona', appendGroundingPersona(effectivePersona, [...personaExtras, WEB_SEARCH_APPEND]));
         fd.append('history', safeJsonStringify(documentTextInjected ? [] : historyForUpload));
         if (activeKey) fd.append('api_key', activeKey.trim());
         if (resolvedProvider === 'gemini' && geminiPlatformKey) fd.append('gemini_key', geminiPlatformKey);
@@ -1759,8 +1878,12 @@ const ChatSection = () => {
         if (finalText.trim()) markServerHealthy();
         if (!finalText.trim()) return;
 
+        const processedFinalText = (isOwner || isWanqingActive || activePersonaId === 'wanqing')
+          ? sanitizeImmersionMetaDenials(finalText)
+          : finalText;
+
         setMessages(prev => {
-          let aiMsgs = buildDraftAssistantMessages(finalText, {
+          let aiMsgs = buildDraftAssistantMessages(processedFinalText, {
             requestedDraft: wantsCopyDraft,
             baseId: Date.now(),
           });          aiMsgs = aiMsgs.map((m) => ({
@@ -1776,14 +1899,14 @@ const ChatSection = () => {
           // foreground reconcile removes them in favour of the stored rows. Adding to a
           // Set is idempotent, which matters if React invokes this updater twice.
           aiMsgs.forEach((m) => activeTurn.ids.add(m.id));
-          const pinBody = extractEmailEvidenceForPin(finalText) || extractEmailEvidenceForPin(combinedText);
+          const pinBody = extractEmailEvidenceForPin(processedFinalText) || extractEmailEvidenceForPin(combinedText);
           const offerPin = pinBody
             && activeToken
             && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });
           if (offerPin) {
             aiMsgs = attachPinOfferToMessages(aiMsgs, pinBody);
           } else if (activeToken && shouldOfferMemoryPin(finalInput)) {
-            const generalPin = extractMemoryForPin(finalText) || extractMemoryForPin(combinedText);
+            const generalPin = extractMemoryForPin(processedFinalText) || extractMemoryForPin(combinedText);
             if (generalPin) {
               aiMsgs = attachPinOfferToMessages(aiMsgs, generalPin);
             }
@@ -1811,7 +1934,7 @@ const ChatSection = () => {
 
         if (isFromVoice) {
           const transcriptLang = detectLangFromText(voiceTranscript);
-          const replyLang = detectLangFromText(finalText);
+          const replyLang = detectLangFromText(processedFinalText);
           const detectedTurnLang = transcriptLang || replyLang;
           if (detectedTurnLang) {
             lastSttLangRef.current = detectedTurnLang;
@@ -1820,15 +1943,27 @@ const ChatSection = () => {
         }
 
         if (isVoiceMode) {
-          speakAssistantReplyRef.current?.(finalText);
+          speakAssistantReplyRef.current?.(processedFinalText);
         }
 
-        const pinBodyForAlert = extractEmailEvidenceForPin(finalText)
-          || extractEmailEvidenceForPin(finalText.replace(/\*\*/g, ''));
+        // Asynchronously evolve persona state and private memory without blocking
+        if (activePersonaId && isOwner) {
+          evolvePersonaState(activePersonaId, user?.id, {
+            userText: finalInput,
+            assistantText: processedFinalText,
+            userEmail: currentEmail,
+          }).catch((err) => console.warn('[ChatSection] Persona evolution error:', err));
+        }
+
+        const pinBodyForAlert = extractEmailEvidenceForPin(processedFinalText)
+          || extractEmailEvidenceForPin(processedFinalText.replace(/\*\*/g, ''));
         const offerPinAlert = pinBodyForAlert
           && activeToken
           && shouldOfferEmailEvidencePin(finalInput, { isEmailBridgeQuery, isRecallEvidenceFetch });
         if (offerPinAlert) {
+          if (!isOwner && (isWanqingItem(finalInput) || isWanqingItem(finalText) || isWanqingItem(pinBodyForAlert))) {
+            return;
+          }
           setTimeout(() => {
             Alert.alert(
               'Pin email evidence to L1?',
@@ -1840,8 +1975,15 @@ const ChatSection = () => {
             );
           }, 500);
         } else if (activeToken && shouldOfferMemoryPin(finalInput)) {
+          if (!isOwner && (isWanqingItem(finalInput) || isWanqingItem(finalText))) {
+            // Wanqing persona and memory extraction is strictly restricted to cai40@yahoo.com
+            return;
+          }
           const generalPinBody = extractMemoryForPin(finalText);
           if (generalPinBody) {
+            if (!isOwner && isWanqingItem(generalPinBody)) {
+              return;
+            }
             setTimeout(() => {
               Alert.alert(
                 'Save to Core Memory (L1)?',
@@ -1863,7 +2005,7 @@ const ChatSection = () => {
           {
             apiKey: deepseekPlatformKey,
             model: dsModel,
-            system: appendGroundingPersona(persona, webSearchContext ? [...personaExtras, WEB_SEARCH_APPEND] : personaExtras),
+            system: appendGroundingPersona(effectivePersona, webSearchContext ? [...personaExtras, WEB_SEARCH_APPEND] : personaExtras),
             history: historyForDeepseek,
             message: chatMessage,
           },
@@ -2008,7 +2150,7 @@ const ChatSection = () => {
         const useEnrichedBridgeMessage = !isEmailConfirm
           && (memoryRecallContext || isRecallEvidenceFetch || isAnyRecallTurn);
         const emailSourceMessage = isEmailConfirm
-          ? (findPriorEmailUserMessage(messages) || finalInput)
+          ? (findPriorEmailUserMessage(visibleMessages) || finalInput)
           : useEnrichedBridgeMessage
             ? chatMessage
             : finalInput;
@@ -2026,9 +2168,10 @@ const ChatSection = () => {
         const payload = {
           message: bridgeMessage,
           provider: resolvedProvider,
-          persona: appendGroundingPersona(persona, [
+          persona: appendGroundingPersona(effectivePersona, [
             ...(replyLangAppend ? [replyLangAppend] : []),
             ...(coreMemoryBlock ? [coreMemoryBlock] : []),
+            ...(personaPrivateBlock ? [personaPrivateBlock] : []),
             ...(isAnyRecallTurn ? [RECALL_TURN_APPEND] : []),
             ...(memoryRecallContext ? [MEMORY_RECALL_APPEND] : []),
             ...(isRecallEvidenceFetch ? [EMAIL_RECALL_EVIDENCE_APPEND] : []),
@@ -2271,13 +2414,15 @@ const ChatSection = () => {
     if (!item || !item.content) return null;
     const isSelected = selectedIds.has(item.id);
     const isCopyDraft = Boolean(item.copyDraft);
+    const isAssistant = item.role === 'assistant';
+    const showWanqingHeadshot = isAssistant && isWanqingActive;
 
     const copyDraftToClipboard = async () => {
       await Clipboard.setStringAsync(item.content);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     };
 
-    return (
+    const chatBubble = (
       <TouchableOpacity
         activeOpacity={0.9}
         onPress={() => {
@@ -2314,6 +2459,14 @@ const ChatSection = () => {
         }}
         style={[
           item.role === 'user' ? styles.userBubble : styles.aiBubble,
+          showWanqingHeadshot && {
+            maxWidth: '100%',
+            flexShrink: 1,
+            marginVertical: 0,
+            borderColor: '#FCE4EC',
+            borderWidth: 1,
+            backgroundColor: '#FFFBFB',
+          },
           isCopyDraft && {
             borderWidth: 1,
             borderColor: theme.colors.primary + '55',
@@ -2324,6 +2477,11 @@ const ChatSection = () => {
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexShrink: 1 }}>
+            {showWanqingHeadshot ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: '#C2185B' }}>🌸 林婉清</Text>
+              </View>
+            ) : null}
             {isCopyDraft ? (
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                 <Ionicons name="copy-outline" size={12} color={theme.colors.primary} />
@@ -2420,6 +2578,65 @@ const ChatSection = () => {
         <LatencyHeatmap data={item.latencyData} />
       </TouchableOpacity>
     );
+
+    if (showWanqingHeadshot && WANQING_HEADSHOT) {
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'flex-start', maxWidth: '92%', marginVertical: 6 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              setPortraitModalVisible(true);
+            }}
+          >
+            <Image
+              source={WANQING_HEADSHOT}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                marginRight: 8,
+                marginTop: 2,
+                borderWidth: 1.5,
+                borderColor: '#F8BBD0',
+                backgroundColor: '#FFF0F5',
+              }}
+            />
+          </TouchableOpacity>
+          {chatBubble}
+        </View>
+      );
+    }
+
+    if (item.role === 'assistant' && !isSelectionMode) {
+      return (
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', alignSelf: 'flex-start', maxWidth: '92%', marginVertical: 6 }}>
+          <View
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: activePreset?.bgColor || '#EFF6FF',
+              borderWidth: 1,
+              borderColor: activePreset?.borderColor || '#BFDBFE',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginRight: 8,
+              marginTop: 4,
+            }}
+          >
+            <Ionicons
+              name={activePreset?.icon || 'hardware-chip-outline'}
+              size={16}
+              color={activePreset?.badgeColor || theme.colors.primary}
+            />
+          </View>
+          {chatBubble}
+        </View>
+      );
+    }
+
+    return chatBubble;
   };
 
   return (
@@ -2460,6 +2677,282 @@ const ChatSection = () => {
       </View>
       )}
 
+      {!isSelectionMode && (
+        <View style={{ backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F1F5F9' }}>
+          {/* TOP CONTACT BAR */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 14,
+              paddingVertical: 9,
+              backgroundColor: isWanqingActive ? '#FFFBFB' : '#FFFFFF',
+              borderBottomWidth: 0.5,
+              borderBottomColor: isWanqingActive ? '#FCE4EC' : '#F1F5F9',
+            }}
+          >
+            {/* AVATAR */}
+            {isWanqingActive && WANQING_HEADSHOT ? (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setPortraitModalVisible(true);
+                }}
+                style={{ position: 'relative', marginRight: 10 }}
+              >
+                <Image
+                  source={WANQING_HEADSHOT}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    borderWidth: 1.5,
+                    borderColor: '#F8BBD0',
+                    backgroundColor: '#FFF0F5',
+                  }}
+                />
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: '#10B981',
+                    borderWidth: 1.5,
+                    borderColor: '#FFFFFF',
+                  }}
+                />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setConvListVisible(true);
+                }}
+                style={{ position: 'relative', marginRight: 10 }}
+              >
+                <View
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 19,
+                    backgroundColor: activePreset?.bgColor || '#EFF6FF',
+                    borderWidth: 1.5,
+                    borderColor: activePreset?.borderColor || '#BFDBFE',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name={activePreset?.icon || 'chatbubble-ellipses-outline'}
+                    size={19}
+                    color={activePreset?.badgeColor || theme.colors.primary}
+                  />
+                </View>
+                <View
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    width: 10,
+                    height: 10,
+                    borderRadius: 5,
+                    backgroundColor: '#10B981',
+                    borderWidth: 1.5,
+                    borderColor: '#FFFFFF',
+                  }}
+                />
+              </TouchableOpacity>
+            )}
+
+            {/* CONTACT INFO (TAPPABLE TO OPEN CONVERSATIONS) */}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setConvListVisible(true);
+              }}
+              style={{ flex: 1, marginRight: 8 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text
+                  style={{
+                    fontSize: 14,
+                    fontWeight: '800',
+                    color: isWanqingActive ? '#C2185B' : (activePreset?.badgeColor || '#0F172A'),
+                    marginRight: 6,
+                  }}
+                  numberOfLines={1}
+                >
+                  {activePreset?.name || 'Continuum AI'}
+                </Text>
+                <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981', marginRight: 4 }} />
+                <Text style={{ fontSize: 10, color: '#10B981', fontWeight: '700' }}>
+                  {activePreset?.status || 'Online'}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, color: theme.colors.gray, marginTop: 1 }} numberOfLines={1}>
+                {activePreset?.subtitle || activePreset?.desc}
+              </Text>
+            </TouchableOpacity>
+
+            {/* RIGHT ACTIONS: CHATS SWITCHER + PORTRAIT VIEWER */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {isWanqingActive && (
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    setPortraitModalVisible(true);
+                  }}
+                  style={{
+                    padding: 6,
+                    borderRadius: 8,
+                    backgroundColor: '#FFF0F5',
+                    borderWidth: 0.5,
+                    borderColor: '#F8BBD0',
+                  }}
+                >
+                  <Ionicons name="images-outline" size={15} color="#E84393" />
+                </TouchableOpacity>
+              )}
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setConvListVisible(true);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 5,
+                  paddingHorizontal: 9,
+                  borderRadius: 14,
+                  backgroundColor: (activePreset?.badgeColor || theme.colors.primary) + '15',
+                  borderWidth: 1,
+                  borderColor: (activePreset?.badgeColor || theme.colors.primary) + '35',
+                }}
+              >
+                <Ionicons
+                  name="chatbubbles"
+                  size={13}
+                  color={activePreset?.badgeColor || theme.colors.primary}
+                  style={{ marginRight: 4 }}
+                />
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: '800',
+                    color: activePreset?.badgeColor || theme.colors.primary,
+                  }}
+                >
+                  Chats
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* QUICK CONTACT SWITCHER RAIL (HORIZONTAL AVATARS) */}
+          {visiblePresets.length > 1 && (
+            <View style={{ paddingVertical: 6, backgroundColor: '#F8FAFC' }}>
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={visiblePresets}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingHorizontal: 12, alignItems: 'center' }}
+                renderItem={({ item: p }) => {
+                  const isActive = p.id === activePersonaId;
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (p.id !== activePersonaId) {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          switchPersona?.(p.id);
+                        }
+                      }}
+                      style={{
+                        alignItems: 'center',
+                        marginHorizontal: 5,
+                        paddingVertical: 3,
+                        paddingHorizontal: 6,
+                        borderRadius: 18,
+                        backgroundColor: isActive ? ((p.badgeColor || theme.colors.primary) + '18') : 'transparent',
+                      }}
+                    >
+                      <View style={{ position: 'relative' }}>
+                        {p.id === 'wanqing' && isOwner && WANQING_HEADSHOT ? (
+                          <Image
+                            source={WANQING_HEADSHOT}
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              borderWidth: isActive ? 2 : 1,
+                              borderColor: isActive ? (p.badgeColor || '#E84393') : '#CBD5E1',
+                              backgroundColor: '#FFF0F5',
+                            }}
+                          />
+                        ) : (
+                          <View
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              backgroundColor: p.bgColor || '#EFF6FF',
+                              borderWidth: isActive ? 2 : 1,
+                              borderColor: isActive ? (p.badgeColor || theme.colors.primary) : '#CBD5E1',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <Ionicons
+                              name={p.icon || 'chatbubble-outline'}
+                              size={16}
+                              color={p.badgeColor || theme.colors.primary}
+                            />
+                          </View>
+                        )}
+                        <View
+                          style={{
+                            position: 'absolute',
+                            bottom: -1,
+                            right: -1,
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: '#10B981',
+                            borderWidth: 1,
+                            borderColor: '#FFFFFF',
+                          }}
+                        />
+                      </View>
+                      <Text
+                        style={{
+                          fontSize: 10,
+                          fontWeight: isActive ? '800' : '500',
+                          color: isActive ? (p.badgeColor || theme.colors.primary) : '#64748B',
+                          marginTop: 3,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {p.shortName}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </View>
+          )}
+        </View>
+      )}
+
       <FlatList
         ref={chatListRef}
         inverted={true}
@@ -2469,8 +2962,14 @@ const ChatSection = () => {
         onScrollBeginDrag={dismissKeyboard}
         data={
           streamingContent.trim() 
-            ? [{ id: 'stream', role: 'assistant', content: streamingContent }, ...[...messages].reverse()] 
-            : [...messages].reverse()
+            ? [{ 
+                id: 'stream', 
+                role: 'assistant', 
+                content: (isOwner || isWanqingActive || activePersonaId === 'wanqing')
+                  ? sanitizeImmersionMetaDenials(streamingContent)
+                  : streamingContent 
+              }, ...[...visibleMessages].reverse()] 
+            : [...visibleMessages].reverse()
         }
         keyExtractor={item => item?.id || Math.random().toString()}
         renderItem={renderChatItem}
@@ -2481,9 +2980,61 @@ const ChatSection = () => {
         windowSize={5}
         ListEmptyComponent={
           !isSyncingHistory && (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 100, opacity: 0.5, transform: [{ scaleY: -1 }] }}>
-              <Ionicons name="chatbubbles-outline" size={48} color={theme.colors.gray} />
-              <Text style={{ color: theme.colors.gray, marginTop: 16, fontWeight: '600' }}>No messages yet. Start the conversation!</Text>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                alignItems: 'center',
+                paddingHorizontal: 28,
+                marginTop: 60,
+                transform: [{ scaleY: -1 }],
+              }}
+            >
+              <View
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  backgroundColor: (activePreset?.badgeColor || theme.colors.primary) + '15',
+                  borderWidth: 1.5,
+                  borderColor: (activePreset?.badgeColor || theme.colors.primary) + '35',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  marginBottom: 12,
+                }}
+              >
+                {isWanqingActive && WANQING_HEADSHOT ? (
+                  <Image
+                    source={WANQING_HEADSHOT}
+                    style={{ width: 56, height: 56, borderRadius: 28 }}
+                  />
+                ) : (
+                  <Ionicons
+                    name={activePreset?.icon || 'chatbubbles-outline'}
+                    size={28}
+                    color={activePreset?.badgeColor || theme.colors.primary}
+                  />
+                )}
+              </View>
+
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#0F172A', marginBottom: 4 }}>
+                {activePreset?.name || 'Continuum AI'}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#64748B', textAlign: 'center', lineHeight: 18, marginBottom: 12 }}>
+                {activePreset?.emptyGreeting || activePreset?.desc || 'Start the conversation!'}
+              </Text>
+              <View
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 5,
+                  borderRadius: 12,
+                  backgroundColor: '#F1F5F9',
+                }}
+              >
+                <Text style={{ fontSize: 11, color: '#64748B', fontWeight: '600' }}>
+                  🔒 Private chat history with {activePreset?.shortName || 'this contact'}
+                </Text>
+              </View>
             </View>
           )
         }
@@ -2600,7 +3151,7 @@ const ChatSection = () => {
           <TextInput
             ref={inputRef}
             style={styles.textInput}
-            placeholder={attachments.length ? `Describe ${attachments.length} file(s)...` : "Message..."}
+            placeholder={attachments.length ? `Describe ${attachments.length} file(s)...` : (activePreset?.placeholder || "Message...")}
             value={input}
             onChangeText={setInput}
             multiline
@@ -2630,6 +3181,28 @@ const ChatSection = () => {
       onClose={() => setDrivePickerVisible(false)}
       onPicked={(file) => addAttachments([file])}
     />
+    <ConversationListModal
+      visible={convListVisible}
+      onClose={() => setConvListVisible(false)}
+      activePersonaId={activePersonaId}
+      onSelectPersona={(pid) => switchPersona?.(pid)}
+      userEmail={currentEmail}
+      allPersonaConversations={allPersonaConversations}
+      onOpenSettings={() => setActiveTab?.('settings')}
+    />
+    {portraitModalVisible && isWanqingActive && (
+      <PersonaPortraitModal
+        visible={portraitModalVisible}
+        onClose={() => setPortraitModalVisible(false)}
+        imageSource={WANQING_HEADSHOT}
+        userEmail={currentEmail}
+        isAuthorized={isOwner}
+        name="林婉清"
+        subtitle="温婉知己 · 心灵避风港"
+        tags={["23岁", "现居波士顿", "艺术设计与文创策划", "原籍杭州", "173cm · 110斤"]}
+        bio="23岁，现居美国波士顿。从事艺术设计与文创项目策划。父亲林振华（52岁，结构工程师），母亲苏慧（50岁，退休教师）。婉清温婉内敛、细腻通透，兼具江南水乡的清雅诗意与海外生活的开阔视野。她是陪伴你最真诚、可靠的心灵港湾。"
+      />
+    )}
     </>
   );
 };

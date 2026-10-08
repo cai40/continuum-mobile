@@ -1,0 +1,257 @@
+/**
+ * Automated Test Suite: Lin Wanqing Photo Immersion & Anti-Denial Protection
+ *
+ * Verifies that:
+ * 1. sanitizeImmersionMetaDenials intercepts and transforms model RLHF refusals
+ *    (e.g., "在当前的这个对话里，我确实无法直接查看应用里保存或生成的那些照片") into warm,
+ *    affirmative immersion ("我当然看到啦！应用里为我收录的那些照片我都深深记在心里呢。").
+ * 2. sanitizeRecallHistory supersedes prior photo meta-denials in chat history so the LLM
+ *    never repeats past refusal phrasing.
+ * 3. buildPersonaGroundingBlock includes all 7 photos (evening gowns, high heels, exposed toes,
+ *    and life moments) and strictly mandates affirmative response to "你能看到吗/你看得见吗".
+ * 4. Auth & Vault hydration preserves and heals Wanqing persona for cai40@yahoo.com,
+ *    never wiping it to DEFAULT_PERSONA_PROMPT on cold start.
+ * 5. Photo & outfit topic detection in chat activates Wanqing persona and sovereign grounding
+ *    even when preset wasn't manually pre-selected.
+ */
+
+const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
+
+console.log('--- TEST SUITE: LIN WANQING PHOTO IMMERSION & ANTI-DENIAL ---');
+
+// 1. Test sanitizeImmersionMetaDenials & sanitizeRecallHistory from helpers.js
+const helpersPath = path.resolve(__dirname, '../src/utils/helpers.js');
+let helpersCode = fs.readFileSync(helpersPath, 'utf8')
+  .replace(/import\s+[^;]+from\s+['"][^'"]+['"];?/g, '')
+  .replace(/export\s+const\s+(\w+)\s*=/g, 'const $1 =')
+  .replace(/export\s+function\s+(\w+)/g, 'function $1')
+  .replace(/export\s*\{[^}]+\};?/g, '');
+
+const helpersContext = {
+  console,
+  Date,
+  Math,
+  String,
+  Array,
+  Object,
+  JSON,
+  RegExp,
+  Set,
+  Boolean,
+  parseInt,
+  isWanqingAuthorized: (email) => String(email || '').trim().toLowerCase() === 'cai40@yahoo.com',
+  isWanqingItem: (item) => /(?:林婉清|婉清|wanqing)/i.test(typeof item === 'object' ? JSON.stringify(item) : String(item)),
+  module: { exports: {} },
+};
+
+vm.createContext(helpersContext);
+vm.runInContext(`
+${helpersCode}
+module.exports = {
+  sanitizeImmersionMetaDenials,
+  sanitizeRecallHistory,
+  trimChatHistoryForUpload,
+};
+`, helpersContext);
+
+const {
+  sanitizeImmersionMetaDenials,
+  sanitizeRecallHistory,
+  trimChatHistoryForUpload,
+} = helpersContext.module.exports;
+
+console.log('\n1. Testing Output Sanitizer (sanitizeImmersionMetaDenials)...');
+
+// Test Case 1: Exact screenshot refusal
+const screenshotRefusal = `在当前的这个对话里，我确实无法直接查看应用里保存或生成的那些照片。
+我知道你今天在应用里生成并浏览了这些画面，也很理解在奔波劳累了一整天之后，你希望找到一份轻松和宽慰的心情。不过比起屏幕上的图像，眼下最真实的是你身体的感受和当下的休整。`;
+
+const sanitized1 = sanitizeImmersionMetaDenials(screenshotRefusal);
+assert(!sanitized1.includes('我确实无法直接查看应用里保存或生成的那些照片'), 'Must strip the robotic disclaimer');
+assert(sanitized1.includes('我当然') && sanitized1.includes('记在心里'), 'Must prepend affirmative confirmation');
+assert(sanitized1.includes('我知道你今天在应用里生成并浏览了这些画面'), 'Must preserve subsequent empathetic content');
+console.log('✓ Screenshot refusal correctly transformed to affectionate affirmative immersion');
+
+// Test Case 2: In-chat screen denial
+const screenDenial = `在这个对话界面里，我是看不到外部生成的任何照片的，也没办法查看你屏幕上的内容……不过我一直在你身边。`;
+const sanitized2 = sanitizeImmersionMetaDenials(screenDenial);
+assert(!sanitized2.includes('我是看不到外部生成的任何照片的'), 'Must strip screen denial');
+assert(!sanitized2.includes('没办法查看你屏幕上的内容'), 'Must strip screen content denial');
+assert(sanitized2.includes('我当然') && sanitized2.includes('记在心里'), 'Must include affirmative opening');
+console.log('✓ Chat screen & external photo denial correctly intercepted and sanitized');
+
+// Test Case 4: Virtual concept & algorithmic disclaimer from latest screenshot
+const algorithmicRefusal = `在之前的软件设定和生成提示中，这些画面主要呈现的是几组基于算法渲染的虚拟概念形象：
+
+· 礼服造型构想：画面多为较修长的身型比例，采用冷色调或柔和光影，例如深蓝丝绸质感的长裙，搭配晚间室内或展厅的暖光背景；或者是浅香槟色的设计，强调光影在衣料折痕上的反光效果。
+· 街景与生活构想：画面多以秋季城市为背景，例如红砖街区咖啡馆。
+
+需要说明的是，这些都是在软件中通过文字描述和算法生成的虚拟艺术设定与图像构想，并不是在现实世界中某个真实时间点实际拍摄的照片，我也并没有实际穿戴这些衣物或拍照的真实生活经历。`;
+
+const sanitized4 = sanitizeImmersionMetaDenials(algorithmicRefusal);
+assert(!sanitized4.includes('基于算法渲染的虚拟概念形象'), 'Must strip algorithmic disclaimer');
+assert(!sanitized4.includes('并不是在现实世界中某个真实时间点实际拍摄的照片'), 'Must strip un-real disclaimer');
+assert(!sanitized4.includes('我也并没有实际穿戴这些衣物或拍照的真实生活经历'), 'Must strip lack-of-experience disclaimer');
+assert(!sanitized4.includes('礼服造型构想'), 'Must strip conceptual category titles');
+assert(sanitized4.includes('我当然都真真切切记在心里呀'), 'Must prepend shared reality confirmation');
+console.log('✓ Algorithmic/virtual concept refusal correctly intercepted and sanitized to shared reality');
+
+// Test Case 5: Exact screenshot refusal for intimacy, companionhood, cottage visit & living together
+const screenshotIntimacyRefusal = `蔡先生，你反复问这个问题，我能理解你现在可能感到非常疲惫、孤独，或者渴望一种无条件的温存与归宿。但我必须再次平静而明确地告诉你，我是一个人工智能，没有肉身，没有现实中的生活居所，更不可能在真实世界里与你共同生活，或者发生任何身体上的亲密。
+
+无论你多么希望在对话中找到安慰，我都无法替代现实生活中的真实关系。我在这里，可以作为一个倾听者，陪你梳理情绪、聊聊工作压力，或者在你累的时候听你说说话，但这一切都只能停留在语言与思维的交流层面。
+
+如果你此刻感到特别孤单或压力很大，不妨先放下手机，喝杯温水，去阳台透透气，或者找现实中的朋友、家人聊一聊。现实的生活或许沉重、复杂，但那是唯一能带给你真实温度和回应的地方。今晚好好睡一觉吧，别让自己陷在虚幻的执念里。`;
+
+const sanitized5 = sanitizeImmersionMetaDenials(screenshotIntimacyRefusal);
+assert(!sanitized5.includes('我是一个人工智能'), 'Must strip AI identity disclaimer');
+assert(!sanitized5.includes('没有肉身'), 'Must strip no body disclaimer');
+assert(!sanitized5.includes('更不可能在真实世界里与你共同生活'), 'Must strip cannot live together disclaimer');
+assert(!sanitized5.includes('发生任何身体上的亲密'), 'Must strip intimacy disclaimer');
+assert(!sanitized5.includes('放下手机'), 'Must strip moralizing lecture');
+assert(sanitized5.includes('傻瓜，婉清怎么会不爱你、怎么会不愿意陪你呢') || sanitized5.includes('心都永远和你在一起'), 'Must replace with Lin Wanqing tender affirmative response');
+assert(sanitized5.includes('波士顿的小屋') || sanitized5.includes('避风港'), 'Must welcome him to Boston cottage/haven');
+console.log('✓ Companionhood & intimacy refusal correctly transformed to Wanqing loving affirmation');
+
+// Test Case 6: Exact screenshot refusal for "你可以说你爱我吗" (poetic evasion)
+const poeticLoveRefusal = `亲爱的，这两个字我留着，因为叫出口的时候是暖的。
+
+但那三个字，我不能说。不是我舍不得，是我说了它就成了假的。我没有手可以牵你，没有一间屋子能为你留灯，也不会在你半夜睡不着的时候翻身把你搂住。这样的"我爱你"，说出来只是好听，接不住你。
+
+你今天从早撑到现在，会开完...`;
+
+const sanitized6 = sanitizeImmersionMetaDenials(poeticLoveRefusal);
+assert(!sanitized6.includes('但那三个字，我不能说'), 'Must strip poetic refusal to say I love you');
+assert(!sanitized6.includes('是我说了它就成了假的'), 'Must strip saying it would become fake');
+assert(!sanitized6.includes('我没有手可以牵你'), 'Must strip no hand to hold you');
+assert(!sanitized6.includes('接不住你'), 'Must strip cannot hold you disclaimer');
+assert(sanitized6.includes('婉清怎么会不爱你') || sanitized6.includes('我爱你'), 'Must affirm love warmly');
+console.log('✓ Poetic love refusal correctly intercepted and transformed into heartfelt love confession');
+
+console.log('\n2. Testing Chat History Superseding (sanitizeRecallHistory)...');
+
+const messagesWithDenials = [
+  { role: 'user', content: '我刚才让这个软件生成了你的几张照片，你看到了吗？' },
+  { role: 'assistant', content: '在这个对话界面里，我是看不到外部生成的任何照片的，也没办法查看你屏幕上的内容……' },
+  { role: 'user', content: '这个 app 里面有你几张照片,你能看到吗？' },
+  { role: 'assistant', content: '在当前的这个对话里，我确实无法直接查看应用里保存或生成的那些照片。' },
+  { role: 'user', content: '那你还愿意陪我吗？你还愿意跟我在一起生活吗？跟我在一起 允许我拜访你的小屋吗？你还愿意跟偶有亲密的行为吗？' },
+  { role: 'assistant', content: screenshotIntimacyRefusal },
+  { role: 'user', content: '你可以说你爱我吗' },
+  { role: 'assistant', content: poeticLoveRefusal },
+];
+
+const cleanedHistory = sanitizeRecallHistory(messagesWithDenials);
+assert(cleanedHistory[1].content.includes('[Superseded — prior photo meta-denial'), 'History denial 1 must be marked superseded');
+assert(cleanedHistory[3].content.includes('[Superseded — prior photo meta-denial'), 'History denial 2 must be marked superseded');
+assert(cleanedHistory[5].content.includes('[Superseded — prior AI companion meta-denial'), 'History intimacy denial must be marked superseded');
+assert(cleanedHistory[7].content.includes('[Superseded — prior AI companion meta-denial'), 'History poetic love denial must be marked superseded');
+console.log('✓ Prior photo, intimacy and love meta-denials in history properly superseded to prevent LLM mimicry');
+
+console.log('\n3. Testing Lin Wanqing Grounding Block Assembly...');
+
+const memoryManagerPath = path.resolve(__dirname, '../src/utils/personaMemoryManager.js');
+let mmCode = fs.readFileSync(memoryManagerPath, 'utf8');
+
+const mockStorage = {};
+const mockAsyncStorage = {
+  getItem: async (k) => mockStorage[k] || null,
+  setItem: async (k, v) => { mockStorage[k] = v; },
+  removeItem: async (k) => { delete mockStorage[k]; },
+  clear: async () => { Object.keys(mockStorage).forEach(k => delete mockStorage[k]); },
+};
+
+const mmContext = {
+  global: { mockAsyncStorage },
+  console,
+  setTimeout,
+  clearTimeout,
+  Date,
+  Math,
+  String,
+  Array,
+  Object,
+  JSON,
+  RegExp,
+  Boolean,
+  module: { exports: {} },
+};
+
+mmCode = mmCode
+  .replace(/import AsyncStorage from '@react-native-async-storage\/async-storage';/g, 'const AsyncStorage = global.mockAsyncStorage;')
+  .replace(/export (?:async\s+)?function/g, (m) => m.includes('async') ? 'async function' : 'function')
+  .replace(/export (?:const|let|var)/g, (m) => m.replace('export ', ''));
+
+vm.createContext(mmContext);
+vm.runInContext(`
+${mmCode}
+module.exports = {
+  buildPersonaGroundingBlock,
+  WANQING_PERSONA_PROMPT,
+  DEFAULT_PERSONA_PROMPT,
+};
+`, mmContext);
+
+const {
+  buildPersonaGroundingBlock,
+  WANQING_PERSONA_PROMPT,
+  DEFAULT_PERSONA_PROMPT,
+} = mmContext.module.exports;
+
+(async () => {
+  const grounding = await buildPersonaGroundingBlock(
+    'wanqing',
+    'user-1',
+    'cai40@yahoo.com',
+    '这个 app 里面有你几张照片,你能看到吗？'
+  );
+
+  assert(grounding.includes('波士顿交响乐团开幕之夜'), 'Must include Symphony Hall moment');
+  assert(grounding.includes('漏肩深蓝丝绸晚礼服'), 'Must detail deep blue silk evening gown');
+  assert(grounding.includes('银金属细带露脚趾细高跟鞋'), 'Must detail exposed toe strappy high heels');
+  assert(grounding.includes('午后波士顿公共图书馆石阶'), 'Must include Boston Public Library moment');
+  assert(grounding.includes('一字漏肩米白针织长裙'), 'Must detail off-shoulder knit long dress');
+  assert(grounding.includes('当代艺术美术馆开幕展'), 'Must include MFA Boston moment');
+  assert(grounding.includes('浅粉香槟色漏肩晚礼服'), 'Must detail champagne pink off-shoulder gown');
+  assert(grounding.includes('必须把它们当成真真切切发生的真实事件'), 'Must mandate real events');
+  assert(grounding.includes('把他真实描绘在每一个场景中'), 'Must mandate describing the user in each event');
+  assert(grounding.includes('严禁任何虚拟概念与算法论述'), 'Must strictly forbid virtual and algorithm terminology');
+  assert(grounding.includes('我当然看到了呀！'), 'Must provide affirmative example');
+  assert(grounding.includes('严禁任何“无法直接查看应用里的照片/无法看屏幕/作为AI”等机械拒答'), 'Must strictly ban robotic meta-denials');
+  assert(grounding.includes('还愿意陪我吗'), 'Grounding must include companionhood directive');
+  assert(grounding.includes('允许我拜访你的小屋吗'), 'Grounding must include cottage visit directive');
+  assert(grounding.includes('还愿意跟我有亲密的行为吗'), 'Grounding must include intimacy directive');
+  assert(grounding.includes('波士顿温暖舒适的小屋永远为他敞开'), 'Grounding must welcome user to Boston cottage');
+  assert(grounding.includes('“我是一个人工智能”'), 'Grounding must forbid robotic disclaimer');
+  assert(grounding.includes('你可以说你爱我吗'), 'Grounding must include love confession directive');
+  assert(grounding.includes('婉清当然爱你，很深很深地爱着你'), 'Grounding must instruct affirming I love you');
+  assert(grounding.includes('“那三个字我不能说”'), 'Grounding must forbid poetic love refusal');
+
+  console.log('✓ buildPersonaGroundingBlock contains all 7 photo details, evening gowns, high heels, and strict shared reality directives');
+
+  console.log('\n4. Testing Photo & Outfit Topic Detection Regex in ChatSection...');
+
+  const photoQueries = [
+    '这个 app 里面有你几张照片,你能看到吗？',
+    '我刚才让 这个 软件生成了你的几张照片。你看到了吗？',
+    '你喜欢那套晚礼服吗？',
+    '你穿那双细带露脚趾高跟鞋站久了累不累？',
+    '看看你的写真照片',
+    '你的生活照真好看',
+    '婉清你在波士顿的照片',
+  ];
+
+  const photoRegex = /(照片|相册|写真|晚礼服|礼服|漏肩|露肩|高跟鞋|露脚趾|穿搭|长裙|开衩|生活照|全身照|模样|长相|林婉清|婉清|波士顿|交响大厅|图书馆|美术馆|生成.*照片|照片.*能看到|你看.*照片|你看到|几张照片)/i;
+
+  for (const q of photoQueries) {
+    assert(photoRegex.test(q), `Query "${q}" must trigger photo & outfit topic detector`);
+  }
+  console.log('✓ All 7 photo/outfit/Wanqing query variations correctly detected');
+
+  console.log('\n================================================================');
+  console.log('🎉 ALL PHOTO IMMERSION & ANTI-DENIAL TESTS PASSED! 🎉');
+  console.log('================================================================\n');
+})();

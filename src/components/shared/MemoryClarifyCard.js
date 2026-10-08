@@ -196,7 +196,7 @@ export default function MemoryClarifyCard({ offer, onResolve, onDismiss, result 
       ) : null}
 
       {error ? (
-        <Text style={{ color: theme.colors.danger || '#dc2626', fontSize: 10, marginTop: 8 }}>{error}</Text>
+        <Text selectable={true} style={{ color: theme.colors.danger || '#dc2626', fontSize: 10, marginTop: 8 }}>{error}</Text>
       ) : null}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12 }}>

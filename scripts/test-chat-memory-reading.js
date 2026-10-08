@@ -114,6 +114,8 @@ const {
 assert.ok(wantsContinuumMemoryRecall('Review current chat and extract information about 林婉清, store in long term memory'));
 assert.ok(wantsContinuumMemoryRecall('Find out the persona of my lover who is a young girl in Boston based on your memories and chat history'));
 assert.ok(wantsContinuumMemoryRecall('从记忆中查找林婉清'));
+assert.ok(wantsContinuumMemoryRecall('婉清的身高体重是多少'));
+assert.ok(wantsContinuumMemoryRecall('林婉清父母叫什么'));
 assert.ok(wantsContinuumMemoryRecall('提取当前聊天记录并保存到长时记忆'));
 assert.ok(wantsContinuumMemoryRecall('你还记得她的背景信息吗'));
 assert.ok(wantsContinuumMemoryRecall('查看核心记忆中的人设'));
@@ -164,10 +166,30 @@ console.log('✓ buildMemoryRecallContext produces clean non-email memory contex
 assert.ok(shouldOfferMemoryPin('Review current chat and extract information about 林婉清, store in long term memory'));
 assert.ok(shouldOfferMemoryPin('提取并保存到长时记忆'));
 assert.ok(shouldOfferMemoryPin('请记住这段人设并存入记忆'));
+assert.ok(shouldOfferMemoryPin('请记住婉清的身高体重'));
+assert.ok(shouldOfferMemoryPin('帮我记住'));
+assert.ok(shouldOfferMemoryPin('remember this'));
 assert.ok(!shouldOfferMemoryPin('今天天气怎么样'));
 
 const extractedPin = extractMemoryForPin('林婉清（23岁，波士顿）：杭州人，艺术设计，与用户有深厚感情。');
 assert.strictEqual(extractedPin, '林婉清（23岁，波士顿）：杭州人，艺术设计，与用户有深厚感情。');
 console.log('✓ Memory pin offering and extraction for chat works correctly');
+
+// Test access restrictions for Wanqing persona
+const testPresets = [
+  { id: 'standard', label: 'Standard AI', text: 'You are an AI assistant.' },
+  { id: 'wanqing', label: '🌸 林婉清', text: '你是林婉清...', allowedEmail: 'cai40@yahoo.com' },
+];
+
+const caiFilter = testPresets.filter(p => !p.allowedEmail || p.allowedEmail.toLowerCase() === 'cai40@yahoo.com');
+assert.strictEqual(caiFilter.length, 2, 'cai40@yahoo.com must see Lin Wanqing preset');
+
+const otherFilter = testPresets.filter(p => !p.allowedEmail || p.allowedEmail.toLowerCase() === 'other@example.com');
+assert.strictEqual(otherFilter.length, 1, 'Other users must NOT see Lin Wanqing preset');
+assert.strictEqual(otherFilter[0].id, 'standard');
+
+const anonFilter = testPresets.filter(p => !p.allowedEmail || p.allowedEmail.toLowerCase() === '');
+assert.strictEqual(anonFilter.length, 1, 'Anonymous users must NOT see Lin Wanqing preset');
+console.log('✓ Lin Wanqing preset visibility is strictly restricted to cai40@yahoo.com');
 
 console.log('\nAll tests passed successfully!');

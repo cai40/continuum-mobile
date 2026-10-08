@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, SafeAreaView, Platform, KeyboardAvoidingView, Alert, ActivityIndicator, StyleSheet, Keyboard } from 'react-native';
+import { View, Text, TouchableOpacity, SafeAreaView, ScrollView, Platform, KeyboardAvoidingView, Alert, ActivityIndicator, StyleSheet, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Updates from 'expo-updates';
+import * as Clipboard from 'expo-clipboard';
+import './src/utils/alertUtils';
 import { AppProvider, useAppContext } from './src/context/AppContext';
 import ChatSection from './src/components/ChatSection';
 import SettingsSection from './src/components/SettingsSection';
@@ -219,7 +221,7 @@ const TabItem = ({ icon, label, tab, activeTab, setActiveTab }) => {
 class GlobalErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null, errorInfo: null, copied: false };
   }
 
   static getDerivedStateFromError(error) {
@@ -232,33 +234,220 @@ class GlobalErrorBoundary extends React.Component {
     // In production, we'd also log to a custom endpoint here since Sentry is off
   }
 
+  componentDidMount() {
+    if (typeof global !== 'undefined') {
+      global.__criticalFaultHandler = (error, errorInfo) => {
+        this.setState({ hasError: true, error, errorInfo });
+      };
+      if (global.ErrorUtils && !global.ErrorUtils._continuumHooked) {
+        global.ErrorUtils._continuumHooked = true;
+        const defaultHandler = global.ErrorUtils.getGlobalHandler && global.ErrorUtils.getGlobalHandler();
+        global.ErrorUtils.setGlobalHandler((error, isFatal) => {
+          if (global.__criticalFaultHandler) {
+            global.__criticalFaultHandler(error, { isFatal });
+          }
+          if (defaultHandler) {
+            defaultHandler(error, isFatal);
+          }
+        });
+      }
+    }
+  }
+
+  componentWillUnmount() {
+    if (typeof global !== 'undefined' && global.__criticalFaultHandler === this) {
+      global.__criticalFaultHandler = null;
+    }
+  }
+
+  handleCopyError = async () => {
+    try {
+      const parts = [
+        `=== CONTINUUM CRITICAL FAULT ===`,
+        `Build: ${BUILD_ID}`,
+        `Platform: ${Platform.OS} (${Platform.Version})`,
+        `Timestamp: ${new Date().toISOString()}`,
+        `\n[Error Message]`,
+        this.state.error?.message || this.state.error?.toString() || 'Unknown runtime error',
+      ];
+
+      if (this.state.error?.stack) {
+        parts.push(`\n[JavaScript Stack Trace]\n${this.state.error.stack}`);
+      }
+
+      if (this.state.errorInfo?.componentStack) {
+        parts.push(`\n[React Component Stack]\n${this.state.errorInfo.componentStack}`);
+      }
+
+      const fullErrorText = parts.join('\n');
+      if (Clipboard?.setStringAsync) {
+        await Clipboard.setStringAsync(fullErrorText);
+      }
+      try {
+        if (Haptics?.notificationAsync) {
+          await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } catch {}
+      this.setState({ copied: true });
+      setTimeout(() => {
+        this.setState({ copied: false });
+      }, 3000);
+    } catch (err) {
+      console.error("Failed to copy error to clipboard:", err);
+    }
+  };
+
+  handleDismiss = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null, copied: false });
+  };
+
   render() {
     if (this.state.hasError) {
+      const errorString = this.state.error?.message || this.state.error?.toString() || 'Unknown runtime error';
+      const jsStack = this.state.error?.stack;
+      const componentStack = this.state.errorInfo?.componentStack;
+
       return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#7f1d1d', justifyContent: 'center', padding: 32 }}>
-          <Ionicons name="alert-circle" size={80} color="white" style={{ alignSelf: 'center', marginBottom: 24 }} />
-          <Text style={{ color: 'white', fontSize: 24, fontWeight: '800', textAlign: 'center', marginBottom: 16 }}>
-            Continuum Critical Fault
-          </Text>
-          <View style={{ backgroundColor: 'rgba(0,0,0,0.3)', padding: 16, borderRadius: 12, marginBottom: 24 }}>
-            <Text style={{ color: '#fca5a5', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 12 }}>
-              {this.state.error?.toString()}
-            </Text>
-            {this.state.errorInfo?.componentStack && (
-              <Text style={{ color: '#f87171', fontSize: 10, marginTop: 8 }} numberOfLines={10}>
-                {this.state.errorInfo.componentStack}
-              </Text>
-            )}
-          </View>
-          <TouchableOpacity 
-            onPress={() => Updates.reloadAsync()}
-            style={{ backgroundColor: 'white', padding: 16, borderRadius: 12, alignItems: 'center' }}
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#7f1d1d' }}>
+          <ScrollView 
+            contentContainerStyle={{ padding: 24, paddingBottom: 60 }}
+            showsVerticalScrollIndicator={true}
           >
-            <Text style={{ color: '#7f1d1d', fontWeight: '800' }}>FORCE REBOOT BRAIN</Text>
-          </TouchableOpacity>
-          <Text style={{ fontSize: 8, color: theme.colors.gray, marginBottom: 5 }}>
-            {this.context?.serverVersion || BUILD_ID}
-          </Text>
+            <Ionicons name="alert-circle" size={72} color="white" style={{ alignSelf: 'center', marginTop: 12, marginBottom: 16 }} />
+            <Text 
+              selectable={true}
+              style={{ color: 'white', fontSize: 24, fontWeight: '800', textAlign: 'center', marginBottom: 8 }}
+            >
+              Continuum Critical Fault
+            </Text>
+            <Text 
+              selectable={true}
+              style={{ color: '#fecaca', fontSize: 13, textAlign: 'center', marginBottom: 20, lineHeight: 18 }}
+            >
+              An unexpected error interrupted the runtime. Tap "Copy Error Details" below so you can paste the diagnostic report directly into chat.
+            </Text>
+
+            {/* ACTION BUTTONS */}
+            <View style={{ marginBottom: 20, gap: 10 }}>
+              <TouchableOpacity 
+                onPress={this.handleCopyError}
+                activeOpacity={0.8}
+                style={{ 
+                  backgroundColor: this.state.copied ? '#15803d' : 'white', 
+                  paddingVertical: 14, 
+                  paddingHorizontal: 20, 
+                  borderRadius: 12, 
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.25,
+                  shadowRadius: 3.84,
+                  elevation: 5,
+                }}
+              >
+                <Ionicons 
+                  name={this.state.copied ? "checkmark-circle" : "copy-outline"} 
+                  size={20} 
+                  color={this.state.copied ? 'white' : '#7f1d1d'} 
+                  style={{ marginRight: 8 }} 
+                />
+                <Text style={{ color: this.state.copied ? 'white' : '#7f1d1d', fontWeight: '800', fontSize: 15 }}>
+                  {this.state.copied ? "✓ COPIED TO CLIPBOARD!" : "COPY ERROR DETAILS"}
+                </Text>
+              </TouchableOpacity>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity 
+                  onPress={this.handleDismiss}
+                  activeOpacity={0.8}
+                  style={{ 
+                    flex: 1,
+                    backgroundColor: 'rgba(255,255,255,0.15)', 
+                    paddingVertical: 12, 
+                    borderRadius: 10, 
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.3)'
+                  }}
+                >
+                  <Text style={{ color: 'white', fontWeight: '700', fontSize: 13 }}>TRY RECOVERING</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  onPress={() => Updates.reloadAsync()}
+                  activeOpacity={0.8}
+                  style={{ 
+                    flex: 1,
+                    backgroundColor: 'rgba(0,0,0,0.4)', 
+                    paddingVertical: 12, 
+                    borderRadius: 10, 
+                    alignItems: 'center',
+                    borderWidth: 1,
+                    borderColor: 'rgba(255,255,255,0.2)'
+                  }}
+                >
+                  <Text style={{ color: '#fca5a5', fontWeight: '700', fontSize: 13 }}>REBOOT APP</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* ERROR DETAILS BOX */}
+            <View style={{ backgroundColor: 'rgba(0,0,0,0.45)', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, borderBottomWidth: 0.5, borderBottomColor: 'rgba(255,255,255,0.2)', paddingBottom: 6 }}>
+                <Text style={{ color: '#fca5a5', fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                  Diagnostics (Selectable)
+                </Text>
+                <TouchableOpacity onPress={this.handleCopyError} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={{ color: '#93c5fd', fontSize: 11, fontWeight: '600' }}>
+                    {this.state.copied ? "✓ Copied" : "Copy"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text 
+                selectable={true} 
+                style={{ color: '#fef08a', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 12, fontWeight: '600', marginBottom: 8 }}
+              >
+                {errorString}
+              </Text>
+
+              {jsStack && (
+                <View style={{ marginTop: 8 }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '700', marginBottom: 4 }}>
+                    JAVASCRIPT STACK:
+                  </Text>
+                  <Text 
+                    selectable={true} 
+                    style={{ color: '#fca5a5', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10, lineHeight: 14 }}
+                  >
+                    {jsStack}
+                  </Text>
+                </View>
+              )}
+
+              {componentStack && (
+                <View style={{ marginTop: 12 }}>
+                  <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: '700', marginBottom: 4 }}>
+                    COMPONENT STACK:
+                  </Text>
+                  <Text 
+                    selectable={true} 
+                    style={{ color: '#f87171', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', fontSize: 10, lineHeight: 14 }}
+                  >
+                    {componentStack}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <View style={{ alignItems: 'center', marginTop: 16 }}>
+              <Text selectable={true} style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)' }}>
+                Build: {this.context?.serverVersion || BUILD_ID} · Platform: {Platform.OS}
+              </Text>
+            </View>
+          </ScrollView>
         </SafeAreaView>
       );
     }

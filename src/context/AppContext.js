@@ -20,8 +20,15 @@ import {
 } from "../services/apiService";
 import { API_URL, DEFAULT_EMAIL_LIMIT, LEGACY_DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT, VOICE_PAUSE_DEFAULT_MS, VOICE_PAUSE_OPTIONS } from "../constants/Config";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
-import { sanitizeUserVisibleContent } from "../utils/helpers";
+import { sanitizeUserVisibleContent, sanitizeImmersionMetaDenials } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
+import { isWanqingAuthorized, isWanqingItem, WANQING_PERSONA_PROMPT, DEFAULT_PERSONA_PROMPT } from "../utils/personaMemoryManager";
+import {
+  PERSONA_PRESETS,
+  getVisiblePersonaPresets,
+  getPersonaPreset,
+  resolveConversationPersonaId,
+} from "../constants/personaPresets";
 
 const AppContext = createContext();
 const CHAT_HISTORY_CLEARED_AT_KEY = "@chat_history_cleared_at";
@@ -101,6 +108,12 @@ export const AppProvider = ({ children }) => {
   const [persona, setPersona] = useState(
     "You are a helpful, thorough AI assistant. Provide detailed explanations, comprehensive answers, and step-by-step guidance. Be polite and formal.",
   );
+  // Dedicated conversation/window state per persona for real chat app experience
+  const [activePersonaId, setActivePersonaId] = useState("standard");
+  const activePersonaIdRef = useRef("standard");
+  useEffect(() => { activePersonaIdRef.current = activePersonaId; }, [activePersonaId]);
+  const [allPersonaConversations, setAllPersonaConversations] = useState({});
+  const switchingPersonaRef = useRef(false);
   // Listening is always auto-detect now (see the recognizer setup in ChatSection), so
   // there is no locale state to persist. The old "@stt_lang" pin is no longer read: with
   // the picker gone a stale pin could never be cleared, which is the bug this fixes.
@@ -189,6 +202,28 @@ export const AppProvider = ({ children }) => {
           // Biometric is required for hydrated sessions on cold start
           setIsBiometricAuthenticated(false);
           
+          if (!isWanqingAuthorized(session.user?.email)) {
+            setActivePersonaId((prev) => (prev === 'wanqing' ? 'standard' : prev));
+            setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
+            setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
+          } else {
+            // Authorized owner cai40@yahoo.com: restore or heal persona to Lin Wanqing
+            const savedPersona = await AsyncStorage.getItem("@persona");
+            const savedPid = await AsyncStorage.getItem("@active_persona_id");
+            if (savedPid) {
+              setActivePersonaId(savedPid);
+            } else {
+              setActivePersonaId('wanqing');
+              AsyncStorage.setItem("@active_persona_id", 'wanqing').catch(() => {});
+            }
+            if (savedPersona && isWanqingItem(savedPersona)) {
+              setPersona(savedPersona);
+            } else if (!savedPersona || savedPersona === DEFAULT_PERSONA_PROMPT) {
+              setPersona(WANQING_PERSONA_PROMPT);
+              AsyncStorage.setItem("@persona", WANQING_PERSONA_PROMPT).catch(() => {});
+            }
+          }
+
           // LEGAL STATUS CHECK (v3.4.55)
           const accepted = await AsyncStorage.getItem(`legal_accepted_${session.user.email}`);
           setHasAcceptedLegal(accepted === 'true');
@@ -196,6 +231,10 @@ export const AppProvider = ({ children }) => {
           fetchAnalytics();
         } else {
           setHasAcceptedLegal(true); // Don't show modal on login screen
+          // Unauthenticated: ensure Wanqing items are not active in memory
+          setActivePersonaId((prev) => (prev === 'wanqing' ? 'standard' : prev));
+          setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
+          setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
         }
         // Always try to fetch version even if no session
         const ver = await fetchSystemVersion();
@@ -211,11 +250,33 @@ export const AppProvider = ({ children }) => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user ?? null;
       setSession(session);
       setUser(currentUser);
       
+      const isAuthorized = isWanqingAuthorized(currentUser?.email);
+      if (!isAuthorized) {
+        setActivePersonaId((prev) => (prev === 'wanqing' ? 'standard' : prev));
+        setPersona((prev) => (isWanqingItem(prev) ? DEFAULT_PERSONA_PROMPT : prev));
+        setMessages((prev) => (Array.isArray(prev) ? prev.filter((m) => !isWanqingItem(m)) : []));
+      } else if (currentUser?.email === 'cai40@yahoo.com') {
+        const savedPersona = await AsyncStorage.getItem("@persona");
+        const savedPid = await AsyncStorage.getItem("@active_persona_id");
+        if (savedPid) {
+          setActivePersonaId(savedPid);
+        } else {
+          setActivePersonaId('wanqing');
+          AsyncStorage.setItem("@active_persona_id", 'wanqing').catch(() => {});
+        }
+        if (savedPersona && isWanqingItem(savedPersona)) {
+          setPersona(savedPersona);
+        } else if (!savedPersona || savedPersona === DEFAULT_PERSONA_PROMPT) {
+          setPersona(WANQING_PERSONA_PROMPT);
+          AsyncStorage.setItem("@persona", WANQING_PERSONA_PROMPT).catch(() => {});
+        }
+      }
+
       // CHECK SUPER USER STATUS
       if (currentUser?.email === 'cai40@yahoo.com') {
         setIsSuperUser(true);
@@ -277,6 +338,7 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     const loadVault = async () => {
       try {
+        const personaChatKeys = PERSONA_PRESETS.map((p) => `@chat_history_persona_${p.id}`);
         const keys = await AsyncStorage.multiGet([
           "@groq_key",
           "@gemini_key",
@@ -296,6 +358,8 @@ export const AppProvider = ({ children }) => {
           "@chat_history",
           CHAT_HISTORY_CLEARED_AT_KEY,
           "@persona",
+          "@active_persona_id",
+          ...personaChatKeys,
           "@render_email_bridge_secret",
           "@render_email_enabled",
           "@email_limit",
@@ -348,6 +412,10 @@ export const AppProvider = ({ children }) => {
           }
         }
 
+        const { data: authData } = await supabase.auth.getSession();
+        const activeAuthEmail = String(authData?.session?.user?.email || session?.user?.email || user?.email || '').trim().toLowerCase();
+        const isOwner = isWanqingAuthorized(activeAuthEmail);
+
         keys.forEach(([key, value]) => {
           if (!value) return;
           if (key === "@groq_key") setGroqKey(value);
@@ -368,23 +436,121 @@ export const AppProvider = ({ children }) => {
             // stale value cannot leave voice mode with an unusable pause budget.
             if (VOICE_PAUSE_OPTIONS.some((o) => o.value === parsed)) setVoicePauseMsState(parsed);
           }
-          if (key === "@persona") setPersona(value);
+          if (key === "@persona") {
+            if (activeAuthEmail && !isOwner && isWanqingItem(value)) {
+              setPersona(DEFAULT_PERSONA_PROMPT);
+            } else if (isOwner && (!value || value === DEFAULT_PERSONA_PROMPT)) {
+              setPersona(WANQING_PERSONA_PROMPT);
+              AsyncStorage.setItem("@persona", WANQING_PERSONA_PROMPT).catch(() => {});
+            } else {
+              setPersona(value);
+            }
+          }
           if (key === "@render_email_bridge_secret") setRenderEmailBridgeSecret(value);
           if (key === "@render_email_enabled") setRenderEmailEnabled(value !== "false");
-          if (key === "@chat_history") {
-            const parsed = JSON.parse(value);
-            setMessages(
-              parsed
+        });
+
+        // Resolve active persona ID
+        const savedActivePersonaId = valueFor("@active_persona_id");
+        const savedPersona = valueFor("@persona");
+
+        let resolvedPid = "standard";
+        if (savedActivePersonaId) {
+          resolvedPid = (savedActivePersonaId === 'wanqing' && !isOwner) ? 'standard' : savedActivePersonaId;
+        } else if (isOwner) {
+          resolvedPid = 'wanqing';
+        } else if (savedPersona) {
+          resolvedPid = resolveConversationPersonaId(savedPersona, activeAuthEmail);
+        }
+
+        activePersonaIdRef.current = resolvedPid;
+        setActivePersonaId(resolvedPid);
+        if (!savedActivePersonaId) {
+          AsyncStorage.setItem("@active_persona_id", resolvedPid).catch(() => {});
+        }
+
+        // Parse legacy chat history if available (for migration/fallback)
+        const legacyChatRaw = valueFor("@chat_history");
+        let legacyChatParsed = [];
+        if (legacyChatRaw) {
+          try {
+            const parsed = JSON.parse(legacyChatRaw);
+            if (Array.isArray(parsed)) {
+              const shouldFilterWanqing = Boolean(activeAuthEmail && !isOwner);
+              legacyChatParsed = parsed
+                .filter((m) => m && m.content && m.role)
                 .filter((m) => m.content !== "🎙 Voice Transmission")
                 .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
-                .map((m) => (
-                  m?.role === 'user'
-                    ? { ...m, content: sanitizeUserVisibleContent(m.content) }
-                    : m
-                )),
-            );
+                .filter((m) => !shouldFilterWanqing || !isWanqingItem(m))
+                .map((m) => {
+                  if (m?.role === 'user') return { ...m, content: sanitizeUserVisibleContent(m.content) };
+                  if (m?.role === 'assistant' && (resolvedPid === 'wanqing' || isOwner)) {
+                    return { ...m, content: sanitizeImmersionMetaDenials(m.content) };
+                  }
+                  return m;
+                });
+            }
+          } catch (e) {
+            console.warn("Legacy chat history parse error:", e);
           }
-        });
+        }
+
+        // Build conversation summaries for all visible personas
+        const visiblePresets = getVisiblePersonaPresets(activeAuthEmail);
+        const convMap = {};
+        let activeMessagesToSet = null;
+
+        for (const p of visiblePresets) {
+          const pKey = `@chat_history_persona_${p.id}`;
+          const pRaw = valueFor(pKey);
+          let pMessages = [];
+
+          if (pRaw) {
+            try {
+              const parsed = JSON.parse(pRaw);
+              if (Array.isArray(parsed)) {
+                const shouldFilterWanqing = Boolean(activeAuthEmail && !isOwner);
+                pMessages = parsed
+                  .filter((m) => m && m.content && m.role)
+                  .filter((m) => m.content !== "🎙 Voice Transmission")
+                  .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
+                  .filter((m) => !shouldFilterWanqing || !isWanqingItem(m))
+                  .map((m) => {
+                    if (m?.role === 'user') return { ...m, content: sanitizeUserVisibleContent(m.content) };
+                    if (m?.role === 'assistant' && (p.id === 'wanqing' || isOwner)) {
+                      return { ...m, content: sanitizeImmersionMetaDenials(m.content) };
+                    }
+                    return m;
+                  });
+              }
+            } catch (e) {
+              console.warn(`Persona ${p.id} chat parse error:`, e);
+            }
+          } else if (p.id === resolvedPid && legacyChatParsed.length > 0) {
+            // Seamless migration of existing chat history to active persona
+            pMessages = legacyChatParsed;
+            AsyncStorage.setItem(pKey, JSON.stringify(pMessages)).catch(() => {});
+          }
+
+          if (p.id === resolvedPid) {
+            activeMessagesToSet = pMessages;
+          }
+
+          const lastMsg = pMessages.length > 0 ? pMessages[pMessages.length - 1] : null;
+          convMap[p.id] = {
+            lastMessage: lastMsg ? lastMsg.content : (p.emptyGreeting || p.desc),
+            timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : null),
+            count: pMessages.length,
+          };
+        }
+
+        setAllPersonaConversations(convMap);
+
+        if (activeMessagesToSet !== null) {
+          setMessages(activeMessagesToSet);
+        } else if (legacyChatParsed.length > 0) {
+          setMessages(legacyChatParsed);
+        }
         isHistoryLoaded.current = true;
         isVaultLoaded.current = true;
       } catch (e) {
@@ -421,9 +587,9 @@ export const AppProvider = ({ children }) => {
 
   const clearDeviceVoices = () => setDeviceVoices({});
 
-  // Persistence: Auto-Save History
+  // Persistence: Auto-Save History per Persona & Mirror to Global
   useEffect(() => {
-    if (isHistoryLoaded.current) {
+    if (isHistoryLoaded.current && !switchingPersonaRef.current && activePersonaId) {
       const hardwareLimit = 500; // Stricter memory cap for mobile stability
       const optimizedHistory =
         messages.length > hardwareLimit
@@ -439,12 +605,31 @@ export const AppProvider = ({ children }) => {
             : m
         ));
 
+      // 1. Save to current persona's private storage
+      const personaKey = `@chat_history_persona_${activePersonaId}`;
+      AsyncStorage.setItem(
+        personaKey,
+        JSON.stringify(safeHistory),
+      ).catch((e) => console.error("Persona auto-save failed:", e));
+
+      // 2. Mirror to global @chat_history for background workers / diagnostics
       AsyncStorage.setItem(
         "@chat_history",
         JSON.stringify(safeHistory),
       ).catch((e) => console.error("Auto-save failed:", e));
+
+      // 3. Update conversation summary
+      const lastMsg = safeHistory.length > 0 ? safeHistory[safeHistory.length - 1] : null;
+      setAllPersonaConversations((prev) => ({
+        ...prev,
+        [activePersonaId]: {
+          lastMessage: lastMsg ? lastMsg.content : '',
+          timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : Date.now()),
+          count: safeHistory.length,
+        },
+      }));
     }
-  }, [messages]);
+  }, [messages, activePersonaId]);
 
   const syncRemoteHistory = async (explicitToken, retryCount = 0) => {
     const token = explicitToken || session?.access_token;
@@ -467,32 +652,64 @@ export const AppProvider = ({ children }) => {
            return;
         }
 
-        setMessages(prev => {
-          const existingIds = new Set(prev.map(m => m.id));
-          // Strict filtering to prevent crashes from malformed remote data.
-          // After an intentional clear, never rehydrate messages from before the clear.
-          const incoming = history
-            .filter(m => m && m.id && m.content && !existingIds.has(m.id))
-            .filter((m) => !hasValidClearedAt || messageTimeMs(m) > clearedAtMs)
-            .map((m) => (
-              m.role === 'user'
-                ? { ...m, content: sanitizeUserVisibleContent(m.content) }
-                : m
-            ));
-          
-          if (incoming.length === 0) return prev;
-          
-          const combined = [...prev, ...incoming].sort((a, b) => {
-            // Sort on messageTimeMs, not `timestamp` alone: device-created messages carry
-            // no timestamp, so sorting on the raw field bucketed them at epoch 0 and moved
-            // them to the front — where the 500-message cap below then trimmed them away.
-            // messageTimeMs already falls back to the Date.now() id for exactly this case.
-            return messageTimeMs(a) - messageTimeMs(b);
-          });
+        const currentEmail = user?.email || session?.user?.email;
+        const isAuthorized = isWanqingAuthorized(currentEmail);
+        const incomingClean = history
+          .filter((m) => m && m.id && m.content)
+          .filter((m) => !hasValidClearedAt || messageTimeMs(m) > clearedAtMs)
+          .filter((m) => isAuthorized || !isWanqingItem(m))
+          .map((m) => (
+            m.role === 'user'
+              ? { ...m, content: sanitizeUserVisibleContent(m.content) }
+              : m
+          ));
 
-          // Final Memory Safety Cap
-          return combined.slice(-500);
-        });
+        const currentActivePid = activePersonaIdRef.current || 'standard';
+        if (currentActivePid === 'standard') {
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const incoming = incomingClean.filter(m => !existingIds.has(m.id));
+            if (incoming.length === 0) return prev;
+            
+            const combined = [...prev, ...incoming].sort((a, b) => {
+              // Sort on messageTimeMs, not `timestamp` alone: device-created messages carry
+              // no timestamp, so sorting on the raw field bucketed them at epoch 0 and moved
+              // them to the front — where the 500-message cap below then trimmed them away.
+              // messageTimeMs already falls back to the Date.now() id for exactly this case.
+              return messageTimeMs(a) - messageTimeMs(b);
+            });
+
+            // Final Memory Safety Cap
+            return combined.slice(-500);
+          });
+        } else {
+          // If a non-standard persona is active, merge cloud history into standard persona's storage
+          // so active persona messages are not mixed with standard cloud history
+          try {
+            const stdKey = '@chat_history_persona_standard';
+            const stdRaw = await AsyncStorage.getItem(stdKey);
+            const stdExisting = stdRaw ? JSON.parse(stdRaw) : [];
+            const stdIds = new Set((Array.isArray(stdExisting) ? stdExisting : []).map((m) => m.id));
+            const incoming = incomingClean.filter(m => !stdIds.has(m.id));
+            if (incoming.length > 0) {
+              const combined = [...(Array.isArray(stdExisting) ? stdExisting : []), ...incoming]
+                .sort((a, b) => messageTimeMs(a) - messageTimeMs(b))
+                .slice(-500);
+              await AsyncStorage.setItem(stdKey, JSON.stringify(combined));
+              const lastMsg = combined.length > 0 ? combined[combined.length - 1] : null;
+              setAllPersonaConversations((prev) => ({
+                ...prev,
+                standard: {
+                  lastMessage: lastMsg ? lastMsg.content : '',
+                  timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : Date.now()),
+                  count: combined.length,
+                },
+              }));
+            }
+          } catch (e) {
+            console.warn('[Hydration] Failed to sync standard history to storage:', e);
+          }
+        }
         console.log(`[Hydration] Success: Hydrated ${history.length} messages.`);
       }
     } catch (err) {
@@ -641,15 +858,44 @@ export const AppProvider = ({ children }) => {
         token,
         user?.id,
       );
+      const currentEmail = user?.email || session?.user?.email;
+      const isAuthorized = isWanqingAuthorized(currentEmail);
+      const filterItem = (item) => isAuthorized || !isWanqingItem(item);
+      const cleanList = (list) => (Array.isArray(list) ? list.filter(filterItem) : []);
+
+      const cleanPins = cleanList(pinData);
       if (layeredData) {
-        setSemanticProfile(layeredData.semanticProfile || []);
-        setTemporalEvents(layeredData.temporalEvents || []);
-        setEpisodicSegments(layeredData.episodicSegments || []);
-        setKnowledgeBase(layeredData.knowledgeBase || []);
-        setTrueCounts(layeredData.trueCounts || { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 });
+        const cleanProfile = cleanList(layeredData.semanticProfile);
+        const cleanTemporal = cleanList(layeredData.temporalEvents);
+        const cleanEpisodic = cleanList(layeredData.episodicSegments);
+        const cleanKb = cleanList(layeredData.knowledgeBase);
+        setSemanticProfile(cleanProfile);
+        setTemporalEvents(cleanTemporal);
+        setEpisodicSegments(cleanEpisodic);
+        setKnowledgeBase(cleanKb);
+        if (isAuthorized) {
+          setTrueCounts(layeredData.trueCounts || { l1: 0, l2: 0, l3: 0, l4: 0, l5: 0 });
+        } else {
+          setTrueCounts({
+            l1: cleanPins.length,
+            l2: cleanEpisodic.length,
+            l3: cleanProfile.length,
+            l4: cleanTemporal.length,
+            l5: cleanKb.length,
+          });
+        }
       }
-      if (pinData) setPinnedMemories(pinData);
-      if (analytics) setBrainStats(analytics);
+      if (pinData) setPinnedMemories(cleanPins);
+      if (analytics) {
+        if (!isAuthorized) {
+          setBrainStats({
+            ...analytics,
+            pinned_total: cleanPins.length,
+          });
+        } else {
+          setBrainStats(analytics);
+        }
+      }
     } catch (e) {
       console.error("Memory refresh failed:", e);
     }
@@ -710,7 +956,19 @@ export const AppProvider = ({ children }) => {
       // Persist clear watermark first so a concurrent remote sync cannot resurrect old chat.
       await AsyncStorage.setItem(CHAT_HISTORY_CLEARED_AT_KEY, clearedAt);
       setMessages([]);
+      if (activePersonaId) {
+        await AsyncStorage.removeItem(`@chat_history_persona_${activePersonaId}`);
+        setAllPersonaConversations((prev) => ({
+          ...prev,
+          [activePersonaId]: {
+            lastMessage: '',
+            timestamp: null,
+            count: 0,
+          },
+        }));
+      }
       await AsyncStorage.removeItem("@chat_history");
+      await AsyncStorage.removeItem("@chat_history_backfilled_ids").catch(() => {});
 
       const token = session?.access_token;
       if (token) {
@@ -726,6 +984,86 @@ export const AppProvider = ({ children }) => {
     } catch (e) {
       console.error("Clear local history failed:", e);
       Alert.alert("Clear failed", e?.message || "Could not clear chat history.");
+    }
+  };
+
+  const switchPersona = async (targetPersonaId) => {
+    const currentEmail = user?.email || session?.user?.email;
+    const isAuthorized = isWanqingAuthorized(currentEmail);
+    let targetId = String(targetPersonaId || 'standard').toLowerCase();
+    if (targetId === 'wanqing' && !isAuthorized) {
+      targetId = 'standard';
+    }
+
+    const targetPreset = getPersonaPreset(targetId, currentEmail);
+    const currentPid = activePersonaId || 'standard';
+
+    if (currentPid === targetId) return;
+
+    switchingPersonaRef.current = true;
+    try {
+      // 1. Save current messages to current persona's private storage
+      if (currentPid && Array.isArray(messages)) {
+        const currentKey = `@chat_history_persona_${currentPid}`;
+        await AsyncStorage.setItem(currentKey, JSON.stringify(messages)).catch(() => {});
+        const lastCurMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+        setAllPersonaConversations((prev) => ({
+          ...prev,
+          [currentPid]: {
+            lastMessage: lastCurMsg ? lastCurMsg.content : '',
+            timestamp: lastCurMsg?.timestamp || (lastCurMsg?.id ? Number(lastCurMsg.id) || Date.now() : Date.now()),
+            count: messages.length,
+          },
+        }));
+      }
+
+      // 2. Load target persona's messages
+      const targetKey = `@chat_history_persona_${targetId}`;
+      let loadedMessages = [];
+      try {
+        const raw = await AsyncStorage.getItem(targetKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            loadedMessages = parsed
+              .filter((m) => m && m.content && m.role)
+              .filter((m) => isAuthorized || !isWanqingItem(m))
+              .map((m) => {
+                if (m.role === 'user') return { ...m, content: sanitizeUserVisibleContent(m.content) };
+                if (m.role === 'assistant' && (targetId === 'wanqing' || isAuthorized)) {
+                  return { ...m, content: sanitizeImmersionMetaDenials(m.content) };
+                }
+                return m;
+              });
+          }
+        }
+      } catch (err) {
+        console.warn(`Failed to switch to persona ${targetId} history:`, err);
+      }
+
+      // 3. Update state
+      activePersonaIdRef.current = targetId;
+      setActivePersonaId(targetId);
+      setMessages(loadedMessages);
+      setPersona(targetPreset.text);
+
+      // 4. Persist active persona and mirror history
+      await AsyncStorage.setItem('@active_persona_id', targetId).catch(() => {});
+      await AsyncStorage.setItem('@persona', targetPreset.text).catch(() => {});
+      await AsyncStorage.setItem('@chat_history', JSON.stringify(loadedMessages)).catch(() => {});
+
+      // 5. Update target conversation summary
+      const lastMsg = loadedMessages.length > 0 ? loadedMessages[loadedMessages.length - 1] : null;
+      setAllPersonaConversations((prev) => ({
+        ...prev,
+        [targetId]: {
+          lastMessage: lastMsg ? lastMsg.content : (targetPreset.emptyGreeting || targetPreset.desc),
+          timestamp: lastMsg?.timestamp || (lastMsg?.id ? Number(lastMsg.id) || Date.now() : null),
+          count: loadedMessages.length,
+        },
+      }));
+    } finally {
+      switchingPersonaRef.current = false;
     }
   };
 
@@ -751,6 +1089,21 @@ export const AppProvider = ({ children }) => {
         "Could not complete account deletion. Please try again.",
       );
     }
+  };
+
+  const updatePersona = (nextPersona) => {
+    const currentEmail = user?.email || session?.user?.email;
+    if (!isWanqingAuthorized(currentEmail) && isWanqingItem(nextPersona)) {
+      setPersona(DEFAULT_PERSONA_PROMPT);
+      return;
+    }
+    const resolvedPid = resolveConversationPersonaId(nextPersona, currentEmail);
+    if (resolvedPid && resolvedPid !== activePersonaId) {
+      switchPersona(resolvedPid);
+      return;
+    }
+    setPersona(nextPersona);
+    AsyncStorage.setItem("@persona", nextPersona).catch(() => {});
   };
 
   return (
@@ -788,7 +1141,11 @@ export const AppProvider = ({ children }) => {
         voicePauseMs,
         setVoicePauseMs,
         persona,
-        setPersona,
+        setPersona: updatePersona,
+        activePersonaId,
+        setActivePersonaId,
+        switchPersona,
+        allPersonaConversations,
         renderEmailBridgeSecret,
         setRenderEmailBridgeSecret,
         emailLimit,
