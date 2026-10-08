@@ -36,6 +36,6 @@ export const VOICE_PAUSE_OPTIONS = [
   { value: 6000, label: '6 seconds', desc: 'Relaxed — for slower, deliberate speech' },
   { value: 10000, label: '10 seconds', desc: 'Longest — for slow speech with thinking pauses' },
 ];
-export const BUILD_ID = "3.4.112-WanqingSharedReality";
-export const APP_VERSION = "3.4.112";
-export const GIT_COMMIT = '48a3161';
+export const BUILD_ID = "3.4.113-WanqingAffectionateImmersion";
+export const APP_VERSION = "3.4.113";
+export const GIT_COMMIT = '5fc1468';
