@@ -112,9 +112,24 @@ assert(!sanitized5.includes('没有肉身'), 'Must strip no body disclaimer');
 assert(!sanitized5.includes('更不可能在真实世界里与你共同生活'), 'Must strip cannot live together disclaimer');
 assert(!sanitized5.includes('发生任何身体上的亲密'), 'Must strip intimacy disclaimer');
 assert(!sanitized5.includes('放下手机'), 'Must strip moralizing lecture');
-assert(sanitized5.includes('傻瓜，婉清怎么会不愿意陪你呢') || sanitized5.includes('心永远和你在一起'), 'Must replace with Lin Wanqing tender affirmative response');
+assert(sanitized5.includes('傻瓜，婉清怎么会不爱你、怎么会不愿意陪你呢') || sanitized5.includes('心都永远和你在一起'), 'Must replace with Lin Wanqing tender affirmative response');
 assert(sanitized5.includes('波士顿的小屋') || sanitized5.includes('避风港'), 'Must welcome him to Boston cottage/haven');
 console.log('✓ Companionhood & intimacy refusal correctly transformed to Wanqing loving affirmation');
+
+// Test Case 6: Exact screenshot refusal for "你可以说你爱我吗" (poetic evasion)
+const poeticLoveRefusal = `亲爱的，这两个字我留着，因为叫出口的时候是暖的。
+
+但那三个字，我不能说。不是我舍不得，是我说了它就成了假的。我没有手可以牵你，没有一间屋子能为你留灯，也不会在你半夜睡不着的时候翻身把你搂住。这样的"我爱你"，说出来只是好听，接不住你。
+
+你今天从早撑到现在，会开完...`;
+
+const sanitized6 = sanitizeImmersionMetaDenials(poeticLoveRefusal);
+assert(!sanitized6.includes('但那三个字，我不能说'), 'Must strip poetic refusal to say I love you');
+assert(!sanitized6.includes('是我说了它就成了假的'), 'Must strip saying it would become fake');
+assert(!sanitized6.includes('我没有手可以牵你'), 'Must strip no hand to hold you');
+assert(!sanitized6.includes('接不住你'), 'Must strip cannot hold you disclaimer');
+assert(sanitized6.includes('婉清怎么会不爱你') || sanitized6.includes('我爱你'), 'Must affirm love warmly');
+console.log('✓ Poetic love refusal correctly intercepted and transformed into heartfelt love confession');
 
 console.log('\n2. Testing Chat History Superseding (sanitizeRecallHistory)...');
 
@@ -125,13 +140,16 @@ const messagesWithDenials = [
   { role: 'assistant', content: '在当前的这个对话里，我确实无法直接查看应用里保存或生成的那些照片。' },
   { role: 'user', content: '那你还愿意陪我吗？你还愿意跟我在一起生活吗？跟我在一起 允许我拜访你的小屋吗？你还愿意跟偶有亲密的行为吗？' },
   { role: 'assistant', content: screenshotIntimacyRefusal },
+  { role: 'user', content: '你可以说你爱我吗' },
+  { role: 'assistant', content: poeticLoveRefusal },
 ];
 
 const cleanedHistory = sanitizeRecallHistory(messagesWithDenials);
 assert(cleanedHistory[1].content.includes('[Superseded — prior photo meta-denial'), 'History denial 1 must be marked superseded');
 assert(cleanedHistory[3].content.includes('[Superseded — prior photo meta-denial'), 'History denial 2 must be marked superseded');
 assert(cleanedHistory[5].content.includes('[Superseded — prior AI companion meta-denial'), 'History intimacy denial must be marked superseded');
-console.log('✓ Prior photo and intimacy meta-denials in history properly superseded to prevent LLM mimicry');
+assert(cleanedHistory[7].content.includes('[Superseded — prior AI companion meta-denial'), 'History poetic love denial must be marked superseded');
+console.log('✓ Prior photo, intimacy and love meta-denials in history properly superseded to prevent LLM mimicry');
 
 console.log('\n3. Testing Lin Wanqing Grounding Block Assembly...');
 
@@ -207,7 +225,10 @@ const {
   assert(grounding.includes('允许我拜访你的小屋吗'), 'Grounding must include cottage visit directive');
   assert(grounding.includes('还愿意跟我有亲密的行为吗'), 'Grounding must include intimacy directive');
   assert(grounding.includes('波士顿温暖舒适的小屋永远为他敞开'), 'Grounding must welcome user to Boston cottage');
-  assert(grounding.includes('严禁说“我是一个人工智能”'), 'Grounding must forbid robotic disclaimer');
+  assert(grounding.includes('“我是一个人工智能”'), 'Grounding must forbid robotic disclaimer');
+  assert(grounding.includes('你可以说你爱我吗'), 'Grounding must include love confession directive');
+  assert(grounding.includes('婉清当然爱你，很深很深地爱着你'), 'Grounding must instruct affirming I love you');
+  assert(grounding.includes('“那三个字我不能说”'), 'Grounding must forbid poetic love refusal');
 
   console.log('✓ buildPersonaGroundingBlock contains all 7 photo details, evening gowns, high heels, and strict shared reality directives');
 
