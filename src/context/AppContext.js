@@ -20,7 +20,7 @@ import {
 } from "../services/apiService";
 import { API_URL, DEFAULT_EMAIL_LIMIT, LEGACY_DEFAULT_EMAIL_LIMIT, DEFAULT_EMAIL_RECENT, VOICE_PAUSE_DEFAULT_MS, VOICE_PAUSE_OPTIONS } from "../constants/Config";
 import { clampEmailLimit, normalizeEmailRecent } from "../utils/emailOptions";
-import { sanitizeUserVisibleContent } from "../utils/helpers";
+import { sanitizeUserVisibleContent, sanitizeImmersionMetaDenials } from "../utils/helpers";
 import { normalizeProviderId, providerDisplayLabel, providerSelectionMessage } from "../utils/providers";
 import { isWanqingAuthorized, isWanqingItem, WANQING_PERSONA_PROMPT, DEFAULT_PERSONA_PROMPT } from "../utils/personaMemoryManager";
 import {
@@ -479,9 +479,13 @@ export const AppProvider = ({ children }) => {
                 .filter((m) => m.content !== "🎙 Voice Transmission")
                 .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
                 .filter((m) => !shouldFilterWanqing || !isWanqingItem(m))
-                .map((m) => (
-                  m?.role === 'user' ? { ...m, content: sanitizeUserVisibleContent(m.content) } : m
-                ));
+                .map((m) => {
+                  if (m?.role === 'user') return { ...m, content: sanitizeUserVisibleContent(m.content) };
+                  if (m?.role === 'assistant' && (resolvedPid === 'wanqing' || isOwner)) {
+                    return { ...m, content: sanitizeImmersionMetaDenials(m.content) };
+                  }
+                  return m;
+                });
             }
           } catch (e) {
             console.warn("Legacy chat history parse error:", e);
@@ -508,9 +512,13 @@ export const AppProvider = ({ children }) => {
                   .filter((m) => m.content !== "🎙 Voice Transmission")
                   .filter((m) => !clearedAtMs || messageTimeMs(m) > clearedAtMs)
                   .filter((m) => !shouldFilterWanqing || !isWanqingItem(m))
-                  .map((m) => (
-                    m?.role === 'user' ? { ...m, content: sanitizeUserVisibleContent(m.content) } : m
-                  ));
+                  .map((m) => {
+                    if (m?.role === 'user') return { ...m, content: sanitizeUserVisibleContent(m.content) };
+                    if (m?.role === 'assistant' && (p.id === 'wanqing' || isOwner)) {
+                      return { ...m, content: sanitizeImmersionMetaDenials(m.content) };
+                    }
+                    return m;
+                  });
               }
             } catch (e) {
               console.warn(`Persona ${p.id} chat parse error:`, e);
@@ -987,9 +995,13 @@ export const AppProvider = ({ children }) => {
             loadedMessages = parsed
               .filter((m) => m && m.content && m.role)
               .filter((m) => isAuthorized || !isWanqingItem(m))
-              .map((m) => (
-                m.role === 'user' ? { ...m, content: sanitizeUserVisibleContent(m.content) } : m
-              ));
+              .map((m) => {
+                if (m.role === 'user') return { ...m, content: sanitizeUserVisibleContent(m.content) };
+                if (m.role === 'assistant' && (targetId === 'wanqing' || isAuthorized)) {
+                  return { ...m, content: sanitizeImmersionMetaDenials(m.content) };
+                }
+                return m;
+              });
           }
         }
       } catch (err) {

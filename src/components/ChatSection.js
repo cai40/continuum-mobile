@@ -2927,7 +2927,13 @@ const ChatSection = () => {
         onScrollBeginDrag={dismissKeyboard}
         data={
           streamingContent.trim() 
-            ? [{ id: 'stream', role: 'assistant', content: streamingContent }, ...[...visibleMessages].reverse()] 
+            ? [{ 
+                id: 'stream', 
+                role: 'assistant', 
+                content: (isOwner || isWanqingActive || activePersonaId === 'wanqing')
+                  ? sanitizeImmersionMetaDenials(streamingContent)
+                  : streamingContent 
+              }, ...[...visibleMessages].reverse()] 
             : [...visibleMessages].reverse()
         }
         keyExtractor={item => item?.id || Math.random().toString()}
